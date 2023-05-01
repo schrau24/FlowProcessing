@@ -1,0 +1,10 @@
+To do:
+- incorporate manual unwrapping from Pim
+- automatic aorta segmentation testing 
+- options: MSAC background correction
+- copy centerline segmentation to maps tab
+- copy centerline flow locations to maps tab to view planes
+- write more functions for readability
+- fix diameter viewing (WSS) and calculation using centerline?
+- slice by slice vectors? overlaid on magnitude?
+- kinetic energy

@@ -1,5 +1,4 @@
 To do:
-- incorporate manual unwrapping from Pim
 - automatic aorta segmentation testing 
 - options: MSAC background correction
 - copy centerline segmentation to maps tab

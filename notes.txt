@@ -7,3 +7,4 @@ To do:
 - fix diameter viewing (WSS) and calculation using centerline?
 - slice by slice vectors? overlaid on magnitude?
 - kinetic energy
+- jet map with white zeros for maps

@@ -7,4 +7,5 @@ To do:
 - fix diameter viewing (WSS) and calculation using centerline?
 - slice by slice vectors? overlaid on magnitude?
 - kinetic energy
-- jet map with white zeros for maps
+- button for 'finished cropping' to crop all data in first 3D view
+- shortcut buttons (arrow keys for slices/timeframes in velocity unwrapping)

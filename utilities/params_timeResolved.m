@@ -227,7 +227,7 @@ for j = 1:nframes
     % section before computing parameters
     vTimeFrame = segment1(:,:,j).*(0.1*(v1 + v2 + v3));
     vTimeFramerowMean(:,j) = sum(vTimeFrame,2) ./ sum(vTimeFrame~=0,2);
-    flowPulsatile(:,j) = -vTimeFramerowMean(:,j).*area_val(:,j);
+    flowPulsatile(:,j) = vTimeFramerowMean(:,j).*area_val(:,j);
     flowPulsatile_vol(indexes,j) = flowPulsatile(:,j);
 end
 

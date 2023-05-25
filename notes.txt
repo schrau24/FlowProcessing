@@ -7,5 +7,7 @@ To do:
 - fix diameter viewing (WSS) and calculation using centerline?
 - slice by slice vectors? overlaid on magnitude?
 - kinetic energy
-- button for 'finished cropping' to crop all data in first 3D view
 - shortcut buttons (arrow keys for slices/timeframes in velocity unwrapping)
+- save function to maps tab
+- save graphics/memory visualization with pre-calculated and save variables?
+- labelling on velocity unwrapping tab

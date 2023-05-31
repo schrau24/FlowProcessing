@@ -64,9 +64,7 @@ end
 
 % axial whole-heart scan
 if (ori == 1 && strcmp('AP',phasedir))
-    vx = -vx;
-    vy = -vy;
-    vz = -vz;
+    % do nothing!
 end
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);

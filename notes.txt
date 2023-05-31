@@ -3,7 +3,6 @@ To do:
 - copy centerline flow locations to maps tab to view planes
 - write more functions for readability
 - fix diameter viewing (WSS) and calculation using centerline?
-- slice by slice vectors? overlaid on magnitude?
 - save function to maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
 - labelling on velocity unwrapping tab

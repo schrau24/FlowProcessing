@@ -6,6 +6,8 @@ To do:
 - save function to maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
 - labelling on velocity unwrapping tab
-- remove 'time-resolved button'on PWV tab
 - update PWV image output to match save animation
 - TKE
+- Dicom reading + saving
+- interpolate to isotropic button?
+- option to do further manual segmentation (with e.g. imtool3d)

@@ -2,8 +2,7 @@ To do:
 - automatic aorta segmentation 
 - copy centerline flow locations to maps tab to view planes
 - write more functions for readability
-- fix diameter viewing (WSS) and calculation using centerline?
-- save function to maps tab
+- save function in maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
 - labelling on velocity unwrapping tab
 - update PWV image output to match save animation
@@ -11,3 +10,4 @@ To do:
 - Dicom reading + saving
 - interpolate to isotropic button?
 - option to do further manual segmentation (with e.g. imtool3d)
+- time label to animations

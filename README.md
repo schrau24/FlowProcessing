@@ -1,5 +1,5 @@
-# 4DFlowPWVTool
-a Matlab-based app for 4D flow MRI measurement of pulse wave velocity
+# Amsterdam UMC Flow Processing Tool
+a Matlab-based app for all-in-one 4D flow MRI processing, measurements, and visualizations
 
 This tool is based off a previously published post-processing software. Use of this tool should be associated and cited with the following reference: 
 E. Schrauben, A. Wåhlin, K. Ambarki, E. Spaak, J. Malm, O. Wieben, A. Eklund. “Fast 4D flow MRI intracranial segmentation and quantification in tortuous arteries.” JMRI 2015, doi: 10.1002/jmri.24900.
@@ -19,7 +19,7 @@ SUBJECTID or other identifier_2.par, SUBJECTID or other identifier_2.rec
 SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
 
 **Getting Started:**
-Within Matlab, navigate to the folder containing PulseWaveVelocityTool.mlapp. Type this into your command window:
-PulseWaveVelocityTool
+Within Matlab, navigate to the folder containing FlowProcessing.mlapp. Type this into your command window:
+FlowProcessing
 
-Further details for each step within the app can be found in the corresponding user manual: 4DFlowPWVTool User Manual.pdf
+Further details for each step within the app can be found in the corresponding user manual: FlowProcessing User Manual.pdf

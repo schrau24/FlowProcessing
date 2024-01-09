@@ -1,5 +1,5 @@
 To do:
-- automatic aorta segmentation 
+- automatic aorta segmentation nifti import?
 - copy centerline flow locations to maps tab to view planes
 - write more functions for readability
 - save function in maps tab
@@ -10,4 +10,3 @@ To do:
 - Dicom reading + saving
 - interpolate to isotropic button?
 - option to do further manual segmentation (with e.g. imtool3d)
-- time label to animations

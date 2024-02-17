@@ -1,4 +1,3 @@
-
 function [magWeightVel, angio] = calc_angio(MAG, v, Venc)
 
 % time resolved (for contouring later)

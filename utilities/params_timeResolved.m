@@ -1,8 +1,6 @@
-function [flowPerHeartCycle_vol, flowPulsatile_vol, segment1, area_val] = ...
+function [flowPerHeartCycle_vol, flowPulsatile_vol, segment1, V2, area_val] = ...
     params_timeResolved(branchActual, angio, MAG, v, nframes, pixdim, aortaSeg_timeResolved,...
     isSegLoaded, bTimeResolvedSeg, displayWaitBar)
-
-global r
 
 d = 4;  % the number of points before and after to calculate orthogonal plane
 Tangent_V = zeros(0,3);
@@ -38,9 +36,10 @@ V2 = V2./N;
 V3 = cross(Tangent_V,V2);
 
 % Get the full tangent plane for all the points
-r = 14; %Size of plane to select from non interpolated data is r*2+1
-InterpVals = 4; % Choose the interpolation between points
+r = 25; %Size of plane to select from non interpolated data is r*2+1
+InterpVals = 3; % Choose the interpolation between points
 Side = r*InterpVals; % Creates the correct number of points for interpolation
+width = Side.*2+1; %width of plane in pixels
 Mid = zeros(length(branchActual),1);
 
 % Find x Values on line
@@ -102,6 +101,12 @@ x_full = reshape(x_full,[length(branchActual),(Side.*2+1).^2]);
 y_full = reshape(y_full,[length(branchActual),(Side.*2+1).^2]);
 z_full = reshape(z_full,[length(branchActual),(Side.*2+1).^2]);
 
+% % Get corners of UNINTERPOLATED planes
+% Planes = zeros(length(branchActual),4,3);
+% Planes(:,:,1) = [x_full(:,1),x_full(:,width-InterpVals),x_full(:,end),x_full(:,end-width+1)];
+% Planes(:,:,2) = [y_full(:,1),y_full(:,width-InterpVals),y_full(:,end),y_full(:,end-width+1)];
+% Planes(:,:,3) = [z_full(:,1),z_full(:,width-InterpVals),z_full(:,end),z_full(:,end-width+1)];
+
 x = 1:size(angio,1);
 y = 1:size(angio,2);
 z = 1:size(angio,3);
@@ -118,6 +123,7 @@ if displayWaitBar
     % progress bar
     h = waitbar(0, sprintf('Calculating flow...'));
 end
+segment1 = zeros(length(branchActual),(Side.*2+1)*(Side.*2+1),nframes);
 for frame = 1:nframes
     v_temp = interp3(y,x,z,squeeze(v(:,:,:,1,frame)),y_full(:),x_full(:),z_full(:),'cubic',0);
     v1(:,:,frame) = reshape(v_temp,[length(branchActual),(Side.*2+1).^2]);
@@ -130,20 +136,23 @@ for frame = 1:nframes
         %Interpolation for the complex difference data
         CD_int = interp3(y,x,z,aortaSeg_timeResolved(:,:,:,frame),y_full(:),x_full(:),z_full(:),'cubic',0);
         
-        SE = strel('disk', 2);
-        ss = reshape(CD_int,[length(branchActual),(Side.*2+1),(Side.*2+1)]);
-        for sl = 1:size(ss,1)
-            segment2 = imerode(squeeze(ss(sl,:,:)),SE);
-            segment2 = regiongrowing(segment2,round(length(segment2)/2),round(length(segment2)/2));
-            segment2 = imdilate(segment2, SE);
-            s(sl,:) = reshape(segment2,[1 (Side.*2+1).^2]);
-        end
+%         SE = strel('disk', 2);
+%         ss = reshape(CD_int,[length(branchActual),(Side.*2+1),(Side.*2+1)]);
+%         s = zeros(size(ss,1),(Side.*2+1).^2);
+%         for sl = 1:size(ss,1)
+%             segment2 = imerode(squeeze(ss(sl,:,:)),SE);
+%             segment2 = regiongrowing(segment2,round(length(segment2)/2),round(length(segment2)/2));
+%             segment2 = imdilate(segment2, SE);
+%             s(sl,:) = reshape(segment2,[1 (Side.*2+1).^2]);
+%         end
+        s = reshape(CD_int,[length(branchActual),(Side.*2+1)*(Side.*2+1)]);
+        
         % area
         vox = mean(pixdim)/10;
         area_val(:,frame) = sum(s,2)*(vox*(2*r+1)/(2*r*InterpVals+1))^2;
         segment1(:,:,frame) = s;
         if displayWaitBar
-            waitbar (frame/nframes, h);
+            waitbar (frame/(nframes*2), h);
         end
     end
 end
@@ -229,6 +238,9 @@ for j = 1:nframes
     vTimeFramerowMean(:,j) = sum(vTimeFrame,2) ./ sum(vTimeFrame~=0,2);
     flowPulsatile(:,j) = vTimeFramerowMean(:,j).*area_val(:,j);
     flowPulsatile_vol(indexes,j) = flowPulsatile(:,j);
+    if displayWaitBar
+        waitbar((nframes+j)/(nframes*2), h);
+    end
 end
 
 % need to initialize 3D volumes for each of these parameters

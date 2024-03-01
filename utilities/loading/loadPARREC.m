@@ -9,29 +9,30 @@ warning('off','all');
 %% grab each parrec and save corresponding data
 disp('Loading data')
 PARRECFILE = fullfile(directory,[fBase, '1.rec']);
-[IMG1,~] = readrec_V4_2(PARRECFILE);
-IMG1 = double(IMG1);
+[IMG,~] = readrec_V4_2(PARRECFILE);
+IMG = single(IMG);
 % this is the readout direction
-vx = squeeze(IMG1(:,:,:,:,:,2,:));  
-mag1 = squeeze(IMG1(:,:,:,:,:,1,:));
+vx = squeeze(IMG(:,:,:,:,:,2,:));  
+mag1 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
 PARRECFILE = fullfile(directory,[fBase, '2.rec']);
-[IMG2,~] = readrec_V4_2(PARRECFILE);
-IMG2 = double(IMG2);
+[IMG,~] = readrec_V4_2(PARRECFILE);
+IMG = single(IMG);
 % this is the phase direction
-vy = squeeze(IMG2(:,:,:,:,:,2,:));
-mag2 = squeeze(IMG2(:,:,:,:,:,1,:));
+vy = squeeze(IMG(:,:,:,:,:,2,:));
+mag2 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
 PARRECFILE = fullfile(directory,[fBase, '3.rec']);
-[IMG3,header] = readrec_V4_2(PARRECFILE);
-IMG3 = double(IMG3);
+[IMG,header] = readrec_V4_2(PARRECFILE);
+IMG = single(IMG);
 % this is the slice direction
-vz = squeeze(IMG3(:,:,:,:,:,2,:));
-mag3 = squeeze(IMG3(:,:,:,:,:,1,:));
+vz = squeeze(IMG(:,:,:,:,:,2,:));
+mag3 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 warning('on','all');
 
-MAG = mean(cat(5,mag1,mag2,mag3),5);
-clear mag1 mag2 mag3 IMG1 IMG2 IMG3
+MAG = double(mean(cat(5,mag1,mag2,mag3),5));
+clear mag1 mag2 mag3
+vx = double(vx); vy = double(vy); vz = double(vz);
 
 nframes = header.nphases;                                       % number of reconstructed frames
 timeres = max(header.tbl(:,header.tblcols.ttime))/nframes;      % temporal resolution, in ms

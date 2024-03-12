@@ -4,7 +4,7 @@ a Matlab-based app for all-in-one 4D flow MRI processing, measurements, and visu
 This tool is based off a previously published post-processing software. Use of this tool should be associated and cited with the following reference: 
 E. Schrauben, A. Wåhlin, K. Ambarki, E. Spaak, J. Malm, O. Wieben, A. Eklund. “Fast 4D flow MRI intracranial segmentation and quantification in tortuous arteries.” JMRI 2015, doi: 10.1002/jmri.24900.
 
-<img src="/utilities/icons/AortaVectors.gif?raw=true" width="700px">
+<img src="/utilities/icons/AortaVectors.gif?raw=true" width="300px">
 
 **Installation:**
 This tool is built using Matlab's appdesigner functionality. It was built using Matlab version 2021a; it is therefore recommended to use this version or **newer** for running this tool. Download and unzip the files. All functionality is built into FlowProcessing.m file and the corresponding utilities/ subfolder.

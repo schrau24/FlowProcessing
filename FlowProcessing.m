@@ -1,4 +1,4 @@
-classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
+classdef FlowProcessing < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
@@ -216,7 +216,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 aa = smooth3(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value));
                 hold(app.View3D,'on')
-                app.hpatch2 = patch(app.View3D, isosurface(aa,.5),'FaceColor','blue','EdgeColor', 'none','FaceAlpha',0.75);
+                app.hpatch2 = patch(app.View3D, isosurface(aa,.05),'FaceColor','blue','EdgeColor', 'none','FaceAlpha',0.75);
                 reducepatch(app.hpatch2,0.6);
             end
 
@@ -254,7 +254,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                 else
                     ss = smooth3(app.aorta_seg);
                 end
-                hpatch = patch(app.View3D_2,isosurface(ss,0.5),'FaceAlpha',0.20);
+                hpatch = patch(app.View3D_2,isosurface(ss,0.05),'FaceAlpha',0.20);
                 reducepatch(hpatch,0.6);
                 set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
             else
@@ -321,7 +321,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
             colorbar(app.View3D_2,'off');
 
             if app.isSegmentationLoaded
-                hpatch = patch(app.View3D_2,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.25);
+                hpatch = patch(app.View3D_2,isosurface(smooth3(currSeg),0.05),'FaceAlpha',0.25);
             else
                 hpatch = patch(app.View3D_2,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.25);
             end
@@ -374,6 +374,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                 textint2 = minIdx:5:minIdx2;
             else
                 eval(['ptRange=[' str '];']);
+                ptRange(ptRange>length(app.branchActual)) = [];
                 textint2 = ptRange(1:5:end); textint = textint2;
             end
 
@@ -416,6 +417,14 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                 ptRange = minIdx:minIdx2;
             else
                 eval(['ptRange=[' str '];']);
+                ptRange(ptRange>length(app.branchActual)) = [];
+                % reset the string to correct max
+                outNums = sscanf(str,'%i:%i:%i');
+                if length(outNums)==2
+                    app.PWVPoints.Value = sprintf('%i:%i',outNums(1),ptRange(end));
+                elseif length(outNums)==3
+                    app.PWVPoints.Value = sprintf('%i:%i:%i',outNums(1),outNums(2),ptRange(end));
+                end
             end
 
             waveforms = waveforms(ptRange,:);
@@ -658,9 +667,9 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                     
                     % we need a 3D patch for this setting
                     if app.isSegmentationLoaded
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.15);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg),0.05),'FaceAlpha',0.10);
                     else
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.15);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.10);
                     end
                     reducepatch(hpatch,0.6);
                     set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
@@ -1422,15 +1431,15 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                 end
                 app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
                 if app.DisplayDistanceCheckbox.Value
-                    % skip first and last 4 points, immediately calculate PWV
-                    app.PWVPoints.Value = [num2str(app.FullBranchDistance(5)) ': ' ...
-                        num2str(app.FullBranchDistance(length(branch)-4))];
-                    app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(5)) ':' ...
-                        num2str(app.FullBranchDistance(length(branch)-4)) ']'];
+                    % immediately calculate PWV
+                    app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
+                        num2str(app.FullBranchDistance(length(branch)))];
+                    app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
+                        num2str(app.FullBranchDistance(length(branch))) ']'];
                 else
-                    % skip first and last 4 points, immediately calculate PWV
-                    app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
-                    app.PWVPointsLabel.Text = ['PWV Points [5:' num2str(length(app.branchActual)-4) ']'];
+                    % immediately calculate PWV
+                    app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
+                    app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                 end
                 CalculatePWVButtonPushed(app, event);
 
@@ -2744,7 +2753,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
                             app.TimeframeSpinner.Value = value;
                             TimeframeSpinnerValueChanged(app);
                     end
-                    if strncmp(app.VectorOptionsDropDown.Value,'slice-wise')
+                    if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
                         switch key
                             case 'rightarrow'
                                 value = app.SliceSpinner_2.Value + 1;
@@ -2795,8 +2804,8 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
 
             % add to infoTable
             app.ScanInfoTable.Data = cat(1, app.ScanInfoTable.Data,...
-                cat(2,cellstr([num2str(app.res(1)) ' x ' num2str(app.res(2)) ' x ' num2str(app.res(3))]),...
-                cellstr([num2str(interpRes) ' x ' num2str(interpRes) ' x ' num2str(interpRes)]),...
+                cat(2,cellstr(['*' num2str(app.res(1)) ' x ' num2str(app.res(2)) ' x ' num2str(app.res(3))]),...
+                cellstr(['*' num2str(interpRes) ' x ' num2str(interpRes) ' x ' num2str(interpRes)]),...
                 cellstr('*interpolated'),cellstr(''), cellstr('')));
 
             % recalculate app.angio and app.segment
@@ -2955,7 +2964,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
             app.InterpolateData.FontName = 'SansSerif';
             app.InterpolateData.FontSize = 16;
             app.InterpolateData.Enable = 'off';
-            app.InterpolateData.Tooltip = {'perform nn-UNET segmentation (aorta only): not yet implemented'};
+            app.InterpolateData.Tooltip = {'interpolate to isotropic resolution'};
             app.InterpolateData.Position = [346 108 213 28];
             app.InterpolateData.Text = 'Interpolate Data';
 
@@ -4219,7 +4228,7 @@ classdef FlowProcessing_exported_tmp_main < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = FlowProcessing_exported_tmp_main
+        function app = FlowProcessing
 
             runningApp = getRunningApp(app);
 

@@ -37,10 +37,11 @@ if ~isempty(varargin)
     tmp = varargin{1};
     sizeA = size(tmp);
     
-    F = griddedInterpolant(tmp);
-    TMPinterp=F({linspace(1,sizeA(1),newIMGSize(1)),...
-        linspace(1,sizeA(2),newIMGSize(2)),...
-        linspace(1,sizeA(3),newIMGSize(3))});
+    TMPinterp = imresize3(tmp,newIMGSize,'cubic');
+%     F = griddedInterpolant(tmp);
+%     TMPinterp=F({linspace(1,sizeA(1),newIMGSize(1)),...
+%         linspace(1,sizeA(2),newIMGSize(2)),...
+%         linspace(1,sizeA(3),newIMGSize(3))});
     
     varargout{1} = TMPinterp;
     clearvars tmp TMPinterp

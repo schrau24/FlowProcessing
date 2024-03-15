@@ -216,7 +216,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 aa = smooth3(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value));
                 hold(app.View3D,'on')
-                app.hpatch2 = patch(app.View3D, isosurface(aa,.05),'FaceColor','blue','EdgeColor', 'none','FaceAlpha',0.75);
+                app.hpatch2 = patch(app.View3D, isosurface(aa,.5),'FaceColor','blue','EdgeColor', 'none','FaceAlpha',0.75);
                 reducepatch(app.hpatch2,0.6);
             end
 
@@ -254,7 +254,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 else
                     ss = smooth3(app.aorta_seg);
                 end
-                hpatch = patch(app.View3D_2,isosurface(ss,0.05),'FaceAlpha',0.20);
+                hpatch = patch(app.View3D_2,isosurface(ss,0.5),'FaceAlpha',0.20);
                 reducepatch(hpatch,0.6);
                 set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
             else
@@ -321,7 +321,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             colorbar(app.View3D_2,'off');
 
             if app.isSegmentationLoaded
-                hpatch = patch(app.View3D_2,isosurface(smooth3(currSeg),0.05),'FaceAlpha',0.25);
+                hpatch = patch(app.View3D_2,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.25);
             else
                 hpatch = patch(app.View3D_2,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.25);
             end
@@ -599,6 +599,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             cla(app.VelocityVectorsPlot);
             colorbar(app.VelocityVectorsPlot,'off');
             t = app.TimeframeSpinner.Value;
+            if t == 0   % to prevent errors when coming from other tabs
+                t = 1;
+            end
             
             if app.isTimeResolvedSeg
                 currSeg = app.aorta_seg(:,:,:,t);
@@ -667,7 +670,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % we need a 3D patch for this setting
                     if app.isSegmentationLoaded
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg),0.05),'FaceAlpha',0.10);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.10);
                     else
                         hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.10);
                     end
@@ -1369,89 +1372,177 @@ classdef FlowProcessing < matlab.apps.AppBase
                 'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
 
             choice = choosedialog;
-            %             checkCount = checkCount+1;
-
-            if choice
-
-                clc;
-                % now we've found the centerline:
-                % 1. calculate aorta segmentation (if not already available
-                % 2. perform non-rigid registration to get time-resolved aortic
-                % segmentation
-                % 3. calculate flow
-
-                % calculate aorta segmentation, if not already available
-                if ~app.isSegmentationLoaded   % create a new aorta_seg
-                    x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
-                    index = sub2ind(size(app.segment),x,y,z);
-                    g = zeros(size(app.segment));
-                    g(index) = 1;
-
-                    se = strel('sphere',4);
-                    gg = imdilate(g,se);
-
-                    app.aorta_seg = smooth3(gg);
-                end
-
-                % spot to create timeresolved segmentation, or use
-                % what was already loaded
-                if app.isTimeResolvedSeg
-                    aortaSeg_timeResolved = app.aorta_seg;
-                else
-                    aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
-                    for j = 1:app.nframes
-                        if app.isSegmentationLoaded
-                            aortaSeg_timeResolved(:,:,:,j) = app.aorta_seg;
-                        else
-                            aortaSeg_timeResolved(:,:,:,j) = app.segment;
+            
+            switch choice
+                case 0
+                    msgbox('Change selected branch numbers')
+                    reset3DSegmentationAndCenterline(app);
+                    return;
+                    
+                case 1
+                    
+                    clc;
+                    % now we've found the centerline:
+                    % 1. calculate aorta segmentation (if not already available
+                    % 2. perform non-rigid registration to get time-resolved aortic
+                    % segmentation
+                    % 3. calculate flow
+                    
+                    % calculate aorta segmentation, if not already available
+                    if ~app.isSegmentationLoaded   % create a new aorta_seg
+                        x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+                        index = sub2ind(size(app.segment),x,y,z);
+                        g = zeros(size(app.segment));
+                        g(index) = 1;
+                        
+                        se = strel('sphere',4);
+                        gg = imdilate(g,se);
+                        
+                        app.aorta_seg = smooth3(gg);
+                    end
+                    
+                    % spot to create timeresolved segmentation, or use
+                    % what was already loaded
+                    if app.isTimeResolvedSeg
+                        aortaSeg_timeResolved = app.aorta_seg;
+                    else
+                        aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
+                        for j = 1:app.nframes
+                            if app.isSegmentationLoaded
+                                aortaSeg_timeResolved(:,:,:,j) = app.aorta_seg;
+                            else
+                                aortaSeg_timeResolved(:,:,:,j) = app.segment;
+                            end
                         end
                     end
-                end
-                
-                app.branchActual = flipud(app.branchActual);
-
-                % Calculate flow over whole aorta
-                displayWaitBar = true;
-                [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
-                    params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
-                    app.isTimeResolvedSeg, displayWaitBar);
-
-                % flows are calculated, so we can enable 'Display Distance'
-                % and 'Parameter Drop Down'
-                app.DisplayDistanceCheckbox.Enable = true;
-                app.DisplayDistanceCheckbox.Visible = 'on';
-                app.ParameterDropDown.Enable = true;
-                app.ParameterDropDown.Visible = 'on';
-                app.ParameterLabel.Visible = 'on';
-                % calculate distance
-                branch = app.branchActual;
-                vox = mean(app.pixdim);
-                for i=2:size(branch,1)
-                    dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
-                end
-                app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
-                if app.DisplayDistanceCheckbox.Value
-                    % immediately calculate PWV
-                    app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
-                        num2str(app.FullBranchDistance(length(branch)))];
-                    app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
-                        num2str(app.FullBranchDistance(length(branch))) ']'];
-                else
-                    % immediately calculate PWV
-                    app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
-                    app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
-                end
-                CalculatePWVButtonPushed(app, event);
-
-                % view the flows at each centerline point, and plot the waveforms
-                view3D_wParams(app);
-                plotWaveforms(app);
-            else
-                msgbox('Change selected branch numbers')
-                reset3DSegmentationAndCenterline(app);
-                return;
+                    
+                    app.branchActual = flipud(app.branchActual);
+                    
+                    % Calculate flow over whole aorta
+                    displayWaitBar = true;
+                    [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
+                        params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
+                        app.isTimeResolvedSeg, displayWaitBar);
+                    
+                    % flows are calculated, so we can enable 'Display Distance'
+                    % and 'Parameter Drop Down'
+                    app.DisplayDistanceCheckbox.Enable = true;
+                    app.DisplayDistanceCheckbox.Visible = 'on';
+                    app.ParameterDropDown.Enable = true;
+                    app.ParameterDropDown.Visible = 'on';
+                    app.ParameterLabel.Visible = 'on';
+                    % calculate distance
+                    branch = app.branchActual;
+                    vox = mean(app.pixdim);
+                    for i=2:size(branch,1)
+                        dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
+                    end
+                    app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
+                    if app.DisplayDistanceCheckbox.Value
+                        % immediately calculate PWV
+                        app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
+                            num2str(app.FullBranchDistance(length(branch)))];
+                        app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
+                            num2str(app.FullBranchDistance(length(branch))) ']'];
+                    else
+                        % immediately calculate PWV
+                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
+                        app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
+                    end
+                    CalculatePWVButtonPushed(app, event);
+                    
+                    % view the flows at each centerline point, and plot the waveforms
+                    view3D_wParams(app);
+                    plotWaveforms(app);
+                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    
+                case 2  % go into update_centerline code for manual adjustments
+                    if app.isTimeResolvedSeg
+                        data = app.aorta_seg(:,:,:,app.time_peak);
+                    else
+                        data = app.aorta_seg;
+                    end
+                    app.branchActual = update_centerline(data,app.branchActual);
+                    reset3DSegmentationAndCenterline(app);
+                    hline2 = line(app.View3D_2,app.branchActual(:,2),app.branchActual(:,1),app.branchActual(:,3),...
+                        'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
+                    
+                    clc;
+                    % now we've found the centerline:
+                    % 1. calculate aorta segmentation (if not already available
+                    % 2. perform non-rigid registration to get time-resolved aortic
+                    % segmentation
+                    % 3. calculate flow
+                    
+                    % calculate aorta segmentation, if not already available
+                    if ~app.isSegmentationLoaded   % create a new aorta_seg
+                        x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+                        index = sub2ind(size(app.segment),x,y,z);
+                        g = zeros(size(app.segment));
+                        g(index) = 1;
+                        
+                        se = strel('sphere',4);
+                        gg = imdilate(g,se);
+                        
+                        app.aorta_seg = smooth3(gg);
+                    end
+                    
+                    % spot to create timeresolved segmentation, or use
+                    % what was already loaded
+                    if app.isTimeResolvedSeg
+                        aortaSeg_timeResolved = app.aorta_seg;
+                    else
+                        aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
+                        for j = 1:app.nframes
+                            if app.isSegmentationLoaded
+                                aortaSeg_timeResolved(:,:,:,j) = app.aorta_seg;
+                            else
+                                aortaSeg_timeResolved(:,:,:,j) = app.segment;
+                            end
+                        end
+                    end
+                                        
+                    % Calculate flow over whole aorta
+                    displayWaitBar = true;
+                    [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
+                        params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
+                        app.isTimeResolvedSeg, displayWaitBar);
+                    
+                    % flows are calculated, so we can enable 'Display Distance'
+                    % and 'Parameter Drop Down'
+                    app.DisplayDistanceCheckbox.Enable = true;
+                    app.DisplayDistanceCheckbox.Visible = 'on';
+                    app.ParameterDropDown.Enable = true;
+                    app.ParameterDropDown.Visible = 'on';
+                    app.ParameterLabel.Visible = 'on';
+                    % calculate distance
+                    branch = app.branchActual;
+                    vox = mean(app.pixdim);
+                    for i=2:size(branch,1)
+                        dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
+                    end
+                    app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
+                    if app.DisplayDistanceCheckbox.Value
+                        % immediately calculate PWV
+                        app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
+                            num2str(app.FullBranchDistance(length(branch)))];
+                        app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
+                            num2str(app.FullBranchDistance(length(branch))) ']'];
+                    else
+                        % immediately calculate PWV
+                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
+                        app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
+                    end
+                    CalculatePWVButtonPushed(app, event);
+                    
+                    % view the flows at each centerline point, and plot the waveforms
+                    view3D_wParams(app);
+                    plotWaveforms(app);
+                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    
+                    
+                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
             end
-            app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
         end
 
         % Button pushed function: PlotWaveformsButton

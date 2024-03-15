@@ -1,6 +1,4 @@
 To do:
-- automatic aorta segmentation nifti import?
-- copy centerline flow locations to maps tab to view planes
 - write more functions for readability
 - save function in maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
@@ -8,5 +6,6 @@ To do:
 - update PWV image output to match save animation
 - TKE
 - Dicom reading + saving
-- interpolate to isotropic button?
 - option to do further manual segmentation (with e.g. imtool3d)
+- velocity vector density
+- update centerline

@@ -700,14 +700,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             colormap(app.VelocityVectorsPlot,jet)
             cbar = colorbar(app.VelocityVectorsPlot);
             set(get(cbar,'xlabel'),'string','Velocity (cm/s)','Color','black');
-            set(cbar,'FontSize',8,'color','black','Location','west');
+            set(cbar,'FontSize',12,'color','black','Location','west');
             % change cbar size to fit in corner
             pos = get(cbar,'position');
             set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
 %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
-            axis(app.VelocityVectorsPlot, 'off','tight')
+            axis(app.VelocityVectorsPlot, 'off','vis3d')
             view(app.VelocityVectorsPlot,[0 0 1]);
             daspect(app.VelocityVectorsPlot,[1 1 1])
             if app.vvp_changed
@@ -789,7 +789,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
-            axis(app.MapPlot, 'off','tight')
+            axis(app.MapPlot, 'off','vis3d')
             daspect(app.MapPlot,[1 1 1])
             if ~isempty(app.vvp_xlim)
                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))

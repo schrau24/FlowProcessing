@@ -13,9 +13,9 @@ nFrames_interp = floor(timeres*nFrames);
 % interp params
 x = 1:nFrames;
 xq = linspace(1,nFrames,nFrames_interp);
-METHOD = 'pchip';
-smoothAmount = 25;
-plot_steps = false;
+METHOD = 'linear';
+smoothAmount = 100;
+plot_steps = true;
 
 % grab first flow waveform
 flow_sl1 = smoothdata(interp1(x,waveforms(1,:),xq,METHOD),'sgolay',smoothAmount);

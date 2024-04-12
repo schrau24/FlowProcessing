@@ -111,7 +111,7 @@ x = 1:size(angio,1);
 y = 1:size(angio,2);
 z = 1:size(angio,3);
 
-indexes = sub2ind(size(angio), branchActual(:,1), branchActual(:,2), branchActual(:,3));
+indexes = sub2ind(size(angio), round(branchActual(:,1)), round(branchActual(:,2)), round(branchActual(:,3)));
 
 % Get the interpolated velocity data from 3 directions and apply
 % multiplication of tangent vector

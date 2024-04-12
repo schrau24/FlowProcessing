@@ -8,4 +8,3 @@ To do:
 - Dicom reading + saving
 - option to do further manual segmentation (with e.g. imtool3d)
 - velocity vector density
-- update centerline

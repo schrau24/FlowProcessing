@@ -313,7 +313,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             
             % indices for flow plotting
-            x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+            x = round(app.branchActual(:,1)); 
+            y = round(app.branchActual(:,2)); 
+            z = round(app.branchActual(:,3));
             index = sub2ind(size(currSeg),x,y,z);
 
             %reset figure
@@ -396,7 +398,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         function plotWaveforms(app)
 
             % grab waveforms
-            x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+            x = round(app.branchActual(:,1)); 
+            y = round(app.branchActual(:,2)); 
+            z = round(app.branchActual(:,3));
             index = sub2ind(size(app.aorta_seg),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
 
@@ -610,15 +614,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             currV = app.v(:,:,:,:,t);
 
+            interpFactor = 1;
             switch app.VectorOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
                     % grab current slice
                     sl = app.SliceSpinner_2.Value;
-                    L = find(currSeg(:,:,sl));
-                    vx = -currSeg(:,:,sl).*currV(:,:,sl,1)/10;
-                    vy = -currSeg(:,:,sl).*currV(:,:,sl,2)/10;
-                    vz = -currSeg(:,:,sl).*currV(:,:,sl,3)/10;
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                    L = find(currSeg(1:interpFactor:end,1:interpFactor:end,sl));
+                    vx = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,1)/10;
+                    vy = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,2)/10;
+                    vz = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,3)/10;
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(currSeg,2))*app.pixdim(1),(1:interpFactor:size(currSeg,1))*app.pixdim(2), ...
                         -10);   % cheat here and put the vel vectors at a negative location to overlay better
 
                     img = repmat(app.MAG(:,:,sl,t),[1 1 3]);
@@ -681,12 +686,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                     lightangle(app.VelocityVectorsPlot,0,0);
             
                 case 'segmentation'   % 3d vectors from the whole segmentation
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                        (1:size(currSeg,3))*app.pixdim(3));
-                    vx = -currSeg.*currV(:,:,:,1)/10;
-                    vy = -currSeg.*currV(:,:,:,2)/10;
-                    vz = -currSeg.*currV(:,:,:,3)/10;
-                    L = find(currSeg);
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(currSeg,2))*app.pixdim(1),(1:interpFactor:size(currSeg,1))*app.pixdim(2), ...
+                        (1:interpFactor:size(currSeg,3))*app.pixdim(3));
+                    vx = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,1)/10;
+                    vy = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,2)/10;
+                    vz = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,3)/10;
+                    L = find(currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end));
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
 
@@ -707,7 +712,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
-            axis(app.VelocityVectorsPlot, 'off','vis3d')
+            axis(app.VelocityVectorsPlot, 'off','tight')
             view(app.VelocityVectorsPlot,[0 0 1]);
             daspect(app.VelocityVectorsPlot,[1 1 1])
             if app.vvp_changed
@@ -789,7 +794,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
-            axis(app.MapPlot, 'off','vis3d')
+            axis(app.MapPlot, 'off','tight')
             daspect(app.MapPlot,[1 1 1])
             if ~isempty(app.vvp_xlim)
                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
@@ -1039,6 +1044,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg = zeros(size(app.angio));
                     app.aorta_seg = niftiread(fullfile(app.segDirectory,tmp));
                 end
+            elseif strncmp(tmp(end-3:end),'.nii',3)
+                app.aorta_seg = double(permute(niftiread(fullfile(app.segDirectory,tmp)),[2 1 3]));
             else    % the files are still dicoms but not with a dicom ending?
                 files = dir([app.segDirectory '/*IM*']);
                 % reset the aorta segmentation
@@ -1365,7 +1372,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             xsg=sgolayfilt(app.branchActual(:,1),polynomialOrder, windowWidth);
             ysg=sgolayfilt(app.branchActual(:,2),polynomialOrder, windowWidth);
             zsg=sgolayfilt(app.branchActual(:,3),polynomialOrder, windowWidth);
-            app.branchActual = round([xsg,ysg,zsg]);
+            app.branchActual = ([xsg,ysg,zsg]);
 
             reset3DSegmentationAndCenterline(app);
             hline2 = line(app.View3D_2,app.branchActual(:,2),app.branchActual(:,1),app.branchActual(:,3),...
@@ -1553,7 +1560,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: CalculatePWV
         function CalculatePWVButtonPushed(app, event)
             % grab waveforms
-            x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+            x = round(app.branchActual(:,1)); 
+            y = round(app.branchActual(:,2)); 
+            z = round(app.branchActual(:,3));
             index = sub2ind(size(app.segment),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
 
@@ -1588,8 +1597,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                 case 'Maximum likelihood'
                     PWVcalctype = 3;
+                case 'Jarvis XCorr'
+                    PWVcalctype = 4;
+                    if numel(ptRange) < 3
+                        errordlg('Need at least 3 points for cross-correlation PWV calculation')
+                        return;
+                    end
             end
-
+            
             % pass data into calc_pwv
             branch = app.branchActual(ptRange,:);
             vox = mean(app.pixdim);
@@ -1602,6 +1617,19 @@ classdef FlowProcessing < matlab.apps.AppBase
             else
                 dist_total = cumsum(dist_vec);
             end
+            
+            if PWVcalctype == 4     % Jarvis method, interpolate to 1 mm distances
+                % interpolate waveforms to 1 mm resolution to extract
+                % equally spaced waveforms
+                xq = min(dist_total):ceil(max(dist_total));
+                waveforms = interp1([0 dist_total],waveforms,xq,'spline');
+                
+                % and then take every 4th waveform for PWV calculation, 4
+                % mm separation
+                waveforms = waveforms(1:4:end,:);
+                dist_total = xq(1:4:end);
+            end
+            
 
             if PWVcalctype < 3
 
@@ -1631,7 +1659,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 app.PWVCalcDisplay.YLabel.String = str;
 
-            else % directly calculate PWV using maximum likelihood
+            elseif PWVcalctype == 3 % directly calculate PWV using maximum likelihood
 
                 % distance in meters
                 d = dist_total'/1000;
@@ -1642,33 +1670,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % to follow Anders/Cecilia code, convert to velocity
                 pwv0 = 10; %initial guess
                 tempArea = double(mean(app.area_val(ptRange,:),2));
-                v = double(detrend(waveforms'./repmat(tempArea,1,app.nframes)','constant')'); % converted to average velocity
-                scaling = 1./std(v(:,:),[],2);
-                vsc = v.*repmat(scaling,1,app.nframes);
+                vel = double(detrend(waveforms'./repmat(tempArea,1,app.nframes)','constant')'); % converted to average velocity
+                scaling = 1./std(vel(:,:),[],2);
+                vsc = vel.*repmat(scaling,1,app.nframes);
                 mean_flow = mean(vsc);
                 inParams=[randn(1,app.nframes), pwv0]; %
                 fun1=@(inParams)PWVest3_share(inParams,d,vsc,tRes,tempArea./(scaling.^2));
                 options = optimset('Display','iter', 'TolCon', 1e-7, 'TolX', 1e-7, 'TolFun', 1e-7,'DiffMinChange', 1e-3);
                 [params,exitflag,output] = fminunc(fun1,inParams, options);
-
-
-                %                 % set waveMat and normalize to have zero mean and unit std
-                %                 waveMat = waveforms;
-                %                 [waveMat, ~, scalingFactor] = zscore(waveMat');
-                %                 waveMat = waveMat';
-
-                %                 % scaling from cross section area and zscore scaling
-                %
-                %                 w = tempArea'./scalingFactor.^2;
-                %                 %                 w = ones(size(waveMat,1),1);
-
-                %                 fun1=@(inParams)PWVest3_share(inParams,d,waveMat,tRes,w);
-                %                 pwv0 = 10; %initial guess of pwv
-                %                 mean_flow = mean(waveMat); %initial guess of waveform
-                %                 initialGuess=[mean_flow, pwv0];
-
-                %                 [params,exitflag,output] = fminunc(fun1,initialGuess, options);%,options1);
-                PWV = params(end); % have a look at the PWV
+                PWV = params(end);
 
                 card_time = [0:app.nframes-1]*app.timeres;
                 cla(app.PWVCalcDisplay)
@@ -1682,6 +1692,69 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.PWVCalcDisplay.YLabel.String = 'velocity wave (a.u.)';
                 app.R2 = [];        % no R2 needed for the method
 
+            else    % Jarvis cross-correlation method over all points
+                
+                clear tempPWV R2tmp
+                for chk = 1:size(waveforms,1)
+                    % simply circshift
+                    ww2 = circshift(waveforms,chk-1,1);
+                    
+                    currDist = circshift(dist_total(2:end),chk-1);
+                    currDist = 4 + abs(currDist - currDist(1));
+                    
+                    % pass data into calc_pwv
+                    % calculate PWV using the delay times
+                    [D,fitObject, R, ~] = calc_pwv(ww2,currDist,app.timeres,1,app.area_val(ptRange));
+                    
+                    tempPWV(chk) = 1/fitObject(1);
+                    % how good is the fit? calculate R
+                    R2tmp(chk) = R(2).*R(2);
+                    
+                end
+                
+%                 % only keep tempPWV with R^2 > 0.5
+%                 idx = find(R2tmp>0.5);
+                idx = find(ones(size(R2tmp)));
+                
+                % if data is normal, take the mean, otherwise take the median
+                isNORM = adtest(tempPWV(idx));
+                if isNORM
+                    PWV = mean(tempPWV(idx));
+                    app.R2 = mean(R2tmp(idx));
+                else
+                    PWV = median(tempPWV(idx));
+                    app.R2 = median(R2tmp(idx));
+                end
+                
+                % find the R2 that is most representative of that PWV
+                % value
+                [~,tmp] = min(abs(tempPWV - PWV));
+%                 app.R2 = R2tmp(tmp);
+%                 app.R2 = [];
+                
+                % display results
+%                 figure(101); clf;
+%                 subplot 211
+                cla(app.PWVCalcDisplay)
+                scatter(app.PWVCalcDisplay,dist_total(idx),tempPWV(idx),'.k','SizeData',75);
+                hold(app.PWVCalcDisplay,'on');
+                yline(app.PWVCalcDisplay,PWV,'r','LineWidth',2);
+                xlim(app.PWVCalcDisplay, [0 max(dist_total)])
+                ylim(app.PWVCalcDisplay, [min(tempPWV) max(tempPWV)])
+                ylabel(app.PWVCalcDisplay, 'PWV (m/s)')
+%                 legend(app.PWVCalcDisplay,'PWV per plane','resulting PWV','Location','Northwest')
+                app.PWVCalcDisplay.XLabel.String = 'distance (mm)';
+                title(app.PWVCalcDisplay, sprintf('PWV = %2.2f',PWV))
+%                 subplot 212
+%                 hist(tempPWV(idx))
+%                 xlabel('PWV (m/s)')
+%                 ylabel('count')
+%                 if isNORM; txt = 'normal data - use mean'; else; txt = 'non-normal data - use median'; end
+%                 title(txt)
+%                 drawnow
+%                 savename = [dataFolder '/' saveName date '_ORIG_JarvisMethod.jpg'];
+%                 imwrite(frame2im(getframe(figure(101))),savename)
+                
             end
             app.PWVDisplay.Value = sprintf('%1.2f', PWV);
             app.R2Display.Value = sprintf('%0.3f', app.R2);
@@ -1707,7 +1780,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     tempR2(count) = R(2).*R(2);
                 end
 
-                [R2,I] = max(tempR2);
+                [R,I] = max(tempR2);
                 PWV = tempPWV(I);
             end
 
@@ -1716,7 +1789,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             if app.findBestFit_checkbox.Value && PWVcalctype < 3
                 % inform of the best fit
-                msgbox(sprintf('Best fit found for starting point=%i; R^2=%0.3f; PWV=%1.2f m/s', Chks(I), R2, PWV), 'Best fit','replace')
+                msgbox(sprintf('Best fit found for starting point=%i; R^2=%0.3f; PWV=%1.2f m/s', Chks(I), R, PWV), 'Best fit','replace')
             end
 
         end
@@ -2207,7 +2280,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     patch('faces',Faces,'vertices',Verts,'EdgeColor','none','FaceVertexCData',diameter,'FaceColor','interp','faceAlpha',1);colorbar
                     axis equal, view([0 0 1]); axis off
                     caxis([0 4])
-                    axis equal;
                     axis ij
                     set(gca,'ZDir','reverse');
                     hold off
@@ -2936,7 +3008,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.SliceSpinner_2.Enable = 'on';
                     app.SliceSpinner_2.Value = round(size(app.angio,3)/2);
                     app.SliceSpinner_2.Limits = [1 size(app.angio,3)];
-                case '3D'
+                case 'segmentation'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
@@ -4061,7 +4133,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Create PWVType
             app.PWVType = uidropdown(app.FlowandPulseWaveVelocityTab);
-            app.PWVType.Items = {'Cross-correlation', 'Wavelet', 'Maximum likelihood'};
+            app.PWVType.Items = {'Cross-correlation', 'Wavelet', 'Maximum likelihood', 'Jarvis XCorr'};
             app.PWVType.FontName = 'ZapfDingbats';
             app.PWVType.FontSize = 14;
             app.PWVType.Position = [506 219 174 22];

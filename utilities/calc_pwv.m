@@ -14,8 +14,8 @@ nFrames_interp = floor(timeres*nFrames);
 x = 1:nFrames;
 xq = linspace(1,nFrames,nFrames_interp);
 METHOD = 'linear';
-smoothAmount = 100;
-plot_steps = true;
+smoothAmount = 25;
+plot_steps = false;
 
 % grab first flow waveform
 flow_sl1 = smoothdata(interp1(x,waveforms(1,:),xq,METHOD),'sgolay',smoothAmount);

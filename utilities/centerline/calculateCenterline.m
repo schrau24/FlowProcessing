@@ -3,8 +3,8 @@ function path = calculateCenterline(binaryVolume, startPoint, endPoint, original
     path = startPoint;
     currentPoint = startPoint;
     previousPoint = [];
-    originalCenterlineStart = originalCenterline(1, :);
-    originalCenterlineEnd = originalCenterline(end, :);
+    originalCenterlineStart = round(originalCenterline(1, :));
+    originalCenterlineEnd = round(originalCenterline(end, :));
     
     % Approach the original start point
     while ~isequal(currentPoint, originalCenterlineStart)

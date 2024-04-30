@@ -1397,7 +1397,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % calculate aorta segmentation, if not already available
                     if ~app.isSegmentationLoaded   % create a new aorta_seg
-                        x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+                        x = round(app.branchActual(:,1)); 
+                        y = round(app.branchActual(:,2)); 
+                        z = round(app.branchActual(:,3));
                         index = sub2ind(size(app.segment),x,y,z);
                         g = zeros(size(app.segment));
                         g(index) = 1;
@@ -1559,6 +1561,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: CalculatePWV
         function CalculatePWVButtonPushed(app, event)
+            cla(app.PWVCalcDisplay)
             % grab waveforms
             x = round(app.branchActual(:,1)); 
             y = round(app.branchActual(:,2)); 
@@ -1658,7 +1661,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.PWVCalcDisplay.YLim = [0 max(D)+1];
                 end
                 app.PWVCalcDisplay.YLabel.String = str;
-
+                title(app.PWVCalcDisplay,'')
             elseif PWVcalctype == 3 % directly calculate PWV using maximum likelihood
 
                 % distance in meters
@@ -1691,7 +1694,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.PWVCalcDisplay.XLabel.String = 'cardiac time (ms)';
                 app.PWVCalcDisplay.YLabel.String = 'velocity wave (a.u.)';
                 app.R2 = [];        % no R2 needed for the method
-
+                title(app.PWVCalcDisplay,'')
             else    % Jarvis cross-correlation method over all points
                 
                 clear tempPWV R2tmp
@@ -1717,20 +1720,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 idx = find(ones(size(R2tmp)));
                 
                 % if data is normal, take the mean, otherwise take the median
-                isNORM = adtest(tempPWV(idx));
+                isNORM = adtest(tempPWV(tempPWV(idx)>0));
                 if isNORM
-                    PWV = mean(tempPWV(idx));
-                    app.R2 = mean(R2tmp(idx));
+                    PWV = mean(tempPWV(tempPWV(idx)>0));
+                    app.R2 = mean(R2tmp(tempPWV(idx)>0));
                 else
-                    PWV = median(tempPWV(idx));
-                    app.R2 = median(R2tmp(idx));
+                    PWV = median(tempPWV(tempPWV(idx)>0));
+                    app.R2 = median(R2tmp(tempPWV(idx)>0));
                 end
                 
                 % find the R2 that is most representative of that PWV
                 % value
                 [~,tmp] = min(abs(tempPWV - PWV));
 %                 app.R2 = R2tmp(tmp);
-%                 app.R2 = [];
+                % override R2 value
+                app.R2 = [];
                 
                 % display results
 %                 figure(101); clf;
@@ -1744,7 +1748,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                 ylabel(app.PWVCalcDisplay, 'PWV (m/s)')
 %                 legend(app.PWVCalcDisplay,'PWV per plane','resulting PWV','Location','Northwest')
                 app.PWVCalcDisplay.XLabel.String = 'distance (mm)';
-                title(app.PWVCalcDisplay, sprintf('PWV = %2.2f',PWV))
+                title(app.PWVCalcDisplay, sprintf('PWV = %2.2f m/s',PWV))
+                legend(app.PWVCalcDisplay,'PWV over vessel','final PWV')
 %                 subplot 212
 %                 hist(tempPWV(idx))
 %                 xlabel('PWV (m/s)')

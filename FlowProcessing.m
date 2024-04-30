@@ -1723,43 +1723,27 @@ classdef FlowProcessing < matlab.apps.AppBase
                 isNORM = adtest(tempPWV(tempPWV(idx)>0));
                 if isNORM
                     PWV = mean(tempPWV(tempPWV(idx)>0));
-                    app.R2 = mean(R2tmp(tempPWV(idx)>0));
+                    app.R2 = std(tempPWV(tempPWV(idx)>0));
+                    app.PWVDisplayTitle_2.Text = 'stdev';
+                    addstr = 'normal distribution, use mean';
                 else
                     PWV = median(tempPWV(tempPWV(idx)>0));
-                    app.R2 = median(R2tmp(tempPWV(idx)>0));
+                    app.R2 = iqr(tempPWV(tempPWV(idx)>0));
+                    app.PWVDisplayTitle_2.Text = 'iqr';
+                    addstr = 'non-normal distribution, use median';
                 end
                 
-                % find the R2 that is most representative of that PWV
-                % value
-                [~,tmp] = min(abs(tempPWV - PWV));
-%                 app.R2 = R2tmp(tmp);
-                % override R2 value
-                app.R2 = [];
-                
                 % display results
-%                 figure(101); clf;
-%                 subplot 211
                 cla(app.PWVCalcDisplay)
                 scatter(app.PWVCalcDisplay,dist_total(idx),tempPWV(idx),'.k','SizeData',75);
                 hold(app.PWVCalcDisplay,'on');
-                yline(app.PWVCalcDisplay,PWV,'r','LineWidth',2);
+                yline(app.PWVCalcDisplay,PWV,'r--','LineWidth',2);
                 xlim(app.PWVCalcDisplay, [0 max(dist_total)])
                 ylim(app.PWVCalcDisplay, [min(tempPWV) max(tempPWV)])
                 ylabel(app.PWVCalcDisplay, 'PWV (m/s)')
-%                 legend(app.PWVCalcDisplay,'PWV per plane','resulting PWV','Location','Northwest')
                 app.PWVCalcDisplay.XLabel.String = 'distance (mm)';
-                title(app.PWVCalcDisplay, sprintf('PWV = %2.2f m/s',PWV))
-                legend(app.PWVCalcDisplay,'PWV over vessel','final PWV')
-%                 subplot 212
-%                 hist(tempPWV(idx))
-%                 xlabel('PWV (m/s)')
-%                 ylabel('count')
-%                 if isNORM; txt = 'normal data - use mean'; else; txt = 'non-normal data - use median'; end
-%                 title(txt)
-%                 drawnow
-%                 savename = [dataFolder '/' saveName date '_ORIG_JarvisMethod.jpg'];
-%                 imwrite(frame2im(getframe(figure(101))),savename)
-                
+                title(app.PWVCalcDisplay, addstr)
+                legend(app.PWVCalcDisplay,'PWV over vessel','final PWV','location','northeast') 
             end
             app.PWVDisplay.Value = sprintf('%1.2f', PWV);
             app.R2Display.Value = sprintf('%0.3f', app.R2);
@@ -1796,7 +1780,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % inform of the best fit
                 msgbox(sprintf('Best fit found for starting point=%i; R^2=%0.3f; PWV=%1.2f m/s', Chks(I), R, PWV), 'Best fit','replace')
             end
-
         end
 
         % Button pushed function: SaveResultsCallback
@@ -3030,6 +3013,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.vvp_changed = 1;
             viewVelocityVectors(app);
         end
+        
+        % Value changed function: ParameterDropDown
+        function PWVTypeValueChanged(app, event)
+            if app.PWVType.Value < 3
+                app.findBestFit_checkbox.Enable = 'on';
+            else
+                app.findBestFit_checkbox.Value = 0;
+                app.findBestFit_checkbox.Enable = 'off';
+            end
+        end
     end
 
     % Component initialization
@@ -4143,6 +4136,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PWVType.FontSize = 14;
             app.PWVType.Position = [506 219 174 22];
             app.PWVType.Value = 'Wavelet';
+            app.PWVType.ValueChangedFcn = createCallbackFcn(app, @PWVTypeValueChanged, true);
 
             % Create PWVDisplayTitle
             app.PWVDisplayTitle = uilabel(app.FlowandPulseWaveVelocityTab);

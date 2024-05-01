@@ -193,6 +193,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         FullBranchDistance;         % the full distance vector (in mm)
 
         R2;                         % the r-squared value of the fit for cross-correlation or wavelet PWV measurement
+        R2_name = 'R2';             % if R2 not used for PWV, this is updated
         vvp_xlim;                   % velocity vector x limits
         vvp_ylim;                   % velocity vector y limits
         vvp_changed = 1;            % has the type of velocity vector plot changed?
@@ -1391,8 +1392,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     clc;
                     % now we've found the centerline:
                     % 1. calculate aorta segmentation (if not already available
-                    % 2. perform non-rigid registration to get time-resolved aortic
-                    % segmentation
+                    % 2. get time-resolved aortic segmentation
                     % 3. calculate flow
                     
                     % calculate aorta segmentation, if not already available
@@ -1458,7 +1458,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
                         app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                     end
-                    CalculatePWVButtonPushed(app, event);
+%                     CalculatePWVButtonPushed(app, event); % not
+%                     automatically calculated for lyrica
                     
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
@@ -1479,8 +1480,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     clc;
                     % now we've found the centerline:
                     % 1. calculate aorta segmentation (if not already available
-                    % 2. perform non-rigid registration to get time-resolved aortic
-                    % segmentation
+                    % 2. get time-resolved aortic segmentation
                     % 3. calculate flow
                     
                     % calculate aorta segmentation, if not already available
@@ -1542,14 +1542,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
                         app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                     end
-                    CalculatePWVButtonPushed(app, event);
+%                     CalculatePWVButtonPushed(app, event); % not
+%                     automatically calculated for lyrica
                     
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
                     plotWaveforms(app);
-                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
-                    
-                    
                     app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
             end
         end
@@ -1724,14 +1722,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                 if isNORM
                     PWV = mean(tempPWV(tempPWV(idx)>0));
                     app.R2 = std(tempPWV(tempPWV(idx)>0));
-                    app.PWVDisplayTitle_2.Text = 'stdev';
+                    app.R2_name = 'stdev';
                     addstr = 'normal distribution, use mean';
                 else
                     PWV = median(tempPWV(tempPWV(idx)>0));
                     app.R2 = iqr(tempPWV(tempPWV(idx)>0));
-                    app.PWVDisplayTitle_2.Text = 'iqr';
+                    app.R2_name = 'iqr';
                     addstr = 'non-normal distribution, use median';
                 end
+                app.PWVDisplayTitle_2.Text = app.R2_name;
                 
                 % display results
                 cla(app.PWVCalcDisplay)
@@ -1786,7 +1785,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         function SaveResultsCallbackButtonPushed(app, event)
 
             savePrefix = app.SaveName.Value;
-            saveFolder = fullfile(app.directory, 'PWV_results'); mkdir(saveFolder);
+            % for lyrica, grab the subject name, and save to different
+            % output location
+%             saveFolder = fullfile(app.directory, 'PWV_results'); mkdir(saveFolder);
+%             saveName =  fullfile(saveFolder, savePrefix);
+            tmp = strsplit(app.directory,'\');
+            tmp = tmp{end-2};
+            saveFolder = fullfile('L:\basic\divi\Projects\lyrica_hart\analysis\4D-flow_aorta\Raw data from FlowProcessing tool - Eric\',tmp,  'PWV_results'); 
+            mkdir(saveFolder);
             saveName =  fullfile(saveFolder, savePrefix);
 
             % is DisplayDistance, convert to true points for saving
@@ -1801,12 +1807,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                 PWV = table(str2double(app.PWVDisplay.Value),{app.R2},{app.PWVPoints.Value});
             end
 
-            PWV.Properties.VariableNames = {'PWV','R2','Save_Points'};
+            PWV.Properties.VariableNames = {'PWV',app.R2_name,'Save_Points'};
             writetable(PWV,[saveName '.xlsx'],'Sheet','PWV');
 
             % save the waveforms too
             % grab waveforms
-            x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+            x = round(app.branchActual(:,1));
+            y = round(app.branchActual(:,2)); 
+            z = round(app.branchActual(:,3));
             index = sub2ind(size(app.aorta_seg),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
             str = app.PWVPoints.Value;
@@ -4135,7 +4143,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PWVType.FontName = 'ZapfDingbats';
             app.PWVType.FontSize = 14;
             app.PWVType.Position = [506 219 174 22];
-            app.PWVType.Value = 'Wavelet';
+            app.PWVType.Value = 'Jarvis XCorr';
             app.PWVType.ValueChangedFcn = createCallbackFcn(app, @PWVTypeValueChanged, true);
 
             % Create PWVDisplayTitle

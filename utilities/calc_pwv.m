@@ -1,5 +1,5 @@
 function [D, fitObject, R, dist_total] = calc_pwv(waveforms,dist_total, timeres, PWVcalctype, AreaScale)
-
+warning('off','all')
 % waveforms = waveforms./repmat(AreaScale',[1 size(waveforms,2)]);
 % PWV calc type: 1 is cross correlation, 2 is Wavelet
 % normalize waveforms
@@ -132,3 +132,4 @@ else
     fitObject = nan;
     R = nan;
 end
+warning('on','all')

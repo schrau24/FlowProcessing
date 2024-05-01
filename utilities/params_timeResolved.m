@@ -2,6 +2,8 @@ function [flowPerHeartCycle_vol, flowPulsatile_vol, segment1, V2, area_val] = ..
     params_timeResolved(branchActual, angio, MAG, v, nframes, pixdim, aortaSeg_timeResolved,...
     isSegLoaded, bTimeResolvedSeg, displayWaitBar)
 
+displayWaitBar = 0;
+
 d = 4;  % the number of points before and after to calculate orthogonal plane
 Tangent_V = zeros(0,3);
 
@@ -202,17 +204,17 @@ if ~bTimeResolvedSeg    % if no time-resolved segmentation, use kmeans of magnit
     area_val = repmat(sum(s,2)*(vox*(2*r+1)/(2*r*InterpVals+1))^2,[1 nframes]);
     segment1 = repmat(s,[1 1 nframes]);
     
-    figure(4); %clf;
-    a = aa(10:10:end,:);
-    a = reshape(a,[size(a,1) 2*Side+1 2*Side+1]); a = a/max(a(:));
-    subplot 121; montage(permute(a, [2 3 4 1]));
-    title('angio images')
-    ss = s(10:10:end,:);
-    ss = reshape(ss,[size(ss,1) 2*Side+1 2*Side+1]);
-    subplot 122; montage(permute(ss, [2 3 4 1]));
-    % set(figure(4),'Name',);
-    title(['segmentation for slices 10-' num2str(size(a,1)*10)])
-    drawnow;
+%     figure(4); %clf;
+%     a = aa(10:10:end,:);
+%     a = reshape(a,[size(a,1) 2*Side+1 2*Side+1]); a = a/max(a(:));
+%     subplot 121; montage(permute(a, [2 3 4 1]));
+%     title('angio images')
+%     ss = s(10:10:end,:);
+%     ss = reshape(ss,[size(ss,1) 2*Side+1 2*Side+1]);
+%     subplot 122; montage(permute(ss, [2 3 4 1]));
+%     % set(figure(4),'Name',);
+%     title(['segmentation for slices 10-' num2str(size(a,1)*10)])
+%     drawnow;
 end
 
 flowPulsatile = zeros(size(area_val,1),nframes);

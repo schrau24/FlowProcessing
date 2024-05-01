@@ -9,21 +9,21 @@ warning('off','all');
 %% grab each parrec and save corresponding data
 disp('Loading data')
 PARRECFILE = fullfile(directory,[fBase, '1.rec']);
-[IMG,~] = readrec_V4_2(PARRECFILE);
+[IMG,~] = readrec_V4_2(PARRECFILE,'quiet');
 IMG = single(IMG);
 % this is the readout direction
 vx = squeeze(IMG(:,:,:,:,:,2,:));  
 mag1 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
 PARRECFILE = fullfile(directory,[fBase, '2.rec']);
-[IMG,~] = readrec_V4_2(PARRECFILE);
+[IMG,~] = readrec_V4_2(PARRECFILE,'quiet');
 IMG = single(IMG);
 % this is the phase direction
 vy = squeeze(IMG(:,:,:,:,:,2,:));
 mag2 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
 PARRECFILE = fullfile(directory,[fBase, '3.rec']);
-[IMG,header] = readrec_V4_2(PARRECFILE);
+[IMG,header] = readrec_V4_2(PARRECFILE,'quiet');
 IMG = single(IMG);
 % this is the slice direction
 vz = squeeze(IMG(:,:,:,:,:,2,:));

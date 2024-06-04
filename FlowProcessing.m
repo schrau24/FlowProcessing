@@ -950,6 +950,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                 app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC();
             
+            % flip vz
+            app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
+            
             % re-focus the figure
             figure(app.FlowProcessingUIFigure);
 
@@ -1001,7 +1004,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.isRawDataCropped = 0;
             
             % enable intepolate button
-            app.InterpolateData.Enable = 'on';
+            app.InterpolateData.Enable = 'off';
         end
 
         % Button pushed function: CleardataandrestartanalysisButton
@@ -4140,6 +4143,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PWVType.FontSize = 14;
             app.PWVType.Position = [506 219 174 22];
             app.PWVType.Value = 'Wavelet';
+            app.PWVType.Editable = 'off';
             app.PWVType.ValueChangedFcn = createCallbackFcn(app, @PWVTypeValueChanged, true);
 
             % Create PWVDisplayTitle

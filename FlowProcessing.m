@@ -1457,7 +1457,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             num2str(app.FullBranchDistance(length(branch))) ']'];
                     else
                         % immediately calculate PWV
-                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
+                        app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
                         app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                     end
                     CalculatePWVButtonPushed(app, event);
@@ -1543,7 +1543,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             num2str(app.FullBranchDistance(length(branch))) ']'];
                     else
                         % immediately calculate PWV
-                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
+                        app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
                         app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                     end
                     CalculatePWVButtonPushed(app, event);
@@ -4075,7 +4075,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ParameterDropDown.FontName = 'SansSerif';
             app.ParameterDropDown.FontSize = 14;
             app.ParameterDropDown.Position = [185 37 162 22];
-            app.ParameterDropDown.Value = 'Total Flow';
+            app.ParameterDropDown.Value = 'Mean velocity';
 
             % Create BranchNumberTitle
             app.BranchNumberTitle = uilabel(app.FlowandPulseWaveVelocityTab);
@@ -4143,7 +4143,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PWVType.FontSize = 14;
             app.PWVType.Position = [506 219 174 22];
             app.PWVType.Value = 'Wavelet';
-            app.PWVType.Editable = 'off';
             app.PWVType.ValueChangedFcn = createCallbackFcn(app, @PWVTypeValueChanged, true);
 
             % Create PWVDisplayTitle
@@ -4183,11 +4182,11 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Create SaveName
             app.SaveName = uidropdown(app.FlowandPulseWaveVelocityTab);
-            app.SaveName.Items = {'Global PWV', 'Ascending Aorta', 'Descending Aorta', 'Left Carotid', 'Right Carotid'};
+            app.SaveName.Items = {'Left Carotid', 'Right Carotid'};
             app.SaveName.FontName = 'SansSerif';
             app.SaveName.FontSize = 10;
             app.SaveName.Position = [971 66 140 22];
-            app.SaveName.Value = 'Global PWV';
+            app.SaveName.Value = 'Left Carotid';
 
             % Create FlipBranch1
             app.FlipBranch1 = uicheckbox(app.FlowandPulseWaveVelocityTab);

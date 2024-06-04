@@ -790,8 +790,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(cbar,'color','black','Location','west','FontSize',12);
             % change cbar size to fit in corner
             pos = get(cbar,'position');
-%             set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
-            set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
+            set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
+%             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -861,8 +861,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(cbar,'color','black','Location','west','FontSize',12);
             % change cbar size to fit in corner
             pos = get(cbar,'position');
-%             set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
-            set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
+            set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
+            %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
 
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -912,7 +912,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
     end
-
 
     % Callbacks that handle component events
     methods (Access = private)
@@ -1036,13 +1035,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                     fprintf('Time-resolved segmentation, loading %i segmentations...\n',length(tmp2))
                     app.aorta_seg = zeros([size(app.angio) app.nframes]);
                     for ii = 1:length(tmp2)
-                        app.aorta_seg(:,:,:,ii) = niftiread(fullfile(tmp2(ii).folder,tmp2(ii).name));
+                        app.aorta_seg(:,:,:,ii) = double(niftiread(fullfile(tmp2(ii).folder,tmp2(ii).name)));
                     end
                     app.isTimeResolvedSeg = 1;
                     app.SegTimeframeSpinner.Enable = 'on';
                 else    % only one frame
                     app.aorta_seg = zeros(size(app.angio));
-                    app.aorta_seg = niftiread(fullfile(app.segDirectory,tmp));
+                    app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
                 app.aorta_seg = double(permute(niftiread(fullfile(app.segDirectory,tmp)),[2 1 3]));
@@ -1485,7 +1484,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % calculate aorta segmentation, if not already available
                     if ~app.isSegmentationLoaded   % create a new aorta_seg
-                        x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+                        x = round(app.branchActual(:,1));
+                        y = round(app.branchActual(:,2)); 
+                        z = round(app.branchActual(:,3));
                         index = sub2ind(size(app.segment),x,y,z);
                         g = zeros(size(app.segment));
                         g(index) = 1;
@@ -1660,6 +1661,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         str = 'wavelet delay (ms)';
                         app.PWVCalcDisplay.YLim = [0 max(D)+1];
                 end
+                app.PWVDisplayTitle_2.Text = ['R' char(178)];
                 app.PWVCalcDisplay.YLabel.String = str;
                 title(app.PWVCalcDisplay,'')
             elseif PWVcalctype == 3 % directly calculate PWV using maximum likelihood
@@ -1806,7 +1808,9 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % save the waveforms too
             % grab waveforms
-            x = app.branchActual(:,1); y = app.branchActual(:,2); z = app.branchActual(:,3);
+            x = round(app.branchActual(:,1));
+            y = round(app.branchActual(:,2)); 
+            z = round(app.branchActual(:,3));
             index = sub2ind(size(app.aorta_seg),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
             str = app.PWVPoints.Value;
@@ -2106,7 +2110,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment = zeros(size(app.angio));
             app.segment(app.angio>muhat+value*sigmahat) = 1;
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
-            app.segment = imfill(app.segment,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
 
             % update 3D isosurface view
@@ -4352,7 +4356,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PWVDisplayTitle_2.FontSize = 14;
             app.PWVDisplayTitle_2.FontWeight = 'bold';
             app.PWVDisplayTitle_2.Position = [1022 152 53 22];
-            app.PWVDisplayTitle_2.Text = 'Fit R^2';
+            app.PWVDisplayTitle_2.Text = ['R' char(178)];
 
             % Create R2Display
             app.R2Display = uieditfield(app.FlowandPulseWaveVelocityTab, 'text');

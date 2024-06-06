@@ -950,8 +950,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                 app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC();
             
+            % *** AFTERFIFTEEN CHANGES ***
             % flip vz
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
+            
+            % interpolate button is disabled, but we want isotropic
+            % resolution for PWV calculation, do interpolation here
+            interpRes = min(app.pixdim);
+            [app.res, app.MAG, app.v] = interpolateData(interpRes, app.pixdim, app.MAG, app.v);
+            app.vMean = mean(app.v,5);
+            app.isInterpolated = 1;
+            app.pixdim = [interpRes interpRes interpRes];
+
+            % recalculate app.angio
+            [~, app.angio] = calc_angio(app.MAG, app.v, app.VENC);
+
+            % *** end AFTERFIFTEEN CHANGES ***
             
             % re-focus the figure
             figure(app.FlowProcessingUIFigure);
@@ -981,7 +995,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment(normed_MIP>muhat+2*sigmahat) = 1;
 
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
-            app.segment = imfill(app.segment,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
             
             % find and initialize the peak velocity frame
@@ -1020,7 +1034,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             cd(app.directory);
             % if clicked, let the user pick the directory containg the pre-segmented
             % dicoms, load them in and save them, also update 3D view
-            [tmp,app.segDirectory] = uigetfile({'*.dcm';'*nii.gz'},'Select Segmentation (*.dcm or *.nii)');
+            [tmp,app.segDirectory] = uigetfile({'*nii.gz'; '*.dcm'; },'Select Segmentation (*.dcm or *.nii)');
             app.SegmentationDirectoryEditField.Value = app.segDirectory;
 
             if strncmp(tmp(end-2:end),'dcm',3)
@@ -1046,6 +1060,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg = zeros(size(app.angio));
                     app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
                 end
+                
+                % automatic segmentations should be eroded slightly for
+                % better visualization results
+                se = strel('sphere',1);
+                app.aorta_seg = imerode(app.aorta_seg,se);
             elseif strncmp(tmp(end-3:end),'.nii',3)
                 app.aorta_seg = double(permute(niftiread(fullfile(app.segDirectory,tmp)),[2 1 3]));
             else    % the files are still dicoms but not with a dicom ending?
@@ -2980,7 +2999,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment(normed_MIP>muhat+2*sigmahat) = 1;
 
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
-            app.segment = imfill(app.segment,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
 
             View3DSegmentation(app);
@@ -3023,7 +3042,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: ParameterDropDown
         function PWVTypeValueChanged(app, event)
-            if app.PWVType.Value < 3
+            if any(cellfun(@(s) ~isempty(strfind(s, app.PWVType.Value)), {'Wavelet'; 'Cross-correlation'; 'Jarvis XCorr'}))
                 app.findBestFit_checkbox.Enable = 'on';
             else
                 app.findBestFit_checkbox.Value = 0;

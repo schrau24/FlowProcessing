@@ -1844,11 +1844,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             else
                 eval(['ptRange=[' str '];']);
             end
+            
+            % save sheet with ptRange and distance
+            tbl = array2table(cat(2,nan,app.FullBranchDistance(ptRange)));
+            tbl.Properties.VariableNames = ["point number",string(ptRange)];
+            writetable(tbl,[saveName '.xlsx'],'Sheet','distance (mm)');
+            
             waveforms = waveforms(ptRange,:);
             card_time = [0:app.nframes-1]*app.timeres;
             tbl = array2table(cat(2,card_time',waveforms'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
             writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)');
+            
+            % save area
+            tbl = array2table(cat(2,card_time',app.area_val(ptRange,:)'));
+            tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
+            writetable(tbl,[saveName '.xlsx'],'Sheet','area (cm^2)');
 
             % grab and save image
             robot = java.awt.Robot();

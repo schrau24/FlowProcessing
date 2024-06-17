@@ -814,19 +814,19 @@ classdef FlowProcessing < matlab.apps.AppBase
             axis(app.Unwrap_1,'equal','off');
             colormap(app.Unwrap_1,cmap_scaling);
             caxis(app.Unwrap_1, [-scaling scaling]);
-            title(app.Unwrap_1,'F-H');
+            title(app.Unwrap_1,app.ori.vxlabel);
 
             imagesc(app.Unwrap_2,PCA_masked(:,:,app.SliceSpinner.Value,2,app.TimeframeSpinner_3.Value),'tag', 'alldata');
             axis(app.Unwrap_2,'equal','off')
             colormap(app.Unwrap_2,cmap_scaling);
             caxis(app.Unwrap_2, [-scaling scaling]);
-            title(app.Unwrap_2,'A-P');
+            title(app.Unwrap_2,app.ori.vylabel);
 
             imagesc(app.Unwrap_3,PCA_masked(:,:,app.SliceSpinner.Value,3,app.TimeframeSpinner_3.Value),'tag', 'alldata');
             axis(app.Unwrap_3,'equal','off')
             colormap(app.Unwrap_3,cmap_scaling);
             caxis(app.Unwrap_3, [-scaling scaling]);
-            title(app.Unwrap_3,'R-L');
+            title(app.Unwrap_3,app.ori.vzlabel);
 
             cbar = colorbar(app.Unwrap_1);
             set(get(cbar,'xlabel'),'string','velocity (cm/s)','fontsize',12,'Color','black');

@@ -983,7 +983,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment(normed_MIP>muhat+2*sigmahat) = 1;
 
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
-            app.segment = imfill(app.segment,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
             
             % find and initialize the peak velocity frame
@@ -1827,12 +1827,23 @@ classdef FlowProcessing < matlab.apps.AppBase
             else
                 eval(['ptRange=[' str '];']);
             end
+            
+            % save sheet with ptRange and distance
+            tbl = array2table(cat(2,nan,app.FullBranchDistance(ptRange)));
+            tbl.Properties.VariableNames = ["point number",string(ptRange)];
+            writetable(tbl,[saveName '.xlsx'],'Sheet','distance (mm)');
+            
             waveforms = waveforms(ptRange,:);
             card_time = [0:app.nframes-1]*app.timeres;
             tbl = array2table(cat(2,card_time',waveforms'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
             writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)');
-
+            
+            % save area
+            tbl = array2table(cat(2,card_time',app.area_val(ptRange,:)'));
+            tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
+            writetable(tbl,[saveName '.xlsx'],'Sheet','area (cm^2)');
+            
             % grab and save image
             robot = java.awt.Robot();
             temp = app.FlowProcessingUIFigure.Position; % returns position as [left bottom width height]
@@ -3033,7 +3044,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment(normed_MIP>muhat+2*sigmahat) = 1;
 
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
-            app.segment = imfill(app.segment,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
 
             View3DSegmentation(app);

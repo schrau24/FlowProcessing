@@ -68,6 +68,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         Unwrap_1                        matlab.ui.control.UIAxes
         Unwrap_2                        matlab.ui.control.UIAxes
         Maps                            matlab.ui.container.Tab
+        QuickviewPanel                  matlab.ui.container.Panel
+        AxialButton                     matlab.ui.control.Button
+        SagittalButton                  matlab.ui.control.Button
+        CoronalButton                   matlab.ui.control.Button
         flipvz                          matlab.ui.control.CheckBox
         flipvy                          matlab.ui.control.CheckBox
         flipvx                          matlab.ui.control.CheckBox
@@ -779,7 +783,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             vx = currSeg.*app.v(:,:,:,1,t)/10;
             vy = currSeg.*app.v(:,:,:,2,t)/10;
             vz = currSeg.*app.v(:,:,:,3,t)/10;
-            sysvel_mip = max(sqrt(vx.^2 + vy.^2 + vz.^2),[],3);
+            tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+            sysvel_mip = max(tmp,[],3);
 
             imagesc(app.MapPlot, sysvel_mip+0.001);
             caxis(app.MapPlot, [str2double(app.minVelocityVectorEditField.Value) str2double(app.maxVelocityVectorEditField.Value)]);
@@ -796,10 +801,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             % make it look good
             axis(app.MapPlot, 'off','tight')
             daspect(app.MapPlot,[1 1 1])
-            if ~isempty(app.vvp_xlim)
-                xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-                ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            end
+%             if ~isempty(app.vvp_xlim)
+%                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
+%                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
+%             end
 
         end
 
@@ -2462,6 +2467,57 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapType.Visible = 'on';
         end
 
+        % Button pushed function: Axial
+        function AxialButtonPushed(app, event)
+            switch app.ori.label
+                case 'axial'
+                    % this was an axial scan, reset rotation
+                    app.rotAngles2 = [0 0];
+                case 'sagittal'
+                    app.rotAngles2 = [90 0];
+                case 'coronal'
+                    app.rotAngles2 = [90 0];
+            end
+            viewVelocityVectors(app);
+            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
+                viewWSS(app);
+            end
+        end
+
+        % Button pushed function: Sagittal
+        function SagittalButtonPushed(app, event)
+           switch app.ori.label
+                case 'axial'
+                    app.rotAngles2 = [0 90];
+                case 'sagittal'
+                     % this was an sagital scan, reset rotation
+                    app.rotAngles2 = [0 0];
+                case 'coronal'
+                    app.rotAngles2 = [0 90];
+            end
+            viewVelocityVectors(app);
+            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
+                viewWSS(app);
+            end
+        end
+        
+        % Button pushed function: Coronal
+        function CoronalButtonPushed(app, event)
+            switch app.ori.label
+                case 'axial'
+                    app.rotAngles2 = [90 0];
+                case 'sagittal'
+                    app.rotAngles2 = [0 90];
+                case 'coronal'
+                    % this was an coronal scan, reset rotation
+                    app.rotAngles2 = [0 0];
+            end
+            viewVelocityVectors(app);
+            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
+                viewWSS(app);
+            end
+        end
+        
         % Button pushed function: ResetRotation_2
         function ResetRotation_2ButtonPushed(app, event)
             % update rotate angles
@@ -3770,7 +3826,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.maxQuiverEditField.FontName = 'SansSerif';
             app.maxQuiverEditField.Enable = 'off';
             app.maxQuiverEditField.Position = [426 4 32 22];
-            app.maxQuiverEditField.Value = '10';
+            app.maxQuiverEditField.Value = '5';
 
             % Create velocityVectorEditFieldLabel
             app.velocityVectorEditFieldLabel = uilabel(app.VelocityVectorGroup);
@@ -3976,7 +4032,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.flipvx.Text = 'Flip vx';
             app.flipvx.FontName = 'SansSerif';
             app.flipvx.FontSize = 16;
-            app.flipvx.Position = [1027 211 68 22];
+            app.flipvx.Position = [1162 270 68 22];
 
             % Create flipvy
             app.flipvy = uicheckbox(app.Maps);
@@ -3985,7 +4041,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.flipvy.Text = 'Flip vy';
             app.flipvy.FontName = 'SansSerif';
             app.flipvy.FontSize = 16;
-            app.flipvy.Position = [1027 188 68 22];
+            app.flipvy.Position = [1162 247 68 22];
 
             % Create flipvz
             app.flipvz = uicheckbox(app.Maps);
@@ -3994,7 +4050,41 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.flipvz.Text = 'Flip vz';
             app.flipvz.FontName = 'SansSerif';
             app.flipvz.FontSize = 16;
-            app.flipvz.Position = [1027 166 68 22];
+            app.flipvz.Position = [1162 225 68 22];
+            
+            % Create QuickviewPanel
+            app.QuickviewPanel = uipanel(app.Maps);
+            app.QuickviewPanel.BorderType = 'none';
+            app.QuickviewPanel.TitlePosition = 'centertop';
+            app.QuickviewPanel.Title = 'Quick view';
+            app.QuickviewPanel.BackgroundColor = [1 1 1];
+            app.QuickviewPanel.FontName = 'SansSerif';
+            app.QuickviewPanel.FontSize = 16;
+            app.QuickviewPanel.Position = [991 139 235 65];
+
+            % Create AxialButton
+            app.AxialButton = uibutton(app.QuickviewPanel, 'push');
+            app.AxialButton.ButtonPushedFcn = createCallbackFcn(app, @AxialButtonPushed, true);
+            app.AxialButton.IconAlignment = 'center';
+            app.AxialButton.FontName = 'SansSerif';
+            app.AxialButton.Position = [8 8 60 28];
+            app.AxialButton.Text = 'Axial';
+
+            % Create SagittalButton
+            app.SagittalButton = uibutton(app.QuickviewPanel, 'push');
+            app.SagittalButton.ButtonPushedFcn = createCallbackFcn(app, @SagittalButtonPushed, true);
+            app.SagittalButton.IconAlignment = 'center';
+            app.SagittalButton.FontName = 'SansSerif';
+            app.SagittalButton.Position = [87 8 60 28];
+            app.SagittalButton.Text = 'Sagittal';
+
+            % Create CoronalButton
+            app.CoronalButton = uibutton(app.QuickviewPanel, 'push');
+            app.CoronalButton.ButtonPushedFcn = createCallbackFcn(app, @CoronalButtonPushed, true);
+            app.CoronalButton.IconAlignment = 'center';
+            app.CoronalButton.FontName = 'SansSerif';
+            app.CoronalButton.Position = [166 8 60 28];
+            app.CoronalButton.Text = 'Coronal';
 
             % Create FlowandPulseWaveVelocityTab
             app.FlowandPulseWaveVelocityTab = uitab(app.TabGroup);

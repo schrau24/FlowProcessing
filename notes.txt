@@ -2,10 +2,10 @@ To do:
 - write more functions for readability
 - save function in maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
-- labelling on velocity unwrapping tab
 - update PWV image output to match save animation
 - TKE
 - Dicom reading + saving
 - option to do further manual segmentation (with e.g. imtool3d)
 - velocity vector density
 - options as second window to avoid obscuring images
+- 3d isosurface overlay with vectors

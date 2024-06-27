@@ -170,8 +170,11 @@ if ~bTimeResolvedSeg    % if no time-resolved segmentation, use kmeans of magnit
     %     mm = reshape(MAG_int,[length(branchActual),(Side.*2+1)*(Side.*2+1)]);
     for sl = 1:size(aa,1)
         clust = horzcat(aa(sl,:)');%,mm(sl,:)');
-        [idx,~] = kmeans(clust,2);       % kmeans to segment
         segment2 = zeros([Side.*2+1,Side.*2+1]);
+        % set edge point and central point as cluster starts
+        startCtrs = [1; sub2ind(size(segment2),round(numel(segment2(:,1))/2),round(numel(segment2(1,:))/2))];
+        [idx,~] = kmeans(clust,2, 'Start', startCtrs);       % kmeans to segment
+        
         segment2(idx==2) = 1;
         if segment2(round(numel(segment2(:,1))/2),round(numel(segment2(1,:))/2)) == 0
             segment2 = -1*segment2+1;

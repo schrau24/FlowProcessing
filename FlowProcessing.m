@@ -92,6 +92,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         VectorType                      matlab.ui.control.Label
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
+        VecPts_Label                    matlab.ui.control.Label
+        VecPts                          matlab.ui.control.EditField
         maxVelocityVectorEditField      matlab.ui.control.EditField
         velocityVectortoEditFieldLabel  matlab.ui.control.Label
         minVelocityVectorEditField      matlab.ui.control.EditField
@@ -634,17 +636,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                     hold(app.VelocityVectorsPlot,'on');
                 case 'centerline contours' % contours from centerline
-                    % parse points from PWV tab
-                    str = app.PWVPoints.Value;
-                    if app.DisplayDistanceCheckbox.Value
-                        % convert distance to points
-                        out = textscan(str,'%f %f','Delimiter',':');
-                        [~, minIdx] = min(abs(app.FullBranchDistance-out{1}));
-                        [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
-                        ptRange = minIdx:minIdx2;
-                    else
+                    str = app.VecPts.Value;
                         eval(['ptRange=[' str '];']);
-                    end
                     
                     % oblique slices
                     L = []; xcoor_grid = []; ycoor_grid = []; zcoor_grid = [];
@@ -1452,22 +1445,24 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
                     if app.DisplayDistanceCheckbox.Value
-                        % immediately calculate PWV
                         app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
                             num2str(app.FullBranchDistance(length(branch)))];
                         app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
                             num2str(app.FullBranchDistance(length(branch))) ']'];
                     else
-                        % immediately calculate PWV
-                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
-                        app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
+                        app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
+                        app.PWVPointsLabel.Text = ['PWV Points [5:' num2str(length(app.branchActual)) ']'];
                     end
+                        % immediately calculate PWV
                     CalculatePWVButtonPushed(app, event);
                     
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
                     plotWaveforms(app);
+                    
+                    % update maps tab, send spaced initial centerline points to maps tab
                     app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    app.VecPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
                     
                 case 2  % go into update_centerline code for manual adjustments
                     if app.isTimeResolvedSeg
@@ -1553,10 +1548,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
                     plotWaveforms(app);
-                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
                     
-                    
+                    % update maps tab, send spaced initial centerline points to maps tab
                     app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    app.VecPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
             end
         end
 
@@ -2400,6 +2395,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VectorType.Visible = 'off';
             app.SliceSpinner_2.Visible = 'off';
             app.SliceSpinner_2Label.Visible = 'off';
+            app.VecPts_Label.Visible = 'off';
+            app.VecPts.Visible = 'off';
 
             app.MapTimeframeSpinner.Visible = 'off';
             app.MapTimeframeSpinnerLabel.Visible = 'off';
@@ -2467,6 +2464,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
                 app.SliceSpinner_2.Visible = 'on';
                 app.SliceSpinner_2Label.Visible = 'on';
+            elseif strncmp(app.VectorOptionsDropDown.Value, 'centerline contours',19)
+                app.VecPts_Label.Visible = 'on';
+                app.VecPts.Visible = 'on';
             end
 
             app.MapTimeframeSpinner.Visible = 'on';
@@ -2841,6 +2841,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             viewVelocityVectors(app);
         end
 
+        % Value changed function: VecPts
+        function VecPtsValueChanged(app, event)
+            viewVelocityVectors(app);
+        end
+        
         % Value changed function: MapType
         function MapTypeValueChanged(app, event)
 
@@ -3077,6 +3082,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
                     app.SliceSpinner_2.Enable = 'off';
+                    app.VecPts_Label.Visible = 'on';
+                    app.VecPts_Label.Enable = 'on';
+                    app.VecPts.Visible = 'on';
+                    app.VecPts.Enable = 'on';
+                    
             end
             % reset plot limits and send changed flag
             app.vvp_xlim = [];
@@ -3087,7 +3097,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: ParameterDropDown
         function PWVTypeValueChanged(app, event)
-            if app.PWVType.Value < 3
+            if any(cellfun(@(s) ~isempty(strfind(s, app.PWVType.Value)), {'Wavelet'; 'Cross-correlation'; 'Jarvis XCorr'}))
                 app.findBestFit_checkbox.Enable = 'on';
             else
                 app.findBestFit_checkbox.Value = 0;
@@ -3873,14 +3883,33 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.maxVelocityVectorEditField.Position = [426 52 32 22];
             app.maxVelocityVectorEditField.Value = 'max';
 
+            % Create VecPts_Label
+            app.VecPts_Label = uilabel(app.VelocityVectorGroup);
+            app.VecPts_Label.HorizontalAlignment = 'right';
+            app.VecPts_Label.FontName = 'SansSerif';
+            app.VecPts_Label.Enable = 'off';
+            app.VecPts_Label.Visible = 'off';
+            app.VecPts_Label.Position = [36 27 32 22];
+            app.VecPts_Label.Text = 'points';
+            
+            % Create VecPts
+            app.VecPts = uieditfield(app.VelocityVectorGroup, 'text');
+            app.VecPts.ValueChangedFcn = createCallbackFcn(app, @VecPtsValueChanged, true);
+            app.VecPts.FontName = 'SansSerif';
+            app.VecPts.FontSize = 14;
+            app.VecPts.Enable = 'off';
+            app.VecPts.Visible = 'off';
+            app.VecPts.Tooltip = {'Centerline point labels used for vector visualization. '};
+            app.VecPts.Position = [20 3 60 22];
+            
             % Create SliceSpinner_2Label
             app.SliceSpinner_2Label = uilabel(app.VelocityVectorGroup);
             app.SliceSpinner_2Label.HorizontalAlignment = 'right';
             app.SliceSpinner_2Label.FontName = 'SansSerif';
             app.SliceSpinner_2Label.Enable = 'off';
             app.SliceSpinner_2Label.Visible = 'off';
-            app.SliceSpinner_2Label.Position = [36 32 32 22];
-            app.SliceSpinner_2Label.Text = 'Slice';
+            app.SliceSpinner_2Label.Position = [36 27 32 22];
+            app.SliceSpinner_2Label.Text = 'slice';
 
             % Create SliceSpinner_2
             app.SliceSpinner_2 = uispinner(app.VelocityVectorGroup);
@@ -3890,13 +3919,13 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SliceSpinner_2.Enable = 'off';
             app.SliceSpinner_2.Visible = 'off';
             app.SliceSpinner_2.Tooltip = {'shortcut ''←'' or ''→'''};
-            app.SliceSpinner_2.Position = [20 8 60 22];
+            app.SliceSpinner_2.Position = [20 3 60 22];
 
             % Create VectorType
             app.VectorType = uilabel(app.VelocityVectorGroup);
             app.VectorType.HorizontalAlignment = 'right';
             app.VectorType.FontName = 'SansSerif';
-            app.VectorType.Position = [17 59 66 22];
+            app.VectorType.Position = [1 51 66 22];
             app.VectorType.Text = 'Vector type';
 
             % Create VectorOptionsDropDown
@@ -3904,7 +3933,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VectorOptionsDropDown.Items = {'segmentation', 'slice-wise'};
             app.VectorOptionsDropDown.ValueChangedFcn = createCallbackFcn(app, @VectorOptionsDropDownValueChanged, true);
             app.VectorOptionsDropDown.FontName = 'SansSerif';
-            app.VectorOptionsDropDown.Position = [6 33 162 22];
+            app.VectorOptionsDropDown.Position = [6 28 162 22];
             app.VectorOptionsDropDown.Value = 'segmentation';
 
             % Create PeaksystoleEditFieldLabel

@@ -685,12 +685,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                     lightangle(app.VelocityVectorsPlot,0,0);
             
                 case 'segmentation'   % 3d vectors from the whole segmentation
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(currSeg,2))*app.pixdim(1),(1:interpFactor:size(currSeg,1))*app.pixdim(2), ...
-                        (1:interpFactor:size(currSeg,3))*app.pixdim(3));
-                    vx = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,1)/10;
-                    vy = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,2)/10;
-                    vz = -currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,3)/10;
-                    L = find(currSeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end));
+                    overLaySeg = currSeg;
+                    if ~app.isSegmentationLoaded
+                        overLaySeg = app.segment;
+                    end
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(overLaySeg,2))*app.pixdim(1),(1:interpFactor:size(overLaySeg,1))*app.pixdim(2), ...
+                        (1:interpFactor:size(overLaySeg,3))*app.pixdim(3));
+                    vx = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,1)/10;
+                    vy = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,2)/10;
+                    vz = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,3)/10;
+                    L = find(overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end));
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
 
@@ -774,11 +778,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                 currSeg = app.aorta_seg(:,:,:,t);
             else
                 currSeg = app.aorta_seg;
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
             end
             vx = currSeg.*app.v(:,:,:,1,t)/10;
             vy = currSeg.*app.v(:,:,:,2,t)/10;
             vz = currSeg.*app.v(:,:,:,3,t)/10;
             tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+            tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
+            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             sysvel_mip = max(tmp,[],3);
 
             imagesc(app.MapPlot, sysvel_mip+0.001);
@@ -845,6 +854,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 currSeg = app.aorta_seg(:,:,:,t);
             else
                 currSeg = app.aorta_seg;
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
             end
             vx = currSeg.*squeeze(app.v(:,:,:,1,:))/10;
             vy = currSeg.*squeeze(app.v(:,:,:,2,:))/10;
@@ -881,6 +893,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 currSeg = app.aorta_seg(:,:,:,t);
             else
                 currSeg = app.aorta_seg;
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
             end
             vx = app.aorta_seg.*app.v(:,:,:,1,:)/10.*currSeg;
             vy = app.aorta_seg.*app.v(:,:,:,2,:)/10.*currSeg;

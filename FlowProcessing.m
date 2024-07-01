@@ -114,6 +114,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         MapTimeframeSpinner             matlab.ui.control.Spinner
         MapPlot                         matlab.ui.control.UIAxes
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
+        PlaneWidth                      matlab.ui.control.EditField
+        PlanewidthmmLabel               matlab.ui.control.Label
         findBestFit_checkbox            matlab.ui.control.CheckBox
         R2Display                       matlab.ui.control.EditField
         PWVDisplayTitle_2               matlab.ui.control.Label
@@ -1361,15 +1363,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 idx = cat(1,idx,tmpIdx);
             end
-            app.branchActual = app.branchList(idx,1:3);
 
-            % smooth the centerline for visualization and measurements
-            windowWidth = 5;    % the smoothing window
-            polynomialOrder = 1;
-            xsg=sgolayfilt(app.branchActual(:,1),polynomialOrder, windowWidth);
-            ysg=sgolayfilt(app.branchActual(:,2),polynomialOrder, windowWidth);
-            zsg=sgolayfilt(app.branchActual(:,3),polynomialOrder, windowWidth);
-            app.branchActual = ([xsg,ysg,zsg]);
+            tmpBranch = flipud(app.branchList(idx,1:3));
+            
+            % fit and extract the spline plus normals for this centerline
+            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/10):(end-floor((size(tmpBranch,1)*0.75)/10)) end],:)');
+            tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));         
+            
+            % the final centerline
+            app.branchActual = fnval(curve_long, tlong);
+            app.branchActual = app.branchActual';
+            
+            % and the tangent vector
+            Tangent_V = fnval(fnder(curve_long), tlong);
+            Tangent_V = Tangent_V';
+            Tangent_V = normalize(Tangent_V,2,'norm');
 
             reset3DSegmentationAndCenterline(app);
             hline2 = line(app.View3D_2,app.branchActual(:,2),app.branchActual(:,1),app.branchActual(:,3),...
@@ -1422,13 +1430,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
                     end
                     
-                    app.branchActual = flipud(app.branchActual);
-                    
                     % Calculate flow over whole aorta
                     displayWaitBar = true;
+                    planeWidth = round(str2double(app.PlaneWidth.Value)/mean(app.pixdim)/2);
                     [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
                         params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
-                        app.isTimeResolvedSeg, displayWaitBar);
+                        app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
                     
                     % flows are calculated, so we can enable 'Display Distance'
                     % and 'Parameter Drop Down'
@@ -1471,6 +1478,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         data = app.aorta_seg;
                     end
                     app.branchActual = update_centerline(data,app.branchActual);
+                    % and the tangent vector
+                    Tangent_V = fnval(fnder(curve_long), tlong);
+                    Tangent_V = Tangent_V';
+                    Tangent_V = normalize(Tangent_V,2,'norm');
+                    
                     reset3DSegmentationAndCenterline(app);
                     hline2 = line(app.View3D_2,app.branchActual(:,2),app.branchActual(:,1),app.branchActual(:,3),...
                         'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
@@ -1514,9 +1526,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                                         
                     % Calculate flow over whole aorta
                     displayWaitBar = true;
+                    planeWidth = round(str2double(app.PlaneWidth.Value)/mean(app.pixdim)/2);
                     [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
                         params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
-                        app.isTimeResolvedSeg, displayWaitBar);
+                        app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
                     
                     % flows are calculated, so we can enable 'Display Distance'
                     % and 'Parameter Drop Down'
@@ -4130,6 +4143,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.FlowandPulseWaveVelocityTab = uitab(app.TabGroup);
             app.FlowandPulseWaveVelocityTab.Title = 'Flow and Pulse Wave Velocity';
             app.FlowandPulseWaveVelocityTab.BackgroundColor = [1 1 1];
+
+            % Create PlanewidthmmLabel
+            app.PlanewidthmmLabel = uilabel(app.FlowandPulseWaveVelocityTab);
+            app.PlanewidthmmLabel.HorizontalAlignment = 'right';
+            app.PlanewidthmmLabel.FontName = 'SansSerif';
+            app.PlanewidthmmLabel.FontSize = 18;
+            app.PlanewidthmmLabel.Position = [875 697 151 22];
+            app.PlanewidthmmLabel.Text = 'Plane width (mm): ';
+
+            % Create PlaneWidth
+            app.PlaneWidth = uieditfield(app.FlowandPulseWaveVelocityTab, 'text');
+            app.PlaneWidth.FontName = 'SansSerif';
+            app.PlaneWidth.FontSize = 16;
+            app.PlaneWidth.Tooltip = {'Width for flow contour planes'; '(between 5 and 100 mm)'};
+            app.PlaneWidth.Position = [1030 697 48 23];
+            app.PlaneWidth.Value = '50';
 
             % Create WaveformsDisplay
             app.WaveformsDisplay = uiaxes(app.FlowandPulseWaveVelocityTab);

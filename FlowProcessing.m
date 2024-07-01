@@ -858,13 +858,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                     currSeg = app.segment;
                 end
             end
-            vx = currSeg.*squeeze(app.v(:,:,:,1,:))/10;
-            vy = currSeg.*squeeze(app.v(:,:,:,2,:))/10;
-            vz = currSeg.*squeeze(app.v(:,:,:,3,:))/10;
+            vx = currSeg.*squeeze(app.v(:,:,:,1,t))/10;
+            vy = currSeg.*squeeze(app.v(:,:,:,2,t))/10;
+            vz = currSeg.*squeeze(app.v(:,:,:,3,t))/10;
             % for cmap, calculate absolute max of the mean
-            vel_mip = squeeze(mean(sqrt(vx.^2 + vy.^2 + vz.^2),3));
+            tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+            tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
+            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+            vel_mip = squeeze(mean(tmp,3));
 
-            imagesc(app.MapPlot, vel_mip(:,:,t)+0.001);
+            imagesc(app.MapPlot, vel_mip+0.001);
             caxis(app.MapPlot, [str2double(app.minVelocityVectorEditField.Value) 0.8*max(vel_mip(:))]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
@@ -879,10 +882,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             % make it look good
             axis(app.MapPlot, 'off','tight')
             daspect(app.MapPlot,[1 1 1])
-            if ~isempty(app.vvp_xlim)
-                xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-                ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            end
+%             if ~isempty(app.vvp_xlim)
+%                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
+%                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
+%             end
         end
 
         function viewKE(app)
@@ -897,17 +900,19 @@ classdef FlowProcessing < matlab.apps.AppBase
                     currSeg = app.segment;
                 end
             end
-            vx = app.aorta_seg.*app.v(:,:,:,1,:)/10.*currSeg;
-            vy = app.aorta_seg.*app.v(:,:,:,2,:)/10.*currSeg;
-            vz = app.aorta_seg.*app.v(:,:,:,3,:)/10.*currSeg;
+            vx = app.aorta_seg.*app.v(:,:,:,1,t)/10.*currSeg;
+            vy = app.aorta_seg.*app.v(:,:,:,2,t)/10.*currSeg;
+            vz = app.aorta_seg.*app.v(:,:,:,3,t)/10.*currSeg;
             % 1 Joule = 1 kg (m/s)^2
             rho = 1.060;                            % density of blood, in kg/L
             vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
             vel = sqrt(vx.^2 + vy.^2 + vz.^2)/100;  % velocity in m/s
             KE = 0.5*rho*vox_vol.*vel;
-            KE_mip = squeeze(1e6*max(KE,[],3));
+            tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
+            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+            KE_mip = squeeze(1e6*max(tmp,[],3));
 
-            imagesc(app.MapPlot, KE_mip(:,:,t)+0.001);
+            imagesc(app.MapPlot, KE_mip+0.001);
             caxis(app.MapPlot, [0 0.8*max(KE_mip(:))]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
@@ -921,10 +926,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             % make it look good
             axis(app.MapPlot, 'off','tight')
             daspect(app.MapPlot,[1 1 1])
-            if ~isempty(app.vvp_xlim)
-                xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-                ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            end
+%             if ~isempty(app.vvp_xlim)
+%                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
+%                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
+%             end
         end
     end
 
@@ -3100,11 +3105,19 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.SliceSpinner_2.Enable = 'on';
                     app.SliceSpinner_2.Value = round(size(app.angio,3)/2);
                     app.SliceSpinner_2.Limits = [1 size(app.angio,3)];
+                    app.VecPts_Label.Visible = 'off';
+                    app.VecPts_Label.Enable = 'off';
+                    app.VecPts.Visible = 'off';
+                    app.VecPts.Enable = 'off';
                 case 'segmentation'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
                     app.SliceSpinner_2.Enable = 'off';
+                    app.VecPts_Label.Visible = 'off';
+                    app.VecPts_Label.Enable = 'off';
+                    app.VecPts.Visible = 'off';
+                    app.VecPts.Enable = 'off';
                 case 'centerline contours'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';

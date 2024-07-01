@@ -1,23 +1,6 @@
 function [flowPerHeartCycle_vol, flowPulsatile_vol, segment1, V2, area_val] = ...
     params_timeResolved(branchActual, angio, MAG, v, nframes, pixdim, aortaSeg_timeResolved,...
-    isSegLoaded, bTimeResolvedSeg, displayWaitBar)
-
-d = 4;  % the number of points before and after to calculate orthogonal plane
-Tangent_V = zeros(0,3);
-
-dir_temp = zeros(size(branchActual,1),3);
-for i = 1:size(branchActual,1)
-    % extract normal to cross-section
-    if i < d+1
-        dir = (branchActual(i+d,1:3) - branchActual(i,1:3));
-    elseif i >= size(branchActual,1)-d
-        dir = (branchActual(i,1:3) - branchActual(i-d,1:3));
-    else
-        dir = (branchActual(i+d,1:3) - branchActual(i-d,1:3));
-    end
-    dir_temp(i,:) = dir/norm(dir);
-end
-Tangent_V = [Tangent_V;dir_temp];
+    isSegLoaded, bTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar)
 
 % This will find a normalized vector perpendicular to the tangent vector
 [~,idx_max] = max(abs(Tangent_V),[],2);
@@ -36,7 +19,7 @@ V2 = V2./N;
 V3 = cross(Tangent_V,V2);
 
 % Get the full tangent plane for all the points
-r = 25; %Size of plane to select from non interpolated data is r*2+1
+r = planeWidth; %Size of plane to select from non interpolated data is r*2+1
 InterpVals = 3; % Choose the interpolation between points
 Side = r*InterpVals; % Creates the correct number of points for interpolation
 width = Side.*2+1; %width of plane in pixels
@@ -121,7 +104,7 @@ v3 = zeros([size(x_full) nframes]);
 
 if displayWaitBar
     % progress bar
-    h = waitbar(0, sprintf('Calculating flow...'));
+    h = waitbar(0, sprintf('Creating contours...'));
 end
 segment1 = zeros(length(branchActual),(Side.*2+1)*(Side.*2+1),nframes);
 for frame = 1:nframes
@@ -152,7 +135,7 @@ for frame = 1:nframes
         area_val(:,frame) = sum(s,2)*(vox*(2*r+1)/(2*r*InterpVals+1))^2;
         segment1(:,:,frame) = s;
         if displayWaitBar
-            waitbar (frame/(nframes*2), h);
+            waitbar (frame/(nframes), h);
         end
     end
 end
@@ -217,12 +200,18 @@ if ~bTimeResolvedSeg    % if no time-resolved segmentation, use kmeans of magnit
     title(['segmentation for slices 10-' num2str(size(a,1)*10)])
     drawnow;
 end
+if displayWaitBar
+    close(h);
+end
 
 flowPulsatile = zeros(size(area_val,1),nframes);
 % initialize pulsatile volume
 flowPulsatile_vol = zeros(prod(size(angio)),nframes);
 vTimeFramerowMean = zeros(size(area_val,1),nframes);
-
+if displayWaitBar
+    % progress bar
+    h = waitbar(0, sprintf('Calculating flow...'));
+end
 for j = 1:nframes
     
     v1 = interp3(y,x,z,v(:,:,:,1,j),y_full(:),x_full(:),z_full(:),'cubic',0);
@@ -231,18 +220,19 @@ for j = 1:nframes
     v1 = reshape(v1,[length(branchActual),(Side.*2+1).^2]);
     v2 = reshape(v2,[length(branchActual),(Side.*2+1).^2]);
     v3 = reshape(v3,[length(branchActual),(Side.*2+1).^2]);
+    
+    % Apply rotations to velocity components in velocity cross
+    % section before computing parameters
     v1 = bsxfun(@times,v1,Tangent_V(:,1));        % this is Z direction
     v2 = bsxfun(@times,v2,Tangent_V(:,2));
     v3 = bsxfun(@times,v3,Tangent_V(:,3));
     
-    % Apply rotations to velocity components in velocity cross
-    % section before computing parameters
     vTimeFrame = segment1(:,:,j).*(0.1*(v1 + v2 + v3));
     vTimeFramerowMean(:,j) = sum(vTimeFrame,2) ./ sum(vTimeFrame~=0,2);
     flowPulsatile(:,j) = vTimeFramerowMean(:,j).*area_val(:,j);
     flowPulsatile_vol(indexes,j) = flowPulsatile(:,j);
     if displayWaitBar
-        waitbar((nframes+j)/(nframes*2), h);
+        waitbar(j/(nframes), h);
     end
 end
 

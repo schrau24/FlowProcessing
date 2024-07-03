@@ -8,4 +8,4 @@ To do:
 - option to do further manual segmentation (with e.g. imtool3d)
 - velocity vector density
 - options as second window to avoid obscuring images
-- 3d isosurface overlay with vectors
+- eddy current additions?

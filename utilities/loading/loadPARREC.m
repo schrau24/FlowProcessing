@@ -1,8 +1,7 @@
-function [directory, nframes, res, fov, pixdim, timeres, v, MAG, magWeightVel, angio, vMean, VENC, ori] = ...
-    loadPARREC()
+function [nframes, res, fov, pixdim, timeres, v, MAG, magWeightVel, angio, vMean, VENC, ori] = ...
+    loadPARREC(directory, filename)
 % Get and load input directory
 
-[filename,directory] = uigetfile('*.rec','Select Reconstructed Data');
 fBase = filename(1:end-5);
 
 warning('off','all');

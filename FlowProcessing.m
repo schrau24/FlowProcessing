@@ -10,6 +10,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         MapsPushButton                  matlab.ui.control.Button
         PulseWaveVelocityPushButton     matlab.ui.control.Button
         DVisualizationPanel             matlab.ui.container.Panel
+        ManualsegmentationupdateButton  matlab.ui.control.Button
         mask10                          matlab.ui.control.CheckBox
         mask9                           matlab.ui.control.CheckBox
         mask8                           matlab.ui.control.CheckBox
@@ -1254,6 +1255,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             
             app.isSegmentationLoaded = 1;
+            app.ManualsegmentationupdateButton.Visible = 'on';
             
             if app.isTimeResolvedSeg
                 app.SegTimeframeSpinner.Value = app.time_peak;
@@ -3499,6 +3501,37 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.findBestFit_checkbox.Enable = 'off';
             end
         end
+        
+        % Button pushed function: ManualsegmentationupdateButton
+        function ManualsegmentationupdateButtonPushed(app, event)
+            % grab current segmentations, angio and put into imtool3d
+            if app.isTimeResolvedSeg
+                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
+            else
+                currSeg = app.aorta_seg;
+            end
+            clear tool
+            tool = imtool3D_3planes(app.angio,currSeg);
+            tool.setAspectRatio(app.pixdim); % set voxel size
+            h = tool.getTool;
+            h(1).setOrient(0); h(2).setOrient(0);  h(3).setOrient(0);
+            
+            waitfor(tool.getHandles.fig);
+            h = tool.getTool;
+            if app.isTimeResolvedSeg
+                app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value) = h.getMaskOutput(1);
+            else
+                for ii = 1:size(currSeg,4)
+                    app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ii);
+                end
+            end
+                    
+            View3DSegmentation(app);
+            m_xstart = 1; m_ystart = 1; m_zstart = 1;
+            m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
+            
+            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+        end
     end
     
     % Component initialization
@@ -3940,6 +3973,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.flipSegLabel.Tooltip = {'the number of standard deviations outside of the background signal'};
             app.flipSegLabel.Position = [494 685 116 22];
             app.flipSegLabel.Text = 'Flip segmentation';
+            
+            % Create ManualsegmentationupdateButton
+            app.ManualsegmentationupdateButton = uibutton(app.DVisualizationPanel, 'push');
+            app.ManualsegmentationupdateButton.ButtonPushedFcn = createCallbackFcn(app, @ManualsegmentationupdateButtonPushed, true);
+            app.ManualsegmentationupdateButton.FontName = 'SansSerif';
+            app.ManualsegmentationupdateButton.FontSize = 16;
+            app.ManualsegmentationupdateButton.Tooltip = {'update loaded segmenation with imtool3d'};
+            app.ManualsegmentationupdateButton.Position = [198 28 224 28];
+            app.ManualsegmentationupdateButton.Text = 'Manual segmentation update';
+            app.ManualsegmentationupdateButton.Visible = 'off';
             
             % Create MaskLabel
             app.MaskLabel = uilabel(app.DVisualizationPanel);

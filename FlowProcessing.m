@@ -65,7 +65,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         LoadSegmentationButton          matlab.ui.control.Button
         DataDirectoryEditField          matlab.ui.control.EditField
         DataDirectoryEditFieldLabel     matlab.ui.control.Label
-        LoadDataButton            matlab.ui.control.Button
+        LoadDataButton                  matlab.ui.control.Button
         VelocityUnwrappingTab           matlab.ui.container.Tab
         Unwrap_manual_3                 matlab.ui.control.CheckBox
         Unwrap_manual_2                 matlab.ui.control.CheckBox
@@ -119,10 +119,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         VelocityVectorsPlot             matlab.ui.control.UIAxes
         MapGroup                        matlab.ui.container.Panel
         MapTimeframeSpinnerLabel        matlab.ui.control.Label
-        maxWSSEditField                 matlab.ui.control.EditField
-        WSStoEditFieldLabel             matlab.ui.control.Label
-        minWSSEditField                 matlab.ui.control.EditField
-        WSSEditFieldLabel               matlab.ui.control.Label
+        maxMapScaleEditField            matlab.ui.control.EditField
+        MapScaletoEditFieldLabel        matlab.ui.control.Label
+        minMapScaleEditField            matlab.ui.control.EditField
+        MapScaleEditFieldLabel          matlab.ui.control.Label
         MapTimeframeSpinner             matlab.ui.control.Spinner
         MapPlot                         matlab.ui.control.UIAxes
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
@@ -859,7 +859,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
             
             patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
-            caxis(app.MapPlot, [str2double(app.minWSSEditField.Value) str2double(app.maxWSSEditField.Value)]);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
             colormap(app.MapPlot,jet)
             cbar = colorbar(app.MapPlot);
             set(get(cbar,'xlabel'),'string','WSS (Pa)','Color','black');
@@ -908,7 +908,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             sysvel_mip = max(tmp,[],3);
             
             imagesc(app.MapPlot, sysvel_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minVelocityVectorEditField.Value) str2double(app.maxVelocityVectorEditField.Value)]);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
@@ -1006,7 +1006,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             vel_mip = squeeze(mean(tmp,3));
             
             imagesc(app.MapPlot, vel_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minVelocityVectorEditField.Value) 0.8*max(vel_mip(:))]);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
@@ -1058,7 +1058,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             KE_mip = squeeze(1e6*max(tmp,[],3));
             
             imagesc(app.MapPlot, KE_mip+0.001);
-            caxis(app.MapPlot, [0 0.8*max(KE_mip(:))]);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
@@ -1075,6 +1075,76 @@ classdef FlowProcessing < matlab.apps.AppBase
             %                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
             %                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
             %             end
+        end
+        
+        function viewEL(app)
+            cla(app.MapPlot);
+            colorbar(app.MapPlot,'off');
+            t = app.MapTimeframeSpinner.Value;
+            if app.isTimeResolvedSeg
+                currSeg = app.aorta_seg(:,:,:,t);
+            else
+                currSeg = zeros(size(app.aorta_seg,1:3));
+                % only use segmentations that were selected in first tab
+                for ii = 1:size(app.aorta_seg,4)
+                    if eval(sprintf('app.mask%i.Value==1',ii))
+                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                    end
+                end
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
+            end
+            v1 = currSeg.*app.v(:,:,:,1,t)/10.*currSeg;
+            v2 = currSeg.*app.v(:,:,:,2,t)/10.*currSeg;
+            v3 = currSeg.*app.v(:,:,:,3,t)/10.*currSeg;
+
+            % calculate viscous energy loss as the divergence of velocity,
+            % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
+            % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
+            
+            % calculate gradients
+            [v11, v12, v13] = gradient(v1);
+            [v21, v22, v23] = gradient(v2);
+            [v31, v32, v33] = gradient(v3);
+            
+            % divergence
+            div = divergence(v1,v2,v3);
+            
+            % the viscous dissipation function at each voxel
+            theta_v = 0;
+            for ii = 1:3
+                for jj = 1:3
+                    dij = 0;
+                    if ii==jj
+                        dij = 1;
+                    end
+                    theta_v = theta_v + eval(sprintf('((v%i%i + v%i%i) - 2/3*div.*dij).^2',ii,jj,jj,ii));
+                end
+            end
+            theta_v = 1/2*theta_v;
+            
+            % dynamic viscosity mu = 0.004 Pa·s
+            EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
+            
+            tmp = imrotate3(EL,app.rotAngles2(2),[0 -1 0]);
+            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+            EL_mip = squeeze(max(tmp,[],3));
+            
+            imagesc(app.MapPlot, EL_mip+0.00001);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
+            cmap = jet(256); cmap(1,:) = 1;
+            colormap(app.MapPlot,cmap)
+            cbar = colorbar(app.MapPlot);
+            set(get(cbar,'xlabel'),'string','Max EL (mW)','Color','black');
+            set(cbar,'color','black','Location','west','FontSize',12);
+            % change cbar size to fit in corner
+            pos = get(cbar,'position');
+            set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
+            
+            % make it look good
+            axis(app.MapPlot, 'off','tight')
+            daspect(app.MapPlot,[1 1 1])
         end
     end
     
@@ -2551,6 +2621,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         viewMeanVelocity(app);
                     case 'Kinetic energy'
                         viewKE(app);
+                    case 'Energy loss'
+                        viewEL(app);    
                 end
             end
             viewVelocityVectors(app);
@@ -2567,6 +2639,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     viewMeanVelocity(app);
                 case 'Kinetic energy'
                     viewKE(app);
+                case 'Energy loss'
+                    viewEL(app);
             end
             if app.LinkplotsCheckBox.Value
                 app.TimeframeSpinner.Value = app.MapTimeframeSpinner.Value;
@@ -2722,6 +2796,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         close(h);
                     end
                     
+                    app.minMapScaleEditField.Value = '0';
+                    app.maxMapScaleEditField.Value = '4';
                     viewWSS(app)
                     if peakSystole  % disable spinner as only one frame available
                         app.MapTimeframeSpinner.Enable = 'off';
@@ -2731,10 +2807,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.LinkplotsCheckBox.Enable = 'on';
                     end
                     
-                    app.minWSSEditField.Enable = 'on';
-                    app.WSSEditFieldLabel.Enable = 'on';
-                    app.maxWSSEditField.Enable = 'on';
-                    app.WSStoEditFieldLabel.Enable = 'on';
+                    app.minMapScaleEditField.Enable = 'on';
+                    app.MapScaleEditFieldLabel.Enable = 'on';
+                    app.maxMapScaleEditField.Enable = 'on';
+                    app.MapScaletoEditFieldLabel.Enable = 'on';
                     app.isWSScalculated = 1;
             end
         end
@@ -2768,10 +2844,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.MapTimeframeSpinner.Visible = 'off';
             app.MapTimeframeSpinnerLabel.Visible = 'off';
-            app.minWSSEditField.Visible = 'off';
-            app.maxWSSEditField.Visible = 'off';
-            app.WSSEditFieldLabel.Visible = 'off';
-            app.WSStoEditFieldLabel.Visible = 'off';
+            app.minMapScaleEditField.Visible = 'off';
+            app.maxMapScaleEditField.Visible = 'off';
+            app.MapScaleEditFieldLabel.Visible = 'off';
+            app.MapScaletoEditFieldLabel.Visible = 'off';
             
             app.MapType.Visible = 'off';
             
@@ -2793,6 +2869,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                             viewMeanVelocity(app);
                         case 'Kinetic energy'
                             viewKE(app);
+                        case 'Energy loss'
+                            viewEL(app);
                     end
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
                 else
@@ -2839,10 +2917,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.MapTimeframeSpinner.Visible = 'on';
             app.MapTimeframeSpinnerLabel.Visible = 'on';
-            app.minWSSEditField.Visible = 'on';
-            app.maxWSSEditField.Visible = 'on';
-            app.WSSEditFieldLabel.Visible = 'on';
-            app.WSStoEditFieldLabel.Visible = 'on';
+            app.minMapScaleEditField.Visible = 'on';
+            app.maxMapScaleEditField.Visible = 'on';
+            app.MapScaleEditFieldLabel.Visible = 'on';
+            app.MapScaletoEditFieldLabel.Visible = 'on';
             app.MapType.Visible = 'on';
         end
         
@@ -3200,14 +3278,54 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
         
-        % Value changed function: maxWSSEditField
-        function maxWSSEditFieldValueChanged(app, event)
-            viewWSS(app);
+        % Value changed function: maxMapScaleEditField
+        function maxMapScaleEditFieldValueChanged(app, event)
+             switch app.MapType.Value
+                case 'None'
+                    % should not happen
+                    
+                case 'Wall shear stress'
+                    if app.isWSScalculated
+                        viewWSS(app);
+                    end
+                    
+                case 'Peak velocity'
+                    viewPeakVelocity(app);
+                    
+                case 'Mean velocity'
+                    viewMeanVelocity(app);
+                    
+                case 'Kinetic energy'
+                    viewKE(app);
+                    
+                case 'Energy loss'
+                    viewEL(app);
+            end
         end
         
-        % Value changed function: minWSSEditField
-        function minWSSEditFieldValueChanged(app, event)
-            viewWSS(app);
+        % Value changed function: minMapScaleEditField
+        function minMapScaleEditFieldValueChanged(app, event)
+            switch app.MapType.Value
+                case 'None'
+                    % should not happen
+                    
+                case 'Wall shear stress'
+                    if app.isWSScalculated
+                        viewWSS(app);
+                    end
+                    
+                case 'Peak velocity'
+                    viewPeakVelocity(app);
+                    
+                case 'Mean velocity'
+                    viewMeanVelocity(app);
+                    
+                case 'Kinetic energy'
+                    viewKE(app);
+                    
+                case 'Energy loss'
+                    viewEL(app);
+            end
         end
         
         % Value changed function: maxQuiverEditField
@@ -3238,55 +3356,76 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Value changed function: MapType
         function MapTypeValueChanged(app, event)
             
+            app.minMapScaleEditField.Visible = 'on';
+            app.maxMapScaleEditField.Visible = 'on';
+            app.MapScaleEditFieldLabel.Visible = 'on';
+            app.MapScaletoEditFieldLabel.Visible = 'on';
+            
             switch app.MapType.Value
                 case 'None'
-                    app.minWSSEditField.Visible = 'off';
-                    app.maxWSSEditField.Visible = 'off';
-                    app.WSSEditFieldLabel.Visible = 'off';
-                    app.WSStoEditFieldLabel.Visible = 'off';
+                    app.minMapScaleEditField.Visible = 'off';
+                    app.maxMapScaleEditField.Visible = 'off';
+                    app.MapScaleEditFieldLabel.Visible = 'off';
+                    app.MapScaletoEditFieldLabel.Visible = 'off';
                     
                     app.MapTimeframeSpinner.Enable = 'off';
                     cla(app.MapPlot);
                     colorbar(app.MapPlot,'off');
+                    
                 case 'Wall shear stress'
-                    app.minWSSEditField.Visible = 'on';
-                    app.maxWSSEditField.Visible = 'on';
-                    app.WSSEditFieldLabel.Visible = 'on';
-                    app.WSStoEditFieldLabel.Visible = 'on';
+                    app.minMapScaleEditField.Value = '0';
+                    app.maxMapScaleEditField.Value = '4';
+                    app.MapScaleEditFieldLabel.Text = 'wss (Pa)';
                     
                     if app.isWSScalculated
                         viewWSS(app);
+                        app.minMapScaleEditField.Enable = 'on';
+                        app.maxMapScaleEditField.Enable = 'on';
                     end
                     
                 case 'Peak velocity'
-                    app.minWSSEditField.Visible = 'off';
-                    app.maxWSSEditField.Visible = 'off';
-                    app.WSSEditFieldLabel.Visible = 'off';
-                    app.WSStoEditFieldLabel.Visible = 'off';
+                    app.minMapScaleEditField.Value = '0';
+                    app.maxMapScaleEditField.Value = num2str(round(app.VENC/10));
+                    app.MapScaleEditFieldLabel.Text = 'velocity (cm/s)';
                     
+                    app.minMapScaleEditField.Enable = 'on';
+                    app.maxMapScaleEditField.Enable = 'on';
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
                     viewPeakVelocity(app);
                     
                 case 'Mean velocity'
-                    app.minWSSEditField.Visible = 'off';
-                    app.maxWSSEditField.Visible = 'off';
-                    app.WSSEditFieldLabel.Visible = 'off';
-                    app.WSStoEditFieldLabel.Visible = 'off';
+                    app.minMapScaleEditField.Value = '0';
+                    app.maxMapScaleEditField.Value = num2str(round(app.VENC/50));
+                    app.MapScaleEditFieldLabel.Text = 'velocity (cm/s)';
                     
+                    app.minMapScaleEditField.Enable = 'on';
+                    app.maxMapScaleEditField.Enable = 'on';
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
                     viewMeanVelocity(app);
                     
                 case 'Kinetic energy'
-                    app.minWSSEditField.Visible = 'off';
-                    app.maxWSSEditField.Visible = 'off';
-                    app.WSSEditFieldLabel.Visible = 'off';
-                    app.WSStoEditFieldLabel.Visible = 'off';
+                    app.MapScaleEditFieldLabel.Text = 'KE (mJ)';
+                    app.minMapScaleEditField.Value = '0';
+                    app.maxMapScaleEditField.Value = '10';
                     
+                    app.minMapScaleEditField.Enable = 'on';
+                    app.maxMapScaleEditField.Enable = 'on';
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
                     viewKE(app);
+                    
+                case 'Energy loss'
+                    app.MapScaleEditFieldLabel.Text = 'EL (mW)';
+                    app.minMapScaleEditField.Value = '-0.1';
+                    app.maxMapScaleEditField.Value = '3';
+                    
+                    app.minMapScaleEditField.Enable = 'on';
+                    app.maxMapScaleEditField.Enable = 'on';
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
+                    viewEL(app);
             end
         end
         
@@ -3525,7 +3664,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ii);
                 end
             end
-                    
+            
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -4271,39 +4410,39 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapTimeframeSpinner.Enable = 'off';
             app.MapTimeframeSpinner.Position = [416 633 60 22];
             
-            % Create WSSEditFieldLabel
-            app.WSSEditFieldLabel = uilabel(app.MapGroup);
-            app.WSSEditFieldLabel.HorizontalAlignment = 'center';
-            app.WSSEditFieldLabel.FontName = 'SansSerif';
-            app.WSSEditFieldLabel.Enable = 'off';
-            app.WSSEditFieldLabel.Position = [366 26 84 22];
-            app.WSSEditFieldLabel.Text = 'wss scale (Pa)';
+            % Create MapScaleEditFieldLabel
+            app.MapScaleEditFieldLabel = uilabel(app.MapGroup);
+            app.MapScaleEditFieldLabel.HorizontalAlignment = 'center';
+            app.MapScaleEditFieldLabel.FontName = 'SansSerif';
+            app.MapScaleEditFieldLabel.Enable = 'off';
+            app.MapScaleEditFieldLabel.Position = [366 26 84 22];
+            app.MapScaleEditFieldLabel.Text = 'wss scale (Pa)';
             
-            % Create minWSSEditField
-            app.minWSSEditField = uieditfield(app.MapGroup, 'text');
-            app.minWSSEditField.ValueChangedFcn = createCallbackFcn(app, @minWSSEditFieldValueChanged, true);
-            app.minWSSEditField.HorizontalAlignment = 'right';
-            app.minWSSEditField.FontName = 'SansSerif';
-            app.minWSSEditField.Enable = 'off';
-            app.minWSSEditField.Position = [368 3 30 22];
-            app.minWSSEditField.Value = '0';
+            % Create minMapScaleEditField
+            app.minMapScaleEditField = uieditfield(app.MapGroup, 'text');
+            app.minMapScaleEditField.ValueChangedFcn = createCallbackFcn(app, @minMapScaleEditFieldValueChanged, true);
+            app.minMapScaleEditField.HorizontalAlignment = 'right';
+            app.minMapScaleEditField.FontName = 'SansSerif';
+            app.minMapScaleEditField.Enable = 'off';
+            app.minMapScaleEditField.Position = [368 3 30 22];
+            app.minMapScaleEditField.Value = '0';
             
-            % Create WSStoEditFieldLabel
-            app.WSStoEditFieldLabel = uilabel(app.MapGroup);
-            app.WSStoEditFieldLabel.HorizontalAlignment = 'right';
-            app.WSStoEditFieldLabel.FontName = 'SansSerif';
-            app.WSStoEditFieldLabel.Enable = 'off';
-            app.WSStoEditFieldLabel.Position = [391 3 25 22];
-            app.WSStoEditFieldLabel.Text = 'to';
+            % Create MapScaletoEditFieldLabel
+            app.MapScaletoEditFieldLabel = uilabel(app.MapGroup);
+            app.MapScaletoEditFieldLabel.HorizontalAlignment = 'right';
+            app.MapScaletoEditFieldLabel.FontName = 'SansSerif';
+            app.MapScaletoEditFieldLabel.Enable = 'off';
+            app.MapScaletoEditFieldLabel.Position = [391 3 25 22];
+            app.MapScaletoEditFieldLabel.Text = 'to';
             
-            % Create maxWSSEditField
-            app.maxWSSEditField = uieditfield(app.MapGroup, 'text');
-            app.maxWSSEditField.ValueChangedFcn = createCallbackFcn(app, @maxWSSEditFieldValueChanged, true);
-            app.maxWSSEditField.HorizontalAlignment = 'right';
-            app.maxWSSEditField.FontName = 'SansSerif';
-            app.maxWSSEditField.Enable = 'off';
-            app.maxWSSEditField.Position = [420 3 32 22];
-            app.maxWSSEditField.Value = '4';
+            % Create maxMapScaleEditField
+            app.maxMapScaleEditField = uieditfield(app.MapGroup, 'text');
+            app.maxMapScaleEditField.ValueChangedFcn = createCallbackFcn(app, @maxMapScaleEditFieldValueChanged, true);
+            app.maxMapScaleEditField.HorizontalAlignment = 'right';
+            app.maxMapScaleEditField.FontName = 'SansSerif';
+            app.maxMapScaleEditField.Enable = 'off';
+            app.maxMapScaleEditField.Position = [420 3 32 22];
+            app.maxMapScaleEditField.Value = '4';
             
             % Create MapTimeframeSpinnerLabel
             app.MapTimeframeSpinnerLabel = uilabel(app.MapGroup);
@@ -4595,9 +4734,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create MapType
             app.MapType = uidropdown(app.Maps);
-            app.MapType.Items = {'None', 'Wall shear stress', 'Peak velocity', 'Mean velocity', 'Kinetic energy', 'Energy Loss', 'Vortex detection'};
+            app.MapType.Items = {'None', 'Wall shear stress', 'Peak velocity', 'Mean velocity', 'Kinetic energy', 'Energy loss', 'Vortex detection'};
             app.MapType.ValueChangedFcn = createCallbackFcn(app, @MapTypeValueChanged, true);
-            app.MapType.Tooltip = {'select map to view'; 'currently not implemented: vorticity and energy loss'};
+            app.MapType.Tooltip = {'select map to view'; 'currently not implemented: vorticity'};
             app.MapType.FontName = 'ZapfDingbats';
             app.MapType.FontSize = 14;
             app.MapType.Position = [811 702 144 22];

@@ -720,16 +720,20 @@ classdef FlowProcessing < matlab.apps.AppBase
                 t = 1;
             end
             
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+            if app.isSegmentationLoaded
+                if app.isTimeResolvedSeg
+                    currSeg = app.aorta_seg(:,:,:,t);
+                else
+                    currSeg = zeros(size(app.aorta_seg,1:3));
+                    % only use segmentations that were selected in first tab
+                    for ii = 1:size(app.aorta_seg,4)
+                        if eval(sprintf('app.mask%i.Value==1',ii))
+                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                        end
                     end
                 end
+            else
+                currSeg = app.segment;
             end
             currV = app.v(:,:,:,:,t);
             
@@ -785,9 +789,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % we need a 3D patch for this setting
                     if app.isSegmentationLoaded
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.10);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(currSeg),'FaceAlpha',0.10);
                     else
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.10);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(app.segment),'FaceAlpha',0.10);
                     end
                     reducepatch(hpatch,0.6);
                     set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');

@@ -5,7 +5,7 @@ To do:
 - update PWV image output to match save animation
 - TKE
 - Dicom reading + saving
-- option to do further manual segmentation (with e.g. imtool3d)
 - velocity vector density
 - options as second window to avoid obscuring images
 - eddy current additions?
+- draw region and output map value

@@ -379,7 +379,7 @@ classdef imtool3D < handle
                 catch
                     screensize = get(0,'ScreenSize');
                 end
-                pos(3)=min(max(700,pos(3)),screensize(3)*.9);
+                pos(3)=min(max(730,pos(3)),screensize(3)*.9);
                 pos(4)=min(max(500,pos(4)),screensize(4)*.9);
 
                 %make sure the figure is centered
@@ -428,10 +428,10 @@ classdef imtool3D < handle
             wbutt=20; %Pixel size of the buttons
             tool.handles.Panels.Large   =   uipanel(tool.handles.parent,'Units','normalized','Position',position,'Title','','Tag','imtool3D');
             pos=getpixelposition(tool.handles.parent); pos(1) = pos(1)+position(1)*pos(3); pos(2) = pos(2)+position(2)*pos(4); pos(3) = pos(3)*position(3); pos(4) = pos(4)*position(4);
-            tool.handles.Panels.Hist   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[w pos(4)-w-h pos(3)-2*w h],'Title','');
-            tool.handles.Panels.Image   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[w w pos(3)-2*w pos(4)-2*w],'Title','');
+            tool.handles.Panels.Hist   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[w pos(4)-w-h pos(3)-3*w h],'Title','');
+            tool.handles.Panels.Image   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[w w pos(3)-3*w pos(4)-2*w],'Title','');
             tool.handles.Panels.Tools   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[0 pos(4)-w pos(3) w],'Title','');
-            tool.handles.Panels.ROItools    =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[pos(3)-w  w w pos(4)-2*w],'Title','');
+            tool.handles.Panels.ROItools    =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[pos(3)-2*w  w 2*w pos(4)-2*w],'Title','');
             tool.handles.Panels.Slider  =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[0 w w pos(4)-2*w],'Title','');
             tool.handles.Panels.Info   =   uipanel(tool.handles.Panels.Large,'Units','Pixels','Position',[0 0 pos(3) w],'Title','');
             try
@@ -738,7 +738,7 @@ classdef imtool3D < handle
             
             pos=get(tool.handles.Panels.ROItools,'Position');
             % mask selection
-            for islct=1:5
+            for islct=1:10
                 tool.handles.Tools.maskSelected(islct)        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','String',num2str(islct),'Position',[buff pos(4)-islct*w w w],'Tag','MaskSelected');
                 set(tool.handles.Tools.maskSelected(islct) ,'Cdata',repmat(permute(tool.maskColor(islct+1,:)*tool.alpha+(1-tool.alpha)*[.4 .4 .4],[3 1 2]),w,w))
                 set(tool.handles.Tools.maskSelected(islct) ,'Callback',@(hObject,evnt) setmaskSelected(tool,islct))
@@ -751,20 +751,20 @@ classdef imtool3D < handle
             end
             
             % lock mask
-            tool.handles.Tools.maskLock        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[buff pos(4)-(islct+1)*w w w], 'Value', 1, 'TooltipString', 'Protect other labels (except selected one)');
+            tool.handles.Tools.maskLock        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[2*buff+w pos(4)-(1)*w w w], 'Value', 1, 'TooltipString', 'Protect other labels (except selected one)');
             icon_profile = makeToolbarIconFromPNG('icon_lock.png');
             set(tool.handles.Tools.maskLock ,'Cdata',icon_profile)
             set(tool.handles.Tools.maskLock ,'Callback',@(hObject,evnt) setlockMask(tool))
             
             % mask statistics
-            tool.handles.Tools.maskStats        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[buff pos(4)-(islct+2)*w w w], 'Value', 1, 'TooltipString', sprintf('Statistics in the different ROI\n(or in the whole volume if mask empty)'));
+            tool.handles.Tools.maskStats        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[2*buff+w pos(4)-(2)*w w w], 'Value', 1, 'TooltipString', sprintf('Statistics in the different ROI\n(or in the whole volume if mask empty)'));
             icon_hist = makeToolbarIconFromPNG('plottype-histogram.png');
             icon_hist = min(1,max(0,imresize_noIPT(icon_hist,[16 16])));
             set(tool.handles.Tools.maskStats ,'Cdata',icon_hist)
             set(tool.handles.Tools.maskStats ,'Callback',@(hObject,evnt) StatsCallback(hObject,evnt,tool))
             
             % mask save
-            tool.handles.Tools.maskSave        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[buff pos(4)-(islct+3)*w w w], 'Value', 1, 'TooltipString', 'Save mask');
+            tool.handles.Tools.maskSave        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[2*buff+w pos(4)-(3)*w w w], 'Value', 1, 'TooltipString', 'Save mask');
             icon_save = makeToolbarIconFromPNG([MATLABicondir '/file_save.png']);
             icon_save = min(1,max(0,imresize_noIPT(icon_save,[16 16])));
             set(tool.handles.Tools.maskSave ,'Cdata',icon_save)
@@ -772,7 +772,7 @@ classdef imtool3D < handle
             set(tool.handles.Tools.maskSave ,'Callback',fun)
             
             % mask load
-            tool.handles.Tools.maskLoad        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[buff pos(4)-(islct+4)*w w w], 'Value', 1, 'TooltipString', 'Load mask');
+            tool.handles.Tools.maskLoad        = uicontrol(tool.handles.Panels.ROItools,'Style','togglebutton','Position',[2*buff+w pos(4)-(4)*w w w], 'Value', 1, 'TooltipString', 'Load mask');
             icon_load = makeToolbarIconFromPNG([MATLABicondir '/file_open.png']);
             set(tool.handles.Tools.maskLoad ,'Cdata',icon_load)
             fun=@(hObject,evnt) loadMask(tool,hObject);
@@ -3274,14 +3274,14 @@ try
     pos=get(hh.Panels.Large,'Position');
     set(hh.Panels.Large,'Units',units)
     if isfield(hh.Tools,'Hist') && get(hh.Tools.Hist,'value')
-        set(hh.Panels.Image,'Position',[w w pos(3)-2*w pos(4)-2*w-h])
+        set(hh.Panels.Image,'Position',[w w pos(3)-3*w pos(4)-2*w-h])
     else
-        set(hh.Panels.Image,'Position',[w w max(0,pos(3)-2*w) max(0,pos(4)-2*w)])
+        set(hh.Panels.Image,'Position',[w w max(0,pos(3)-3*w) max(0,pos(4)-2*w)])
     end
     %set(h.Panels.Image,'Position',[w w pos(3)-2*w pos(4)-2*w])
-    set(hh.Panels.Hist,'Position',[w max(0,pos(4)-w-h) max(0,pos(3)-2*w) h])
+    set(hh.Panels.Hist,'Position',[w max(0,pos(4)-w-h) max(0,pos(3)-3*w) h])
     set(hh.Panels.Tools,'Position',[0 max(0,pos(4)-w) pos(3) w])
-    set(hh.Panels.ROItools,'Position',[max(0,pos(3)-w)  w w max(0,pos(4)-2*w)])
+    set(hh.Panels.ROItools,'Position',[max(0,pos(3)-2*w)  w 2*w max(0,pos(4)-2*w)])
     set(hh.Panels.Slider,'Position',[0 w w max(0,pos(4)-2*w)])
     set(hh.Slider,'Position',[0 wbutt w max(0,pos(4)-2*w-wbutt)])
     set(hh.Panels.Info,'Position',[0 0 pos(3) w])
@@ -3292,14 +3292,14 @@ try
     set(hh.Tools.Help,'Position',[pos(3)-5*wbutt buff 3*wbutt-buff wbutt]);
     set(hh.Tools.About,'Position',[pos(3)-2*wbutt-buff buff 4*wbutt wbutt]);
     pos=get(hh.Panels.ROItools,'Position');
-    for islct=1:5
+    for islct=1:10
         set(hh.Tools.maskSelected(islct),'Position',[buff pos(4)-buff-islct*wbutt wbutt wbutt]);
     end
     
-    set(hh.Tools.maskLock,'Position',[buff pos(4)-buff-(islct+1)*wbutt wbutt wbutt]);
-    set(hh.Tools.maskStats,'Position',[buff pos(4)-buff-(islct+2)*wbutt wbutt wbutt]);
-    set(hh.Tools.maskSave,'Position',[buff pos(4)-buff-(islct+3)*wbutt wbutt wbutt]);
-    set(hh.Tools.maskLoad,'Position',[buff pos(4)-buff-(islct+4)*wbutt wbutt wbutt]);
+    set(hh.Tools.maskLock,'Position',[2*buff+w pos(4)-buff-(1)*wbutt wbutt wbutt]);
+    set(hh.Tools.maskStats,'Position',[2*buff+w pos(4)-buff-(2)*wbutt wbutt wbutt]);
+    set(hh.Tools.maskSave,'Position',[2*buff+w pos(4)-buff-(3)*wbutt wbutt wbutt]);
+    set(hh.Tools.maskLoad,'Position',[2*buff+w pos(4)-buff-(4)*wbutt wbutt wbutt]);
     
     set(hh.Axes,'XLimMode','manual','YLimMode','manual');
     

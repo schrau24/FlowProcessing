@@ -1059,14 +1059,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             KE = 0.5*rho*vox_vol.*vel;
             tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-            KE_mip = squeeze(1e6*max(tmp,[],3));
+            KE_mip = squeeze(1e3*max(tmp,[],3));    % in mJ
             
             imagesc(app.MapPlot, KE_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
+            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value)+0.001 str2double(app.maxMapScaleEditField.Value)]);
             cmap = jet(256); cmap(1,:) = 1;
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','Max KE (\muJ)','Color','black');
+            set(get(cbar,'xlabel'),'string','Max KE (mJ)','Color','black');
             set(cbar,'color','black','Location','west','FontSize',12);
             % change cbar size to fit in corner
             pos = get(cbar,'position');
@@ -3652,7 +3652,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                 currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
             else
                 currSeg = app.aorta_seg;
+                keepSegs = zeros(size(currSeg,4),1);
+                % only edit currently selected segmentations
+                for ii = 1:size(currSeg,4)
+                    if eval(sprintf('app.mask%i.Value==1',ii))
+                        keepSegs(ii) = 1;
+                    end
+                end
+                currSeg = currSeg(:,:,:,find(keepSegs));
             end
+
             clear tool
             tool = imtool3D_3planes(app.angio,currSeg);
             tool.setAspectRatio(app.pixdim); % set voxel size
@@ -3664,8 +3673,12 @@ classdef FlowProcessing < matlab.apps.AppBase
             if app.isTimeResolvedSeg
                 app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value) = h.getMaskOutput(1);
             else
-                for ii = 1:size(currSeg,4)
-                    app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ii);
+                ctMask = 0;
+                for ii = 1:length(keepSegs)
+                    if keepSegs(ii)
+                        ctMask = ctMask+1;
+                        app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ctMask);
+                    end
                 end
             end
             

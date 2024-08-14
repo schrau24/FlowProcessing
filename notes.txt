@@ -3,7 +3,6 @@ To do:
 - save function in maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
 - update PWV image output to match save animation
-- TKE
 - Dicom reading + saving
 - velocity vector density
 - options as second window to avoid obscuring images

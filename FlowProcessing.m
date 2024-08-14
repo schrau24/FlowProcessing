@@ -789,7 +789,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % we need a 3D patch for this setting
                     if app.isSegmentationLoaded
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(currSeg),'FaceAlpha',0.10);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
                     else
                         hpatch = patch(app.VelocityVectorsPlot,isosurface(app.segment),'FaceAlpha',0.10);
                     end
@@ -1055,7 +1055,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % 1 Joule = 1 kg (m/s)^2
             rho = 1.060;                            % density of blood, in kg/L
             vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
-            vel = sqrt(vx.^2 + vy.^2 + vz.^2)/100;  % velocity in m/s
+            vel = (vx.^2 + vy.^2 + vz.^2)/100;      % velocity in m^2/s^2
             KE = 0.5*rho*vox_vol.*vel;
             tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
@@ -1269,7 +1269,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             cd(app.directory);
             % if clicked, let the user pick the directory containg the pre-segmented
             % dicoms, load them in and save them, also update 3D view
-            [tmp,app.segDirectory] = uigetfile(fullfile(app.directory,'*.dcm;*nii.gz'),'Select Segmentation (*.dcm or *.nii)');
+            [tmp,app.segDirectory] = uigetfile(fullfile(app.directory,'*.dcm;*nii.gz;*.nii'),'Select Segmentation (*.dcm or *.nii)');
             app.SegmentationDirectoryEditField.Value = app.segDirectory;
             
             if strncmp(tmp(end-2:end),'dcm',3)
@@ -2199,7 +2199,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             
             PWV.Properties.VariableNames = {'PWV','R2','Save_Points'};
-            writetable(PWV,[saveName '.xlsx'],'Sheet','PWV');
+            writetable(PWV,[saveName '.xlsx'],'Sheet','PWV','WriteMode','overwritesheet');
             
             % save the waveforms too
             % grab waveforms
@@ -2221,18 +2221,18 @@ classdef FlowProcessing < matlab.apps.AppBase
             % save sheet with ptRange and distance
             tbl = array2table(cat(2,nan,app.FullBranchDistance(ptRange)));
             tbl.Properties.VariableNames = ["point number",string(ptRange)];
-            writetable(tbl,[saveName '.xlsx'],'Sheet','distance (mm)');
+            writetable(tbl,[saveName '.xlsx'],'Sheet','distance (mm)','WriteMode','overwritesheet');
             
             waveforms = waveforms(ptRange,:);
             card_time = [0:app.nframes-1]*app.timeres;
             tbl = array2table(cat(2,card_time',waveforms'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
-            writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)');
+            writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)','WriteMode','overwritesheet');
             
             % save area
             tbl = array2table(cat(2,card_time',app.area_val(ptRange,:)'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
-            writetable(tbl,[saveName '.xlsx'],'Sheet','area (cm^2)');
+            writetable(tbl,[saveName '.xlsx'],'Sheet','area (cm^2)','WriteMode','overwritesheet');
             
             % grab and save image
             robot = java.awt.Robot();

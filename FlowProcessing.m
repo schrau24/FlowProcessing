@@ -4218,7 +4218,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.DFW.ButtonPushedFcn = createCallbackFcn(app, @DFWButtonPushed, true);
             app.DFW.FontName = 'SansSerif';
             app.DFW.FontSize = 16;
-            app.DFW.Tooltip = {'open velocity unwrapping tab'};
+            app.DFW.Tooltip = {'perform divergence free wavelet correction'};
             app.DFW.Position = [355 4 187 28];
             app.DFW.Text = 'Divergence Free';
             

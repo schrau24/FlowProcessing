@@ -5,8 +5,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         FlowProcessingUIFigure          matlab.ui.Figure
         TabGroup                        matlab.ui.container.TabGroup
         LoadingandPreprocessingTab      matlab.ui.container.Tab
-        ProcessingPanel                 matlab.ui.container.Panel
+        CorrectionsPanel                matlab.ui.container.Panel
+        DFW                             matlab.ui.control.Button
         VelocityUnwrapping              matlab.ui.control.Button
+        ProcessingPanel                 matlab.ui.container.Panel
         MapsPushButton                  matlab.ui.control.Button
         PulseWaveVelocityPushButton     matlab.ui.control.Button
         DVisualizationPanel             matlab.ui.container.Panel
@@ -3118,6 +3120,108 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             plotVelocities(app);
         end
+                
+         % Button pushed function: DFWButtonPushed
+        function DFWButtonPushed(app, event)
+            % if raw data is not yet cropped, do it now!
+            if ~app.isRawDataCropped
+                [x, y, z] = ind2sub(size(app.mask),find(app.mask));
+                lx = length(unique(x)); ly = length(unique(y)); lz = length(unique(z));
+                maskIdx = find(app.mask);
+                
+                % crop velocity
+                tempV = reshape(app.v,[prod(app.res),3,app.nframes]);
+                tempV = tempV(maskIdx,:,:);
+                tempV = reshape(tempV,lx,ly,lz,3,app.nframes);
+                app.v = tempV;
+                app.vMean = mean(app.v,5);
+                clear tempV
+                
+                % crop MAG
+                tempMAG = reshape(app.MAG,[prod(app.res),app.nframes]);
+                tempMAG = tempMAG(maskIdx,:);
+                tempMAG = reshape(tempMAG,lx,ly,lz,app.nframes);
+                app.MAG = tempMAG;
+                clear tempMAG;
+                
+                % update magWeightVel and angio
+                [app.magWeightVel, app.angio] = calc_angio(app.MAG, app.v, app.VENC);
+                
+                % others to crop, segment and aorta_seg
+                tempS = app.segment(:);
+                tempS = tempS(maskIdx);
+                tempS = reshape(tempS,lx,ly,lz);
+                app.segment = tempS;
+                clear tempS;
+                if (app.isSegmentationLoaded)
+                    tempS = app.aorta_seg(:);
+                    tempS = reshape(tempS,length(tempS)/size(app.aorta_seg,4),size(app.aorta_seg,4));
+                    tempS = tempS(maskIdx,:);
+                    tempS = reshape(tempS,lx,ly,lz,size(app.aorta_seg,4));
+                    app.aorta_seg = tempS;
+                    clear tempS;
+                else
+                    app.aorta_seg = app.segment;
+                end
+                app.isRawDataCropped = 1;
+                
+                % disable crop buttons
+                app.CropButton.Enable = 'off';
+                app.CropButton_2.Enable = 'off';
+                app.CropButton_3.Enable = 'off';
+            end
+            
+            h = waitbar(0, sprintf('Performing divergence free correction...'));
+            for t = 1:app.nframes
+                % original noisy data
+                vxN = double(app.v(:,:,:,1,t));
+                vyN = double(app.v(:,:,:,2,t));
+                vzN = double(app.v(:,:,:,3,t));
+                
+                if app.isSegmentationLoaded
+                    if app.isTimeResolvedSeg
+                        currSeg = app.aorta_seg(:,:,:,t);
+                    else
+                        currSeg = zeros(size(app.aorta_seg,1:3));
+                        % only use segmentations that were selected in first tab
+                        for ii = 1:size(app.aorta_seg,4)
+                            if eval(sprintf('app.mask%i.Value==1',ii))
+                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                            end
+                        end
+                    end
+                else
+                    currSeg = app.segment;
+                end
+                currSeg = double(currSeg);
+                
+                vxN = vxN.*currSeg;
+                vyN = vyN.*currSeg;
+                vzN = vzN.*currSeg;
+                
+                % DivFree Wavelet with SureShrink, MAD and random cycle spinning
+                % To remove the blocking artifacts, we do partial cycle spinning
+                % Here we do 2^3=8 random shifts
+                spins = 2;              % Number of cycle spinning per dimension
+                isRandShift = 1;        % Use random shift
+                minSize = 8*ones(1,3);  % Smallest wavelet level size
+                %             minSize = 5*ones(1,3); % Smallest wavelet level size, fetal
+                
+                % Denoise
+                [vxDFWsms,vyDFWsms,vzDFWsms] = dfwavelet_thresh_SURE_MAD_spin(vxN,vyN,vzN,minSize,app.pixdim,spins,isRandShift);
+                
+                app.v(:,:,:,1,t) = single(vxDFWsms);
+                app.v(:,:,:,2,t) = single(vyDFWsms);
+                app.v(:,:,:,3,t) = single(vzDFWsms);
+                
+                if exist('h')
+                    waitbar (t/app.nframes, h)
+                end
+            end
+            if exist('h')
+                close(h);
+            end
+        end
         
         % Value changed function: SliceSpinner
         function SliceSpinnerValueChanged(app, event)
@@ -4240,7 +4344,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.mask10.FontSize = 14;
             app.mask10.Position = [439 -1 38 22];
             
-            % Create ProcessingPanel
+             % Create ProcessingPanel
             app.ProcessingPanel = uipanel(app.LoadingandPreprocessingTab);
             app.ProcessingPanel.BorderType = 'none';
             app.ProcessingPanel.TitlePosition = 'centertop';
@@ -4249,8 +4353,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ProcessingPanel.FontName = 'SansSerif';
             app.ProcessingPanel.FontWeight = 'bold';
             app.ProcessingPanel.FontSize = 16;
-            app.ProcessingPanel.Position = [1 1 617 121];
-            
+            app.ProcessingPanel.Position = [1 1 617 60];
+
             % Create PulseWaveVelocityPushButton
             app.PulseWaveVelocityPushButton = uibutton(app.ProcessingPanel, 'push');
             app.PulseWaveVelocityPushButton.ButtonPushedFcn = createCallbackFcn(app, @PulseWaveVelocityPushButtonButtonPushed, true);
@@ -4258,26 +4362,45 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PulseWaveVelocityPushButton.FontName = 'SansSerif';
             app.PulseWaveVelocityPushButton.FontSize = 16;
             app.PulseWaveVelocityPushButton.Tooltip = {'calculate segmentation centerline for flow/PWV measurement'};
-            app.PulseWaveVelocityPushButton.Position = [372 18 187 28];
+            app.PulseWaveVelocityPushButton.Position = [355 6 187 28];
             app.PulseWaveVelocityPushButton.Text = 'Pulse Wave Velocity';
-            
+
             % Create MapsPushButton
             app.MapsPushButton = uibutton(app.ProcessingPanel, 'push');
             app.MapsPushButton.ButtonPushedFcn = createCallbackFcn(app, @MapsPushButtonPushed, true);
             app.MapsPushButton.FontName = 'SansSerif';
             app.MapsPushButton.FontSize = 16;
             app.MapsPushButton.Tooltip = {'calculate and display mapped parameters'};
-            app.MapsPushButton.Position = [65 18 187 28];
+            app.MapsPushButton.Position = [69 6 187 28];
             app.MapsPushButton.Text = 'Maps';
-            
+
+            % Create CorrectionsPanel
+            app.CorrectionsPanel = uipanel(app.LoadingandPreprocessingTab);
+            app.CorrectionsPanel.TitlePosition = 'centertop';
+            app.CorrectionsPanel.Title = 'Corrections';
+            app.CorrectionsPanel.BackgroundColor = [1 1 1];
+            app.CorrectionsPanel.FontName = 'SansSerif';
+            app.CorrectionsPanel.FontWeight = 'bold';
+            app.CorrectionsPanel.FontSize = 16;
+            app.CorrectionsPanel.Position = [1 61 617 60];
+
             % Create VelocityUnwrapping
-            app.VelocityUnwrapping = uibutton(app.ProcessingPanel, 'push');
+            app.VelocityUnwrapping = uibutton(app.CorrectionsPanel, 'push');
             app.VelocityUnwrapping.ButtonPushedFcn = createCallbackFcn(app, @VelocityUnwrappingButtonPushed, true);
             app.VelocityUnwrapping.FontName = 'SansSerif';
             app.VelocityUnwrapping.FontSize = 16;
             app.VelocityUnwrapping.Tooltip = {'open velocity unwrapping tab'};
-            app.VelocityUnwrapping.Position = [219 57 187 28];
+            app.VelocityUnwrapping.Position = [69 4 187 28];
             app.VelocityUnwrapping.Text = 'Velocity Unwrapping';
+
+            % Create DFW
+            app.DFW = uibutton(app.CorrectionsPanel, 'push');
+            app.DFW.ButtonPushedFcn = createCallbackFcn(app, @DFWButtonPushed, true);
+            app.DFW.FontName = 'SansSerif';
+            app.DFW.FontSize = 16;
+            app.DFW.Tooltip = {'open velocity unwrapping tab'};
+            app.DFW.Position = [355 4 187 28];
+            app.DFW.Text = 'Divergence Free';
             
             % Create VelocityUnwrappingTab
             app.VelocityUnwrappingTab = uitab(app.TabGroup);

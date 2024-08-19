@@ -845,7 +845,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
             
-            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+            if ~isvalid(app.VisOptionsApp)
                 a = [2 10*max(vmagn(:))/100];
                 scale = [0 round(app.VENC/10)];
                 backgroundC = [1 1 1];
@@ -930,7 +930,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
             
-             if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+             if ~isvalid(app.VisOptionsApp)
                 scale = [0 4];
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
@@ -1017,7 +1017,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             imagesc(app.MapPlot, sysvel_mip+0.001);
             
-            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+            if ~isvalid(app.VisOptionsApp)
                 scale = [0 round(app.VENC/10)];
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
@@ -1149,7 +1149,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             vel_mip = squeeze(mean(tmp,3));
             
-            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+            if ~isvalid(app.VisOptionsApp)
                 scale = [0 round(app.VENC/50)];
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
@@ -1236,7 +1236,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             KE_mip = squeeze(1e3*max(tmp,[],3));    % in mJ
             
-            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+            if ~isvalid(app.VisOptionsApp)
                 scale = [0 10];
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
@@ -1346,7 +1346,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             EL_mip = squeeze(max(tmp,[],3));
             
-            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+            if ~isvalid(app.VisOptionsApp)
                 scale = [-0.1 3];
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
@@ -1506,9 +1506,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: CleardataandrestartanalysisButton
         function CleardataandrestartanalysisButtonPushed(app, event)
             if ~isempty(app.VisOptionsApp)
-                delete(app.VisOptionsApp.UIFigure);
+                delete(app.VisOptionsApp.VisOptionsDialogUIFigure);
             end
             delete(app.FlowProcessingUIFigure);  % close the app
+            close all;
             FlowProcessing;                      % re-open it
         end
         
@@ -1807,6 +1808,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapTimeframeSpinner.Value = app.time_peak;
             
             % view vectors
+            app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
             viewVelocityVectors(app);
             % set initial limits for later plotting
             app.vvp_xlim = app.VelocityVectorsPlot.XLim;
@@ -4499,23 +4501,24 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.TimeframeSpinner.Position = [429 700 50 22];
             
             % Create VecPts_Label
-            app.VecPts_Label = uilabel(app.VelocityVectorGroup);
+            app.VecPts_Label = uilabel(app.Maps);
             app.VecPts_Label.HorizontalAlignment = 'right';
             app.VecPts_Label.FontName = 'SansSerif';
+            app.VecPts_Label.FontSize = 11;
             app.VecPts_Label.Enable = 'off';
             app.VecPts_Label.Visible = 'off';
-            app.VecPts_Label.Position = [36 27 32 22];
+            app.VecPts_Label.Position = [278 700 32 22];
             app.VecPts_Label.Text = 'points';
             
             % Create VecPts
-            app.VecPts = uieditfield(app.VelocityVectorGroup, 'text');
+            app.VecPts = uieditfield(app.Maps, 'text');
             app.VecPts.ValueChangedFcn = createCallbackFcn(app, @VecPtsValueChanged, true);
             app.VecPts.FontName = 'SansSerif';
-            app.VecPts.FontSize = 14;
+            app.VecPts.FontSize = 12;
             app.VecPts.Enable = 'off';
             app.VecPts.Visible = 'off';
             app.VecPts.Tooltip = {'Centerline point labels used for vector visualization. '};
-            app.VecPts.Position = [20 3 60 22];
+            app.VecPts.Position = [310 700 50 22];
             
             % Create SliceSpinner_2Label
             app.SliceSpinner_2Label = uilabel(app.Maps);

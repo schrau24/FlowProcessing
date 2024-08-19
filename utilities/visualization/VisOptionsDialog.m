@@ -2,7 +2,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
-        UIFigure                        matlab.ui.Figure
+        VisOptionsDialogUIFigure                        matlab.ui.Figure
         MapPlotPanel                    matlab.ui.container.Panel
         backgroundDropDown_2            matlab.ui.control.DropDown
         backgroundDropDown_2Label       matlab.ui.control.Label
@@ -55,22 +55,22 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             % try to move just to the left of the FlowProcessing tool,
             % otherwise set to bottom left
             pos = app.CallingApp.FlowProcessingUIFigure.Position;
-            newPos = app.UIFigure.Position(3:4) - pos(1:2);
+            newPos = app.VisOptionsDialogUIFigure.Position(3:4) - pos(1:2);
             if newPos(1)<0 || newPos(2)<44
                 newPos = [1 45];
             end
-            app.UIFigure.Position(1:2) = newPos;
+            app.VisOptionsDialogUIFigure.Position(1:2) = newPos;
             
             % Update UI with input values
             app.maxVelocityVectorEditField.Value = num2str(vecVel);
             
-            figure(app.UIFigure);
+            figure(app.VisOptionsDialogUIFigure);
         end
 
-        % Close request function: UIFigure
+        % Close request function: VisOptionsDialogUIFigure
         function VisOptionsDialogCloseRequest(app, event)
             % hide figure
-            app.UIFigure.Visible = 'off';
+            app.VisOptionsDialogUIFigure.Visible = 'off';
         end
 
         % Value changed function: minVelocityVectorEditField
@@ -261,17 +261,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
     % Component initialization
     methods (Access = private)
 
-        % Create UIFigure and components
+        % Create VisOptionsDialogUIFigure and components
         function createComponents(app)
 
-            % Create UIFigure and hide until all components are created
-            app.UIFigure = uifigure('Visible', 'off');
-            app.UIFigure.Position = [600 100 369 248];
-            app.UIFigure.Name = 'Options';
-            app.UIFigure.CloseRequestFcn = createCallbackFcn(app, @VisOptionsDialogCloseRequest, true);
+            % Create VisOptionsDialogUIFigure and hide until all components are created
+            app.VisOptionsDialogUIFigure = uifigure('Visible', 'off');
+            app.VisOptionsDialogUIFigure.Position = [600 100 369 248];
+            app.VisOptionsDialogUIFigure.Name = 'Options';
+            app.VisOptionsDialogUIFigure.CloseRequestFcn = createCallbackFcn(app, @VisOptionsDialogCloseRequest, true);
 
             % Create VectorPlotPanel
-            app.VectorPlotPanel = uipanel(app.UIFigure);
+            app.VectorPlotPanel = uipanel(app.VisOptionsDialogUIFigure);
             app.VectorPlotPanel.TitlePosition = 'centertop';
             app.VectorPlotPanel.Title = 'Vector Plot';
             app.VectorPlotPanel.BackgroundColor = [1 1 1];
@@ -405,7 +405,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.backgroundDropDown.Value = 'white';
 
             % Create MapPlotPanel
-            app.MapPlotPanel = uipanel(app.UIFigure);
+            app.MapPlotPanel = uipanel(app.VisOptionsDialogUIFigure);
             app.MapPlotPanel.TitlePosition = 'centertop';
             app.MapPlotPanel.Title = 'Map Plot';
             app.MapPlotPanel.BackgroundColor = [1 1 1];
@@ -509,7 +509,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.backgroundDropDown_2.Value = 'white';
 
             % Show the figure after all components are created
-            app.UIFigure.Visible = 'on';
+            app.VisOptionsDialogUIFigure.Visible = 'on';
         end
     end
 
@@ -519,11 +519,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Construct app
         function app = VisOptionsDialog(varargin)
 
-            % Create UIFigure and components
+            % Create VisOptionsDialogUIFigure and components
             createComponents(app)
 
             % Register the app with App Designer
-            registerApp(app, app.UIFigure)
+            registerApp(app, app.VisOptionsDialogUIFigure)
 
             % Execute the startup function
             runStartupFcn(app, @(app)StartupFcn(app, varargin{:}))
@@ -536,8 +536,8 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Code that executes before app deletion
         function delete(app)
 
-            % Delete UIFigure when app is deleted
-            delete(app.UIFigure)
+            % Delete VisOptionsDialogUIFigure when app is deleted
+            delete(app.VisOptionsDialogUIFigure)
         end
     end
 end

@@ -463,6 +463,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             str = app.PWVPoints.Value;
             
+            ptRange = [];
             if app.DisplayDistanceCheckbox.Value
                 out = textscan(str,'%f %f','Delimiter',':');
                 [~, minIdx] = min(abs(app.FullBranchDistance-out{1}));
@@ -566,9 +567,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 maskSz(1:2) = floor(maskSz(1:2));
                 maskSz(3:4) = ceil(maskSz(3:4));
                 maskSz(maskSz<1) = 1;
-                mask = zeros(size(img));
-                mask(maskSz(2):(maskSz(2)+maskSz(4)), maskSz(1):(maskSz(1)+maskSz(3))) = 1;
-                imgCropped = img.*mask;
+                tmp_mask = zeros(size(img));
+                tmp_mask(maskSz(2):(maskSz(2)+maskSz(4)), maskSz(1):(maskSz(1)+maskSz(3))) = 1;
+                imgCropped = img.*tmp_mask;
                 
                 clf(cropFig);
                 imagesc(imgCropped);
@@ -580,7 +581,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             ct = ct+1;
                             hold(gca,'on');
                             h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
-                            set(h,'AlphaData',img2(:,:,ct).*mask)
+                            set(h,'AlphaData',img2(:,:,ct).*tmp_mask)
                             hold(gca,'off');
                         end
                     end
@@ -1363,7 +1364,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     axisText = [1 1 1];
                 end
                 eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
-                cbarLocs = app.VisOptionsApp.LocationDropDown_2.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
             end
             cmap(1,:) = backgroundC;
             
@@ -1430,7 +1431,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: LoadDataButton
-        function LoadDataButtonPushed(app, event)
+        function LoadDataButtonPushed(app, ~)
             clc;
             
             % from load data
@@ -1504,7 +1505,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: CleardataandrestartanalysisButton
-        function CleardataandrestartanalysisButtonPushed(app, event)
+        function CleardataandrestartanalysisButtonPushed(app, ~)
             if ~isempty(app.VisOptionsApp)
                 delete(app.VisOptionsApp.VisOptionsDialogUIFigure);
             end
@@ -1514,7 +1515,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: LoadSegmentationButton
-        function LoadSegmentationButtonPushed(app, event)
+        function LoadSegmentationButtonPushed(app, ~)
             
             app.aorta_seg = [];
             currDir = pwd;
@@ -1621,7 +1622,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: flipseglr
-        function flipseglrValueChanged(app, event)
+        function flipseglrValueChanged(app, ~)
             app.aorta_seg = flip(app.aorta_seg,2);
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
@@ -1631,7 +1632,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: flipsegud
-        function flipsegudValueChanged(app, event)
+        function flipsegudValueChanged(app, ~)
             app.aorta_seg = flip(app.aorta_seg,1);
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
@@ -1641,7 +1642,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: flipsegio
-        function flipsegioValueChanged(app, event)
+        function flipsegioValueChanged(app, ~)
             app.aorta_seg = flip(app.aorta_seg,3);
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
@@ -1651,7 +1652,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask1
-        function mask1ValueChanged(app, event)
+        function mask1ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1660,7 +1661,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask2
-        function mask2ValueChanged(app, event)
+        function mask2ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1669,7 +1670,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask3
-        function mask3ValueChanged(app, event)
+        function mask3ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1678,7 +1679,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask4
-        function mask4ValueChanged(app, event)
+        function mask4ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1687,7 +1688,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask5
-        function mask5ValueChanged(app, event)
+        function mask5ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1696,7 +1697,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask6
-        function mask6ValueChanged(app, event)
+        function mask6ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1705,7 +1706,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask7
-        function mask7ValueChanged(app, event)
+        function mask7ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1714,7 +1715,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask8
-        function mask8ValueChanged(app, event)
+        function mask8ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1723,7 +1724,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask9
-        function mask9ValueChanged(app, event)
+        function mask9ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1732,7 +1733,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: mask10
-        function mask10ValueChanged(app, event)
+        function mask10ValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1742,7 +1743,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: SegTimeframeSpinner
-        function SegTimeframeSpinnerValueChanged(app, event)
+        function SegTimeframeSpinnerValueChanged(app, ~)
             View3DSegmentation(app);
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
@@ -1753,7 +1754,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: MapsPushButton
-        function MapsPushButtonPushed(app, event)
+        function MapsPushButtonPushed(app, ~)
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
                 app = cropRawData(app);
@@ -1819,7 +1820,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: PulseWaveVelocityPushButton
-        function PulseWaveVelocityPushButtonButtonPushed(app, event)
+        function PulseWaveVelocityPushButtonButtonPushed(app, ~)
             
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
@@ -1862,12 +1863,12 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: Reset3DviewButton
-        function Reset3DviewButtonPushed(app, event)
+        function Reset3DviewButtonPushed(app, ~)
             reset3DSegmentationAndCenterline(app);
         end
         
         % Button pushed function: CheckcenterlinecalculateflowButton
-        function CheckcenterlinecalculateflowButtonPushed(app, event)
+        function CheckcenterlinecalculateflowButtonPushed(app, ~)
             % Grab the branches from user input, then perform aorta segmentation, check
             % the points/segmentation is correct, and calculate flow waveforms
             
@@ -2014,7 +2015,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.PWVPointsLabel.Text = ['PWV Points [5:' num2str(length(app.branchActual)) ']'];
                     end
                     % immediately calculate PWV
-                    CalculatePWVButtonPushed(app, event);
+                    CalculatePWVButtonPushed(app, []);
                     
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
@@ -2109,7 +2110,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
                         app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
                     end
-                    CalculatePWVButtonPushed(app, event);
+                    CalculatePWVButtonPushed(app, []);
                     
                     % view the flows at each centerline point, and plot the waveforms
                     view3D_wParams(app);
@@ -2122,12 +2123,12 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: PlotWaveformsButton
-        function PlotWaveformsButtonPushed(app, event)
+        function PlotWaveformsButtonPushed(app, ~)
             plotWaveforms(app);
         end
         
         % Button pushed function: CalculatePWV
-        function CalculatePWVButtonPushed(app, event)
+        function CalculatePWVButtonPushed(app, ~)
             cla(app.PWVCalcDisplay)
             % grab waveforms
             x = round(app.branchActual(:,1));
@@ -2351,7 +2352,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: SaveResultsCallback
-        function SaveResultsCallbackButtonPushed(app, event)
+        function SaveResultsCallbackButtonPushed(app, ~)
             
             savePrefix = app.SaveName.Value;
             saveFolder = fullfile(app.directory, 'PWV_results'); mkdir(saveFolder);
@@ -2447,7 +2448,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: CropButton
-        function CropButtonPushed(app, event)
+        function CropButtonPushed(app, ~)
             if app.isSegmentationLoaded
                 ct = 0;
                 for ii = length(app.AxesX.Children)-1:-1:1
@@ -2482,7 +2483,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: CropButton_2
-        function CropButton_2Pushed(app, event)
+        function CropButton_2Pushed(app, ~)
             if app.isSegmentationLoaded
                 ct = 0;
                 for ii = length(app.AxesX.Children)-1:-1:1
@@ -2517,7 +2518,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: CropButton_3
-        function CropButton_3Pushed(app, event)
+        function CropButton_3Pushed(app, ~)
             if app.isSegmentationLoaded
                 ct = 0;
                 for ii = length(app.AxesZ.Children)-1:-1:1
@@ -2552,7 +2553,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: FinishedCroppingButton
-        function FinishedCroppingButtonPushed(app, event)
+        function FinishedCroppingButtonPushed(app, ~)
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
                 app = cropRawData(app);
@@ -2568,7 +2569,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateLeft
-        function RotateLeftButtonPushed(app, event)
+        function RotateLeftButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if eval(sprintf('app.mask%i.Value==1',ii))
@@ -2583,7 +2584,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateRight
-        function RotateRightButtonPushed(app, event)
+        function RotateRightButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if eval(sprintf('app.mask%i.Value==1',ii))
@@ -2598,7 +2599,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateDown
-        function RotateDownButtonPushed(app, event)
+        function RotateDownButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if eval(sprintf('app.mask%i.Value==1',ii))
@@ -2613,7 +2614,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateUp
-        function RotateUpButtonPushed(app, event)
+        function RotateUpButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if eval(sprintf('app.mask%i.Value==1',ii))
@@ -2628,14 +2629,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: ResetRotation
-        function ResetRotationButtonPushed(app, event)
+        function ResetRotationButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles = [0 0];
             View3DSegmentation(app);
         end
         
         % Button pushed function: AddbranchButton
-        function AddbranchButtonPushed(app, event)
+        function AddbranchButtonPushed(app, ~)
             % turn on branch 2 if not on
             if strcmp(app.Branch2Label.Visible, 'off')
                 app.Branch2Label.Visible = 'on';
@@ -2673,7 +2674,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: AdjustthresholdSlider
-        function AdjustthresholdSliderValueChanged(app, event)
+        function AdjustthresholdSliderValueChanged(app, ~)
             value = app.AdjustthresholdSlider.Value;
             
             % update segmentation
@@ -2690,7 +2691,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: deleteBranch2
-        function deleteBranch2ButtonPushed(app, event)
+        function deleteBranch2ButtonPushed(app, ~)
             app.Branch2Label.Visible = 'off';
             app.BranchDropDown_2.Visible = 'off';
             app.FlipBranch1_2.Visible = 'off';
@@ -2698,7 +2699,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: deleteBranch3
-        function deleteBranch3ButtonPushed(app, event)
+        function deleteBranch3ButtonPushed(app, ~)
             app.Branch3Label.Visible = 'off';
             app.BranchDropDown_3.Visible = 'off';
             app.FlipBranch1_3.Visible = 'off';
@@ -2707,7 +2708,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: deleteBranch4
-        function deleteBranch4ButtonPushed(app, event)
+        function deleteBranch4ButtonPushed(app, ~)
             app.Branch4Label.Visible = 'off';
             app.BranchDropDown_4.Visible = 'off';
             app.FlipBranch1_4.Visible = 'off';
@@ -2716,7 +2717,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: DisplayDistanceCheckbox
-        function DisplayDistanceCheckboxValueChanged(app, event)
+        function DisplayDistanceCheckboxValueChanged(app, ~)
             value = app.DisplayDistanceCheckbox.Value;
             str = app.PWVPoints.Value;
             
@@ -2739,13 +2740,13 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: ParameterDropDown
-        function ParameterDropDownValueChanged(app, event)
+        function ParameterDropDownValueChanged(app, ~)
             view3D_wParams(app);
             plotWaveforms(app);
         end
         
         % Value changed function: TimeframeSpinner
-        function TimeframeSpinnerValueChanged(app, event)
+        function TimeframeSpinnerValueChanged(app, ~)
             if app.LinkplotsCheckBox.Value
                 app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
                 switch app.MapType.Value
@@ -2767,7 +2768,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: MapType
-        function MapTypeValueChanged(app, event)
+        function MapTypeValueChanged(app, ~)
             
             switch app.MapType.Value
                 case 'None'
@@ -2823,7 +2824,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: MapTimeframeSpinner
-        function MapTimeframeSpinnerValueChanged(app, event)
+        function MapTimeframeSpinnerValueChanged(app, ~)
             switch app.MapType.Value
                 case 'Wall shear stress'
                     viewWSS(app);
@@ -2844,16 +2845,16 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: SliceSpinner_2
-        function SliceSpinner_2ValueChanged(app, event)
+        function SliceSpinner_2ValueChanged(app, ~)
             viewVelocityVectors(app);
         end
         
-        function VisOptionsButtonPushed(app, event)
+        function VisOptionsButtonPushed(app, ~)
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
         end
         
         % Button pushed function: CalculateMap
-        function CalculateMapPushed(app, event)
+        function CalculateMapPushed(app, ~)
             
             switch app.MapType.Value
                 case 'Wall shear stress'
@@ -3008,14 +3009,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: LinkplotsCheckBox
-        function LinkplotsCheckBoxValueChanged(app, event)
+        function LinkplotsCheckBoxValueChanged(app, ~)
             if app.LinkplotsCheckBox.Value
                 app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
             end
         end
         
         % Button pushed function: SaveAnimation
-        function SaveAnimationButtonPushed(app, event)
+        function SaveAnimationButtonPushed(app, ~)
             % temporarily hide other things for plotting
             app.TimeframeSpinner.Visible = 'off';
             app.TimeframeSpinnerLabel.Visible = 'off';
@@ -3090,7 +3091,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: Axial
-        function AxialButtonPushed(app, event)
+        function AxialButtonPushed(app, ~)
             switch app.ori.label
                 case 'axial'
                     % this was an axial scan, reset rotation
@@ -3107,7 +3108,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: Sagittal
-        function SagittalButtonPushed(app, event)
+        function SagittalButtonPushed(app, ~)
             switch app.ori.label
                 case 'axial'
                     app.rotAngles2 = [0 90];
@@ -3124,7 +3125,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: Coronal
-        function CoronalButtonPushed(app, event)
+        function CoronalButtonPushed(app, ~)
             switch app.ori.label
                 case 'axial'
                     app.rotAngles2 = [90 0];
@@ -3141,7 +3142,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: ResetRotation_2
-        function ResetRotation_2ButtonPushed(app, event)
+        function ResetRotation_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [0 0];
             viewVelocityVectors(app);
@@ -3151,7 +3152,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateUp_2
-        function RotateUp_2ButtonPushed(app, event)
+        function RotateUp_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
             viewVelocityVectors(app);
@@ -3161,7 +3162,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateDown_2
-        function RotateDown_2ButtonPushed(app, event)
+        function RotateDown_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
             viewVelocityVectors(app);
@@ -3171,7 +3172,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateRight_2
-        function RotateRight_2ButtonPushed(app, event)
+        function RotateRight_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
             viewVelocityVectors(app);
@@ -3181,7 +3182,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: RotateLeft_2
-        function RotateLeft_2ButtonPushed(app, event)
+        function RotateLeft_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
             viewVelocityVectors(app);
@@ -3191,7 +3192,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: VelocityUnwrapping
-        function VelocityUnwrappingButtonPushed(app, event)
+        function VelocityUnwrappingButtonPushed(app, ~)
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
                 app = cropRawData(app);
@@ -3244,7 +3245,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: DFWButtonPushed
-        function DFWButtonPushed(app, event)
+        function DFWButtonPushed(app, ~)
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
                 app = cropRawData(app);
@@ -3309,17 +3310,17 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: SliceSpinner
-        function SliceSpinnerValueChanged(app, event)
+        function SliceSpinnerValueChanged(app, ~)
             plotVelocities(app);
         end
         
         % Value changed function: TimeframeSpinner_3
-        function TimeframeSpinner_3ValueChanged(app, event)
+        function TimeframeSpinner_3ValueChanged(app, ~)
             plotVelocities(app);
         end
         
         % Button pushed function: LaplaceUnwrap
-        function LaplaceUnwrapButtonPushed(app, event)
+        function LaplaceUnwrapButtonPushed(app, ~)
             disp('Performing 4D velocity unwrapping...')
             
             % if raw data is not yet cropped, do it now!
@@ -3378,7 +3379,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: Unwrap_automatic
-        function Unwrap_automaticButtonPushed(app, event)
+        function Unwrap_automaticButtonPushed(app, ~)
             sl = app.SliceSpinner.Value;
             tf = app.TimeframeSpinner_3.Value;
             tmpV = squeeze(app.v(:,:,sl,:,tf-1:tf)).* ...
@@ -3436,24 +3437,24 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: VecPts
-        function VecPtsValueChanged(app, event)
+        function VecPtsValueChanged(app, ~)
             viewVelocityVectors(app);
         end
         
         % Value changed function: flipvx
-        function flipvxValueChanged(app, event)
+        function flipvxValueChanged(app, ~)
             app.v(:,:,:,1,:) = -app.v(:,:,:,1,:);
             viewVelocityVectors(app)
         end
         
         % Value changed function: flipvy
-        function flipvyValueChanged(app, event)
+        function flipvyValueChanged(app, ~)
             app.v(:,:,:,2,:) = -app.v(:,:,:,2,:);
             viewVelocityVectors(app)
         end
         
         % Value changed function: flipvz
-        function flipvzValueChanged(app, event)
+        function flipvzValueChanged(app, ~)
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
             viewVelocityVectors(app)
         end
@@ -3555,7 +3556,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: InterpolateData
-        function InterpolateDataButtonPushed(app, event)
+        function InterpolateDataButtonPushed(app, ~)
             interpRes = interpolateInputs(app.pixdim);
             
             % determine interpolation 3D matrix size
@@ -3599,7 +3600,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: VectorOptionsDropDown
-        function VectorOptionsDropDownValueChanged(app, event)
+        function VectorOptionsDropDownValueChanged(app, ~)
             value = app.VectorOptionsDropDown.Value;
             switch value
                 case 'slice-wise'
@@ -3643,7 +3644,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Value changed function: ParameterDropDown
-        function PWVTypeValueChanged(app, event)
+        function PWVTypeValueChanged(app, ~)
             if any(cellfun(@(s) ~isempty(strfind(s, app.PWVType.Value)), {'Wavelet'; 'Cross-correlation'; 'Jarvis XCorr'}))
                 app.findBestFit_checkbox.Enable = 'on';
             else
@@ -3653,7 +3654,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
         
         % Button pushed function: ManualsegmentationupdateButton
-        function ManualsegmentationupdateButtonPushed(app, event)
+        function ManualsegmentationupdateButtonPushed(app, ~)
             % grab current segmentations, angio and put into imtool3d
             if app.isTimeResolvedSeg
                 currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);

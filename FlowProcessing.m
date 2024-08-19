@@ -1427,6 +1427,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.FlowProcessingUIFigure.Icon = 'vectors.png';
             app.MapsPushButton.Icon = 'vectors.png';
             app.InterpolateData.Icon = 'interpolate.jpg';
+            app.VelocityUnwrapping.Icon = 'unwrap.jpg';
+            app.DFW.Icon = 'DFW.jpg';
             drawnow;
         end
         

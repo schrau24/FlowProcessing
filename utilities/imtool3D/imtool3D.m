@@ -2086,7 +2086,7 @@ classdef imtool3D < handle
             if any(Mask(:))
                 if ~exist('hdr','var')
                     maskfname = 'Mask.tif';
-                    filters = {'*.tif';'*.nii.gz;*.nii';'*.mat'};
+                    filters = {'*.nii.gz;*.nii';'*.tif';'*.mat'};
                 else
                     path = fileparts(hdr.file_name);
                     maskfname = fullfile(path,'Mask.nii.gz');
@@ -2102,24 +2102,28 @@ classdef imtool3D < handle
                 switch lower(ext)
                     case {'.nii','.gz'}  % .nii.gz
                         if ~exist('hdr','var')
-                            err=1;
-                            while(err)
-                                answer = inputdlg2({'save as:','browse reference scan'},'save mask',[1 50],{fullfile(PathName,FileName), ''});
-                                if isempty(answer), err=0; break; end
-                                if ~isempty(answer{1})
-                                    answer{1} = strrep(answer{1},'.gz','.nii.gz');
-                                    answer{1} = strrep(answer{1},'.nii.nii','.nii');
-                                    if ~isempty(answer{2})
-                                        try
-                                            [~,hdr] = nii_load(answer{2});
-                                            nii_save(tool.getMask(1),hdr,answer{1});
+                            try
+                                niftiwrite(Mask,fullfile(PathName,FileName));
+                            catch
+                                err=1;
+                                while(err)
+                                    answer = inputdlg2({'save as:','browse reference scan'},'save mask',[1 50],{fullfile(PathName,FileName), ''});
+                                    if isempty(answer), err=0; break; end
+                                    if ~isempty(answer{1})
+                                        answer{1} = strrep(answer{1},'.gz','.nii.gz');
+                                        answer{1} = strrep(answer{1},'.nii.nii','.nii');
+                                        if ~isempty(answer{2})
+                                            try
+                                                [~,hdr] = nii_load(answer{2});
+                                                nii_save(tool.getMask(1),hdr,answer{1});
+                                                err=0;
+                                            catch bug
+                                                uiwait(warndlg(bug.message,'wrong reference','modal'))
+                                            end
+                                        else
+                                            nii_save(uint8(tool.getMask(1)),[],answer{1})
                                             err=0;
-                                        catch bug
-                                            uiwait(warndlg(bug.message,'wrong reference','modal'))
                                         end
-                                    else
-                                        nii_save(uint8(tool.getMask(1)),[],answer{1})
-                                        err=0;
                                     end
                                 end
                             end

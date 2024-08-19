@@ -98,33 +98,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         RotateLeft_2                    matlab.ui.control.Button
         LinkplotsCheckBox               matlab.ui.control.CheckBox
         SaveAnimation                   matlab.ui.control.Button
+        VisOptions                      matlab.ui.control.Button
         CalculateMap                    matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
         VelocityVectorGroup             matlab.ui.container.Panel
         VectorOptionsDropDown           matlab.ui.control.DropDown
-        VectorType                      matlab.ui.control.Label
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
         VecPts_Label                    matlab.ui.control.Label
         VecPts                          matlab.ui.control.EditField
-        maxVelocityVectorEditField      matlab.ui.control.EditField
-        velocityVectortoEditFieldLabel  matlab.ui.control.Label
-        minVelocityVectorEditField      matlab.ui.control.EditField
-        velocityVectorEditFieldLabel    matlab.ui.control.Label
-        maxQuiverEditField              matlab.ui.control.EditField
-        toXEditFieldLabel_2             matlab.ui.control.Label
-        minQuiverEditField              matlab.ui.control.EditField
-        quiverscaleEditFieldLabel       matlab.ui.control.Label
         TimeframeSpinner                matlab.ui.control.Spinner
         TimeframeSpinnerLabel           matlab.ui.control.Label
         VelocityVectorsPlot             matlab.ui.control.UIAxes
         MapGroup                        matlab.ui.container.Panel
         MapTimeframeSpinnerLabel        matlab.ui.control.Label
-        maxMapScaleEditField            matlab.ui.control.EditField
-        MapScaletoEditFieldLabel        matlab.ui.control.Label
-        minMapScaleEditField            matlab.ui.control.EditField
-        MapScaleEditFieldLabel          matlab.ui.control.Label
         MapTimeframeSpinner             matlab.ui.control.Spinner
         MapPlot                         matlab.ui.control.UIAxes
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
@@ -175,6 +163,7 @@ classdef FlowProcessing < matlab.apps.AppBase
     end
     
     properties (Access = private)
+        VisOptionsApp;              % the VisOptions app with associated params
         directory;                  % the data directory
         segDirectory;               % the directory for dicoms from a pre-defined manual segmentation
         v;                          % the 5D velocity matrix (X x Y x Z x t x v)
@@ -235,7 +224,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         isWSScalculated = 0;        % is WSS calculated
     end
     
-    methods (Access = private)
+    methods (Access = public)
         
         function View3DSegmentation(app)
             
@@ -394,16 +383,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             switch app.ParameterDropDown.Value
                 case 'Total Flow'
                     cdata = app.flowPerHeartCycle_vol(index);
-                    cbarText = 'Flow (mL/cycle)';
+                    axisText = 'Flow (mL/cycle)';
                 case 'Peak Flow'
                     cdata = max(app.flowPulsatile_vol(index,:),[],2);
-                    cbarText = 'Peak flow (mL/s)';
+                    axisText = 'Peak flow (mL/s)';
                 case 'Mean velocity'
                     cdata = mean(app.flowPulsatile_vol(index,:)./app.area_val,2);
-                    cbarText = 'Mean velocity (cm/s)';
+                    axisText = 'Mean velocity (cm/s)';
                 case 'Peak velocity'
                     cdata = max(app.flowPulsatile_vol(index,:)./app.area_val,[],2);
-                    cbarText = 'Peak velocity (cm/s)';
+                    axisText = 'Peak velocity (cm/s)';
             end
             
             hSurface = surface(app.View3D_2,'XData',[y(:) y(:)],'YData',[x(:) x(:)],'ZData',[z(:) z(:)],...
@@ -414,7 +403,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             colormap(app.View3D_2,jet)
             cbar = colorbar(app.View3D_2);
             caxis(app.View3D_2,[0 0.95*max(cdata)])
-            set(get(cbar,'xlabel'),'string',cbarText,'fontsize',16,'Color','black');
+            set(get(cbar,'xlabel'),'string',axisText,'fontsize',16,'Color','black');
             set(cbar,'FontSize',16,'color','black','Location','west');
             
             % make it look good
@@ -856,21 +845,57 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
             
+            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                a = [2 10*max(vmagn(:))/100];
+                scale = [0 round(app.VENC/10)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet';
+                cbarLoc = 'bottom-left';
+            else
+                a = [str2double(app.VisOptionsApp.minQuiverEditField.Value) str2double(app.VisOptionsApp.maxQuiverEditField.Value)*max(vmagn(:))/100];
+                scale = [str2double(app.VisOptionsApp.minVelocityVectorEditField.Value) str2double(app.VisOptionsApp.maxVelocityVectorEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
+                    axisText = [1 1 1];
+                end
+                cmap = app.VisOptionsApp.ColormapDropDown.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
+            end
+            
             c = [];
-            a = [str2double(app.minQuiverEditField.Value) str2double(app.maxQuiverEditField.Value)*max(vmagn(:))/100];
             % note the flipped vx and vy here
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
             p = patch(app.VelocityVectorsPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
-            
-            caxis(app.VelocityVectorsPlot, [str2double(app.minVelocityVectorEditField.Value) str2double(app.maxVelocityVectorEditField.Value)]);
-            colormap(app.VelocityVectorsPlot,jet)
+            caxis(app.VelocityVectorsPlot, scale);
+            colormap(app.VelocityVectorsPlot,cmap);
             cbar = colorbar(app.VelocityVectorsPlot);
-            set(get(cbar,'xlabel'),'string','Velocity (cm/s)','Color','black');
-            set(cbar,'FontSize',12,'color','black','Location','west');
-            % change cbar size to fit in corner
+            app.VelocityVectorGroup.BackgroundColor = backgroundC;
+            app.VelocityVectorGroup.ForegroundColor = axisText;
+            app.TimeframeSpinnerLabel.FontColor = axisText;
+            app.SliceSpinner_2Label.FontColor = axisText;
+            set(get(cbar,'xlabel'),'string','Velocity (cm/s)','Color',axisText);
+            set(cbar,'FontSize',12,'color',axisText,'Location','west');
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
-            %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.VelocityVectorsPlot, 'off','tight')
@@ -905,15 +930,51 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
             
+             if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                scale = [0 4];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
+                    axisText = [1 1 1];
+                end
+                cmap = app.VisOptionsApp.ColormapDropDown_2.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
+             end
+            
             patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
-            colormap(app.MapPlot,jet)
+            caxis(app.MapPlot, scale);
+            colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','WSS (Pa)','Color','black');
-            set(cbar,'FontSize',12,'color','black','Location','west');
+            app.MapGroup.BackgroundColor = backgroundC;
+            app.MapGroup.ForegroundColor = axisText;
+            set(get(cbar,'xlabel'),'string','WSS (Pa)','Color',axisText);
+            set(cbar,'FontSize',12,'color',axisText,'Location','west');
             % change cbar size to fit in corner
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -955,16 +1016,52 @@ classdef FlowProcessing < matlab.apps.AppBase
             sysvel_mip = max(tmp,[],3);
             
             imagesc(app.MapPlot, sysvel_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
-            cmap = jet(256); cmap(1,:) = 1;
+            
+            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                scale = [0 round(app.VENC/10)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet(256)';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
+                    axisText = [1 1 1];
+                end
+                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
+            end
+            cmap(1,:) = backgroundC;
+            
+            caxis(app.MapPlot, scale);
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','Peak velocity (cm/s)','Color','black');
-            set(cbar,'color','black','Location','west','FontSize',12);
-            % change cbar size to fit in corner
+            app.MapGroup.BackgroundColor = backgroundC;
+            app.MapGroup.ForegroundColor = axisText;
+            app.MapTimeframeSpinnerLabel.FontColor = axisText;
+            set(get(cbar,'xlabel'),'string','Peak velocity (cm/s)','Color',axisText);
+            set(cbar,'color',axisText,'Location','west','FontSize',12);
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
-            %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -1052,17 +1149,52 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             vel_mip = squeeze(mean(tmp,3));
             
+            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                scale = [0 round(app.VENC/50)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet(256)';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
+                    axisText = [1 1 1];
+                end
+                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
+            end
+            cmap(1,:) = backgroundC;
+            
             imagesc(app.MapPlot, vel_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
-            cmap = jet(256); cmap(1,:) = 1;
+            caxis(app.MapPlot, scale);
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','Mean velocity (cm/s)','Color','black');
-            set(cbar,'color','black','Location','west','FontSize',12);
-            % change cbar size to fit in corner
+            app.MapGroup.BackgroundColor = backgroundC;
+            app.MapGroup.ForegroundColor = axisText;
+            app.MapTimeframeSpinnerLabel.FontColor = axisText;
+            set(get(cbar,'xlabel'),'string','Mean velocity (cm/s)','Color',axisText);
+            set(cbar,'color',axisText,'Location','west','FontSize',12);
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.2 pos(3) 0.2]);
-            %             set(cbar,'position',[0.01 0.65 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -1104,16 +1236,52 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             KE_mip = squeeze(1e3*max(tmp,[],3));    % in mJ
             
+            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                scale = [0 10];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet(256)';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
+                    axisText = [1 1 1];
+                end
+                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
+            end
+            cmap(1,:) = backgroundC;
+            
             imagesc(app.MapPlot, KE_mip+0.001);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value)+0.001 str2double(app.maxMapScaleEditField.Value)]);
-            cmap = jet(256); cmap(1,:) = 1;
+            caxis(app.MapPlot, scale);
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','Max KE (mJ)','Color','black');
-            set(cbar,'color','black','Location','west','FontSize',12);
-            % change cbar size to fit in corner
+            app.MapGroup.BackgroundColor = backgroundC;
+            app.MapGroup.ForegroundColor = axisText;
+            app.MapTimeframeSpinnerLabel.FontColor = axisText;
+            set(get(cbar,'xlabel'),'string','Max KE (mJ)','Color',axisText);
+            set(cbar,'color',axisText,'Location','west','FontSize',12);
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -1145,7 +1313,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             v1 = currSeg.*app.v(:,:,:,1,t)/10.*currSeg;
             v2 = currSeg.*app.v(:,:,:,2,t)/10.*currSeg;
             v3 = currSeg.*app.v(:,:,:,3,t)/10.*currSeg;
-
+            
             % calculate viscous energy loss as the divergence of velocity,
             % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
             % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
@@ -1178,16 +1346,52 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
             EL_mip = squeeze(max(tmp,[],3));
             
+            if isempty(app.VisOptionsApp) || ~isvalid(app.VisOptionsApp)
+                scale = [-0.1 3];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet(256)';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
+                    axisText = [1 1 1];
+                end
+                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                cbarLocs = app.VisOptionsApp.LocationDropDown_2.Value;
+            end
+            cmap(1,:) = backgroundC;
+            
             imagesc(app.MapPlot, EL_mip+0.00001);
-            caxis(app.MapPlot, [str2double(app.minMapScaleEditField.Value) str2double(app.maxMapScaleEditField.Value)]);
-            cmap = jet(256); cmap(1,:) = 1;
+            caxis(app.MapPlot, scale);
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
-            set(get(cbar,'xlabel'),'string','Max EL (mW)','Color','black');
-            set(cbar,'color','black','Location','west','FontSize',12);
-            % change cbar size to fit in corner
+            app.MapGroup.BackgroundColor = backgroundC;
+            app.MapGroup.ForegroundColor = axisText;
+            app.MapTimeframeSpinnerLabel.FontColor = axisText;
+            set(get(cbar,'xlabel'),'string','Max EL (mW)','Color',axisText);
+            set(cbar,'color',axisText,'Location','west','FontSize',12);
             pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.01 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [1-pos(3) 0.01 pos(3) 0.2];fmap
+                case 'mid-right'
+                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.MapPlot, 'off','tight')
@@ -1301,6 +1505,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: CleardataandrestartanalysisButton
         function CleardataandrestartanalysisButtonPushed(app, event)
+            if ~isempty(app.VisOptionsApp)
+                delete(app.VisOptionsApp.UIFigure);
+            end
             delete(app.FlowProcessingUIFigure);  % close the app
             FlowProcessing;                      % re-open it
         end
@@ -1308,6 +1515,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: LoadSegmentationButton
         function LoadSegmentationButtonPushed(app, event)
             
+            app.aorta_seg = [];
             currDir = pwd;
             cd(app.directory);
             % if clicked, let the user pick the directory containg the pre-segmented
@@ -1340,7 +1548,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
-                app.aorta_seg = double(permute(niftiread(fullfile(app.segDirectory,tmp)),[2 1 3]));
+                app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
             else    % the files are still dicoms but not with a dicom ending?
                 files = dir([app.segDirectory '/*IM*']);
                 % reset the aorta segmentation
@@ -1554,6 +1762,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton.Enable = 'off';
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
+                app.FinishedCroppingButton.Enable = 'off';
             else % to ensure that updated thresholding is applied to aorta_seg
                 if (~app.isSegmentationLoaded)
                     app.aorta_seg = app.segment;
@@ -1564,18 +1773,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.TabGroup.SelectedTab = app.Maps;
             app.TimeframeSpinnerLabel.Enable = 'on';
             app.TimeframeSpinner.Enable = 'on';
-            app.quiverscaleEditFieldLabel.Enable = 'on';
-            app.minQuiverEditField.Enable = 'on';
-            app.toXEditFieldLabel_2.Enable = 'on';
-            app.maxQuiverEditField.Enable = 'on';
-            app.minVelocityVectorEditField.Enable = 'on';
-            app.velocityVectortoEditFieldLabel.Enable = 'on';
-            app.velocityVectorEditFieldLabel.Enable = 'on';
-            app.maxVelocityVectorEditField.Enable = 'on';
-            app.maxVelocityVectorEditField.Value = num2str(round(app.VENC/10));
             app.TimeframeSpinner.Limits = [1,app.nframes];
             
-            % on the WSS tab
             app.MapTimeframeSpinnerLabel.Enable = 'on';
             app.MapTimeframeSpinner.Enable = 'off';
             app.MapTimeframeSpinner.Limits = [1,app.nframes];
@@ -1614,6 +1813,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.vvp_ylim = app.VelocityVectorsPlot.YLim;
             
             app.SaveAnimation.Enable = 'on';
+            app.VisOptions.Enable = 'on';
         end
         
         % Button pushed function: PulseWaveVelocityPushButton
@@ -1628,7 +1828,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton.Enable = 'off';
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
-                
+                app.FinishedCroppingButton.Enable = 'off';
             end
             
             % these are hard-coded for now
@@ -2558,10 +2758,66 @@ classdef FlowProcessing < matlab.apps.AppBase
                     case 'Kinetic energy'
                         viewKE(app);
                     case 'Energy loss'
-                        viewEL(app);    
+                        viewEL(app);
                 end
             end
             viewVelocityVectors(app);
+        end
+        
+        % Value changed function: MapType
+        function MapTypeValueChanged(app, event)
+            
+            switch app.MapType.Value
+                case 'None'
+                    app.MapTimeframeSpinner.Enable = 'off';
+                    cla(app.MapPlot);
+                    colorbar(app.MapPlot,'off');
+                    
+                case 'Wall shear stress'
+                    app.VisOptionsApp.minMapEditField.Value = '0';
+                    app.VisOptionsApp.maxMapEditField.Value = '4';
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
+                    
+                    if app.isWSScalculated
+                        viewWSS(app);
+                    end
+                    
+                case 'Peak velocity'
+                    app.VisOptionsApp.minMapEditField.Value = '0';
+                    app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/10));
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
+                    
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
+                    viewPeakVelocity(app);
+                    
+                case 'Mean velocity'
+                    app.VisOptionsApp.minMapEditField.Value = '0';
+                    app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/50));
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
+                    
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
+                    viewMeanVelocity(app);
+                    
+                case 'Kinetic energy'
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
+                    app.VisOptionsApp.minMapEditField.Value = '0';
+                    app.VisOptionsApp.maxMapEditField.Value = '10';
+                    
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
+                    viewKE(app);
+                    
+                case 'Energy loss'
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
+                    app.VisOptionsApp.minMapEditField.Value = '-0.1';
+                    app.VisOptionsApp.maxMapEditField.Value = '3';
+                    
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
+                    viewEL(app);
+            end
         end
         
         % Value changed function: MapTimeframeSpinner
@@ -2588,6 +2844,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Value changed function: SliceSpinner_2
         function SliceSpinner_2ValueChanged(app, event)
             viewVelocityVectors(app);
+        end
+        
+        function VisOptionsButtonPushed(app, event)
+            app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
         end
         
         % Button pushed function: CalculateMap
@@ -2732,8 +2992,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                         close(h);
                     end
                     
-                    app.minMapScaleEditField.Value = '0';
-                    app.maxMapScaleEditField.Value = '4';
                     viewWSS(app)
                     if peakSystole  % disable spinner as only one frame available
                         app.MapTimeframeSpinner.Enable = 'off';
@@ -2743,10 +3001,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.LinkplotsCheckBox.Enable = 'on';
                     end
                     
-                    app.minMapScaleEditField.Enable = 'on';
-                    app.MapScaleEditFieldLabel.Enable = 'on';
-                    app.maxMapScaleEditField.Enable = 'on';
-                    app.MapScaletoEditFieldLabel.Enable = 'on';
                     app.isWSScalculated = 1;
             end
         end
@@ -2763,16 +3017,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % temporarily hide other things for plotting
             app.TimeframeSpinner.Visible = 'off';
             app.TimeframeSpinnerLabel.Visible = 'off';
-            app.minQuiverEditField.Visible = 'off';
-            app.maxQuiverEditField.Visible = 'off';
-            app.minVelocityVectorEditField.Visible = 'off';
-            app.maxVelocityVectorEditField.Visible = 'off';
-            app.quiverscaleEditFieldLabel.Visible = 'off';
-            app.velocityVectortoEditFieldLabel.Visible = 'off';
-            app.velocityVectorEditFieldLabel.Visible = 'off';
-            app.toXEditFieldLabel_2.Visible = 'off';
             app.VectorOptionsDropDown.Visible = 'off';
-            app.VectorType.Visible = 'off';
             app.SliceSpinner_2.Visible = 'off';
             app.SliceSpinner_2Label.Visible = 'off';
             app.VecPts_Label.Visible = 'off';
@@ -2780,11 +3025,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.MapTimeframeSpinner.Visible = 'off';
             app.MapTimeframeSpinnerLabel.Visible = 'off';
-            app.minMapScaleEditField.Visible = 'off';
-            app.maxMapScaleEditField.Visible = 'off';
-            app.MapScaleEditFieldLabel.Visible = 'off';
-            app.MapScaletoEditFieldLabel.Visible = 'off';
-            
             app.MapType.Visible = 'off';
             
             [file,path] = uiputfile('*.gif','Selection file name and location');
@@ -2817,7 +3057,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Turn screenshot into image
                 im = frame2im(ff);
                 % add time label
-                im = insertText(im,[1 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white');
+                im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white');
                 
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im,256);
@@ -2833,16 +3073,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % turn back on
             app.TimeframeSpinner.Visible = 'on';
             app.TimeframeSpinnerLabel.Visible = 'on';
-            app.minQuiverEditField.Visible = 'on';
-            app.maxQuiverEditField.Visible = 'on';
-            app.minVelocityVectorEditField.Visible = 'on';
-            app.maxVelocityVectorEditField.Visible = 'on';
-            app.quiverscaleEditFieldLabel.Visible = 'on';
-            app.velocityVectortoEditFieldLabel.Visible = 'on';
-            app.velocityVectorEditFieldLabel.Visible = 'on';
-            app.toXEditFieldLabel_2.Visible = 'on';
             app.VectorOptionsDropDown.Visible = 'on';
-            app.VectorType.Visible = 'on';
             if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
                 app.SliceSpinner_2.Visible = 'on';
                 app.SliceSpinner_2Label.Visible = 'on';
@@ -2853,10 +3084,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.MapTimeframeSpinner.Visible = 'on';
             app.MapTimeframeSpinnerLabel.Visible = 'on';
-            app.minMapScaleEditField.Visible = 'on';
-            app.maxMapScaleEditField.Visible = 'on';
-            app.MapScaleEditFieldLabel.Visible = 'on';
-            app.MapScaletoEditFieldLabel.Visible = 'on';
             app.MapType.Visible = 'on';
         end
         
@@ -3014,7 +3241,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             plotVelocities(app);
         end
         
-         % Button pushed function: DFWButtonPushed
+        % Button pushed function: DFWButtonPushed
         function DFWButtonPushed(app, event)
             % if raw data is not yet cropped, do it now!
             if ~app.isRawDataCropped
@@ -3206,155 +3433,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
         
-        % Value changed function: maxMapScaleEditField
-        function maxMapScaleEditFieldValueChanged(app, event)
-             switch app.MapType.Value
-                case 'None'
-                    % should not happen
-                    
-                case 'Wall shear stress'
-                    if app.isWSScalculated
-                        viewWSS(app);
-                    end
-                    
-                case 'Peak velocity'
-                    viewPeakVelocity(app);
-                    
-                case 'Mean velocity'
-                    viewMeanVelocity(app);
-                    
-                case 'Kinetic energy'
-                    viewKE(app);
-                    
-                case 'Energy loss'
-                    viewEL(app);
-            end
-        end
-        
-        % Value changed function: minMapScaleEditField
-        function minMapScaleEditFieldValueChanged(app, event)
-            switch app.MapType.Value
-                case 'None'
-                    % should not happen
-                    
-                case 'Wall shear stress'
-                    if app.isWSScalculated
-                        viewWSS(app);
-                    end
-                    
-                case 'Peak velocity'
-                    viewPeakVelocity(app);
-                    
-                case 'Mean velocity'
-                    viewMeanVelocity(app);
-                    
-                case 'Kinetic energy'
-                    viewKE(app);
-                    
-                case 'Energy loss'
-                    viewEL(app);
-            end
-        end
-        
-        % Value changed function: maxQuiverEditField
-        function maxQuiverEditFieldValueChanged(app, event)
-            viewVelocityVectors(app);
-        end
-        
-        % Value changed function: minQuiverEditField
-        function minQuiverEditFieldValueChanged(app, event)
-            viewVelocityVectors(app);
-        end
-        
-        % Value changed function: minVelocityVectorEditField
-        function minVelocityVectorEditFieldValueChanged(app, event)
-            viewVelocityVectors(app);
-        end
-        
-        % Value changed function: maxVelocityVectorEditField
-        function maxVelocityVectorEditFieldValueChanged(app, event)
-            viewVelocityVectors(app);
-        end
-        
         % Value changed function: VecPts
         function VecPtsValueChanged(app, event)
             viewVelocityVectors(app);
-        end
-        
-        % Value changed function: MapType
-        function MapTypeValueChanged(app, event)
-            
-            app.minMapScaleEditField.Visible = 'on';
-            app.maxMapScaleEditField.Visible = 'on';
-            app.MapScaleEditFieldLabel.Visible = 'on';
-            app.MapScaletoEditFieldLabel.Visible = 'on';
-            
-            switch app.MapType.Value
-                case 'None'
-                    app.minMapScaleEditField.Visible = 'off';
-                    app.maxMapScaleEditField.Visible = 'off';
-                    app.MapScaleEditFieldLabel.Visible = 'off';
-                    app.MapScaletoEditFieldLabel.Visible = 'off';
-                    
-                    app.MapTimeframeSpinner.Enable = 'off';
-                    cla(app.MapPlot);
-                    colorbar(app.MapPlot,'off');
-                    
-                case 'Wall shear stress'
-                    app.minMapScaleEditField.Value = '0';
-                    app.maxMapScaleEditField.Value = '4';
-                    app.MapScaleEditFieldLabel.Text = 'wss (Pa)';
-                    
-                    if app.isWSScalculated
-                        viewWSS(app);
-                        app.minMapScaleEditField.Enable = 'on';
-                        app.maxMapScaleEditField.Enable = 'on';
-                    end
-                    
-                case 'Peak velocity'
-                    app.minMapScaleEditField.Value = '0';
-                    app.maxMapScaleEditField.Value = num2str(round(app.VENC/10));
-                    app.MapScaleEditFieldLabel.Text = 'velocity (cm/s)';
-                    
-                    app.minMapScaleEditField.Enable = 'on';
-                    app.maxMapScaleEditField.Enable = 'on';
-                    app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
-                    viewPeakVelocity(app);
-                    
-                case 'Mean velocity'
-                    app.minMapScaleEditField.Value = '0';
-                    app.maxMapScaleEditField.Value = num2str(round(app.VENC/50));
-                    app.MapScaleEditFieldLabel.Text = 'velocity (cm/s)';
-                    
-                    app.minMapScaleEditField.Enable = 'on';
-                    app.maxMapScaleEditField.Enable = 'on';
-                    app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
-                    viewMeanVelocity(app);
-                    
-                case 'Kinetic energy'
-                    app.MapScaleEditFieldLabel.Text = 'KE (mJ)';
-                    app.minMapScaleEditField.Value = '0';
-                    app.maxMapScaleEditField.Value = '10';
-                    
-                    app.minMapScaleEditField.Enable = 'on';
-                    app.maxMapScaleEditField.Enable = 'on';
-                    app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
-                    viewKE(app);
-                    
-                case 'Energy loss'
-                    app.MapScaleEditFieldLabel.Text = 'EL (mW)';
-                    app.minMapScaleEditField.Value = '-0.1';
-                    app.maxMapScaleEditField.Value = '3';
-                    
-                    app.minMapScaleEditField.Enable = 'on';
-                    app.maxMapScaleEditField.Enable = 'on';
-                    app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
-                    viewEL(app);
-            end
         end
         
         % Value changed function: flipvx
@@ -3382,25 +3463,25 @@ classdef FlowProcessing < matlab.apps.AppBase
             switch app.TabGroup.SelectedTab.Title
                 case 'Velocity Unwrapping'
                     switch key
-                        case 'uparrow'
+                        case 'rightarrow'
                             value = app.TimeframeSpinner_3.Value + 1;
                             if value > app.TimeframeSpinner_3.Limits(2)
                                 value = 1;
                             end
                             app.TimeframeSpinner_3.Value = value;
-                        case 'downarrow'
+                        case 'leftarrow'
                             value = app.TimeframeSpinner_3.Value - 1;
                             if value < 1
                                 value = app.TimeframeSpinner_3.Limits(2);
                             end
                             app.TimeframeSpinner_3.Value = value;
-                        case 'rightarrow'
+                        case 'uparrow'
                             value = app.SliceSpinner.Value + 1;
                             if value > app.SliceSpinner.Limits(2)
                                 value = 1;
                             end
                             app.SliceSpinner.Value = value;
-                        case 'leftarrow'
+                        case 'downarrow'
                             value= app.SliceSpinner.Value - 1;
                             if value < 1
                                 value = app.SliceSpinner.Limits(2);
@@ -3421,14 +3502,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                             RotateLeft_2ButtonPushed(app);
                         case 'r'
                             ResetRotation_2ButtonPushed(app);
-                        case 'uparrow'
+                        case 'rightarrow'
                             value = app.TimeframeSpinner.Value + 1;
                             if value > app.TimeframeSpinner.Limits(2)
                                 value = 1;
                             end
                             app.TimeframeSpinner.Value = value;
                             TimeframeSpinnerValueChanged(app);
-                        case 'downarrow'
+                        case 'leftarrow'
                             value = app.TimeframeSpinner.Value - 1;
                             if value < 1
                                 value = app.TimeframeSpinner.Limits(2);
@@ -3438,14 +3519,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
                         switch key
-                            case 'rightarrow'
+                            case 'uparrow'
                                 value = app.SliceSpinner_2.Value + 1;
                                 if value > app.SliceSpinner_2.Limits(2)
                                     value = 1;
                                 end
                                 app.SliceSpinner_2.Value = value;
                                 SliceSpinner_2ValueChanged(app);
-                            case 'leftarrow'
+                            case 'downarrow'
                                 value= app.SliceSpinner_2.Value - 1;
                                 if value < 1
                                     value = app.SliceSpinner_2.Limits(2);
@@ -3585,7 +3666,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 currSeg = currSeg(:,:,:,find(keepSegs));
             end
-
+            
             clear tool
             tool = imtool3D_3planes(app.angio,currSeg);
             tool.setAspectRatio(app.pixdim); % set voxel size
@@ -4013,7 +4094,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SegTimeframeSpinner.Position = [549 12 60 22];
             app.SegTimeframeSpinner.Value = 1;
             
-            
             % Create flipsegud
             app.flipsegud = uicheckbox(app.DVisualizationPanel);
             app.flipsegud.ValueChangedFcn = createCallbackFcn(app, @flipsegudValueChanged, true);
@@ -4203,7 +4283,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.CorrectionsPanel.FontWeight = 'bold';
             app.CorrectionsPanel.FontSize = 16;
             app.CorrectionsPanel.Position = [1 61 617 60];
-
+            
             % Create VelocityUnwrapping
             app.VelocityUnwrapping = uibutton(app.CorrectionsPanel, 'push');
             app.VelocityUnwrapping.ButtonPushedFcn = createCallbackFcn(app, @VelocityUnwrappingButtonPushed, true);
@@ -4212,7 +4292,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VelocityUnwrapping.Tooltip = {'open velocity unwrapping tab'};
             app.VelocityUnwrapping.Position = [69 4 187 28];
             app.VelocityUnwrapping.Text = 'Velocity Unwrapping';
-
+            
             % Create DFW
             app.DFW = uibutton(app.CorrectionsPanel, 'push');
             app.DFW.ButtonPushedFcn = createCallbackFcn(app, @DFWButtonPushed, true);
@@ -4273,7 +4353,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.TimeframeSpinner_3.ValueChangedFcn = createCallbackFcn(app, @TimeframeSpinner_3ValueChanged, true);
             app.TimeframeSpinner_3.FontName = 'SansSerif';
             app.TimeframeSpinner_3.FontSize = 18;
-            app.TimeframeSpinner_3.Tooltip = {'shortcut ''↑'' or ''↓'''};
+            app.TimeframeSpinner_3.Tooltip = {'shortcut ''←'' or ''→'''};
             app.TimeframeSpinner_3.Position = [523 642 60 23];
             
             % Create SliceSpinner_Label
@@ -4289,7 +4369,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SliceSpinner.ValueChangedFcn = createCallbackFcn(app, @SliceSpinnerValueChanged, true);
             app.SliceSpinner.FontName = 'SansSerif';
             app.SliceSpinner.FontSize = 18;
-            app.SliceSpinner.Tooltip = {'shortcut ''←'' or ''→'''};
+            app.SliceSpinner.Tooltip = {'shortcut ''↑'' or ''↓'''};
             app.SliceSpinner.Position = [754 642 60 23];
             
             % Create Unwrap_automatic
@@ -4364,59 +4444,25 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapPlot.Position = [1 0 475 669];
             
             % Create MapTimeframeSpinner
-            app.MapTimeframeSpinner = uispinner(app.MapGroup);
+            app.MapTimeframeSpinner = uispinner(app.Maps);
             app.MapTimeframeSpinner.ValueChangedFcn = createCallbackFcn(app, @MapTimeframeSpinnerValueChanged, true);
-            app.MapTimeframeSpinner.FontSize = 14;
+            app.MapTimeframeSpinner.FontSize = 12;
             app.MapTimeframeSpinner.Enable = 'off';
-            app.MapTimeframeSpinner.Position = [416 633 60 22];
-            
-            % Create MapScaleEditFieldLabel
-            app.MapScaleEditFieldLabel = uilabel(app.MapGroup);
-            app.MapScaleEditFieldLabel.HorizontalAlignment = 'center';
-            app.MapScaleEditFieldLabel.FontName = 'SansSerif';
-            app.MapScaleEditFieldLabel.Enable = 'off';
-            app.MapScaleEditFieldLabel.Position = [366 26 84 22];
-            app.MapScaleEditFieldLabel.Text = 'wss scale (Pa)';
-            
-            % Create minMapScaleEditField
-            app.minMapScaleEditField = uieditfield(app.MapGroup, 'text');
-            app.minMapScaleEditField.ValueChangedFcn = createCallbackFcn(app, @minMapScaleEditFieldValueChanged, true);
-            app.minMapScaleEditField.HorizontalAlignment = 'right';
-            app.minMapScaleEditField.FontName = 'SansSerif';
-            app.minMapScaleEditField.Enable = 'off';
-            app.minMapScaleEditField.Position = [368 3 30 22];
-            app.minMapScaleEditField.Value = '0';
-            
-            % Create MapScaletoEditFieldLabel
-            app.MapScaletoEditFieldLabel = uilabel(app.MapGroup);
-            app.MapScaletoEditFieldLabel.HorizontalAlignment = 'right';
-            app.MapScaletoEditFieldLabel.FontName = 'SansSerif';
-            app.MapScaletoEditFieldLabel.Enable = 'off';
-            app.MapScaletoEditFieldLabel.Position = [391 3 25 22];
-            app.MapScaletoEditFieldLabel.Text = 'to';
-            
-            % Create maxMapScaleEditField
-            app.maxMapScaleEditField = uieditfield(app.MapGroup, 'text');
-            app.maxMapScaleEditField.ValueChangedFcn = createCallbackFcn(app, @maxMapScaleEditFieldValueChanged, true);
-            app.maxMapScaleEditField.HorizontalAlignment = 'right';
-            app.maxMapScaleEditField.FontName = 'SansSerif';
-            app.maxMapScaleEditField.Enable = 'off';
-            app.maxMapScaleEditField.Position = [420 3 32 22];
-            app.maxMapScaleEditField.Value = '4';
+            app.MapTimeframeSpinner.Position = [897 700 50 22];
             
             % Create MapTimeframeSpinnerLabel
-            app.MapTimeframeSpinnerLabel = uilabel(app.MapGroup);
+            app.MapTimeframeSpinnerLabel = uilabel(app.Maps);
             app.MapTimeframeSpinnerLabel.HorizontalAlignment = 'right';
-            app.MapTimeframeSpinnerLabel.FontSize = 14;
+            app.MapTimeframeSpinnerLabel.FontSize = 12;
             app.MapTimeframeSpinnerLabel.Enable = 'off';
-            app.MapTimeframeSpinnerLabel.Position = [398 660 76 22];
+            app.MapTimeframeSpinnerLabel.Position = [826 700 66 22];
             app.MapTimeframeSpinnerLabel.Text = 'Time frame';
             
             % Create VelocityVectorGroup
             app.VelocityVectorGroup = uipanel(app.Maps);
             app.VelocityVectorGroup.BorderType = 'none';
             app.VelocityVectorGroup.TitlePosition = 'centertop';
-            app.VelocityVectorGroup.Title = 'Velocity Vectors';
+            app.VelocityVectorGroup.Title = 'Vectors';
             app.VelocityVectorGroup.BackgroundColor = [1 1 1];
             app.VelocityVectorGroup.FontName = 'SansSerif';
             app.VelocityVectorGroup.FontWeight = 'bold';
@@ -4435,90 +4481,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VelocityVectorsPlot.Position = [1 0 475 669];
             
             % Create TimeframeSpinnerLabel
-            app.TimeframeSpinnerLabel = uilabel(app.VelocityVectorGroup);
+            app.TimeframeSpinnerLabel = uilabel(app.Maps);
             app.TimeframeSpinnerLabel.HorizontalAlignment = 'right';
             app.TimeframeSpinnerLabel.FontName = 'SansSerif';
-            app.TimeframeSpinnerLabel.FontSize = 14;
+            app.TimeframeSpinnerLabel.FontSize = 12;
             app.TimeframeSpinnerLabel.Enable = 'off';
-            app.TimeframeSpinnerLabel.Position = [392 658 76 22];
+            app.TimeframeSpinnerLabel.Position = [360 700 66 22];
             app.TimeframeSpinnerLabel.Text = 'Time frame';
             
             % Create TimeframeSpinner
-            app.TimeframeSpinner = uispinner(app.VelocityVectorGroup);
+            app.TimeframeSpinner = uispinner(app.Maps);
             app.TimeframeSpinner.ValueChangedFcn = createCallbackFcn(app, @TimeframeSpinnerValueChanged, true);
             app.TimeframeSpinner.FontName = 'SansSerif';
-            app.TimeframeSpinner.FontSize = 14;
+            app.TimeframeSpinner.FontSize = 12;
             app.TimeframeSpinner.Enable = 'off';
-            app.TimeframeSpinner.Tooltip = {'shortcut ''↑'' or ''↓'''};
-            app.TimeframeSpinner.Position = [408 633 60 22];
-            
-            % Create quiverscaleEditFieldLabel
-            app.quiverscaleEditFieldLabel = uilabel(app.VelocityVectorGroup);
-            app.quiverscaleEditFieldLabel.HorizontalAlignment = 'right';
-            app.quiverscaleEditFieldLabel.FontName = 'SansSerif';
-            app.quiverscaleEditFieldLabel.Enable = 'off';
-            app.quiverscaleEditFieldLabel.Position = [376 23 70 22];
-            app.quiverscaleEditFieldLabel.Text = 'quiver scale';
-            
-            % Create minQuiverEditField
-            app.minQuiverEditField = uieditfield(app.VelocityVectorGroup, 'text');
-            app.minQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @minQuiverEditFieldValueChanged, true);
-            app.minQuiverEditField.HorizontalAlignment = 'right';
-            app.minQuiverEditField.FontName = 'SansSerif';
-            app.minQuiverEditField.Enable = 'off';
-            app.minQuiverEditField.Position = [374 4 30 22];
-            app.minQuiverEditField.Value = '2';
-            
-            % Create toXEditFieldLabel_2
-            app.toXEditFieldLabel_2 = uilabel(app.VelocityVectorGroup);
-            app.toXEditFieldLabel_2.HorizontalAlignment = 'right';
-            app.toXEditFieldLabel_2.FontName = 'SansSerif';
-            app.toXEditFieldLabel_2.Enable = 'off';
-            app.toXEditFieldLabel_2.Position = [397 4 25 22];
-            app.toXEditFieldLabel_2.Text = 'to';
-            
-            % Create maxQuiverEditField
-            app.maxQuiverEditField = uieditfield(app.VelocityVectorGroup, 'text');
-            app.maxQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @maxQuiverEditFieldValueChanged, true);
-            app.maxQuiverEditField.HorizontalAlignment = 'right';
-            app.maxQuiverEditField.FontName = 'SansSerif';
-            app.maxQuiverEditField.Enable = 'off';
-            app.maxQuiverEditField.Position = [426 4 32 22];
-            app.maxQuiverEditField.Value = '5';
-            
-            % Create velocityVectorEditFieldLabel
-            app.velocityVectorEditFieldLabel = uilabel(app.VelocityVectorGroup);
-            app.velocityVectorEditFieldLabel.HorizontalAlignment = 'right';
-            app.velocityVectorEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVectorEditFieldLabel.Enable = 'off';
-            app.velocityVectorEditFieldLabel.Position = [354 72 114 22];
-            app.velocityVectorEditFieldLabel.Text = 'velocity scale (cm/s)';
-            
-            % Create minVelocityVectorEditField
-            app.minVelocityVectorEditField = uieditfield(app.VelocityVectorGroup, 'text');
-            app.minVelocityVectorEditField.ValueChangedFcn = createCallbackFcn(app, @minVelocityVectorEditFieldValueChanged, true);
-            app.minVelocityVectorEditField.HorizontalAlignment = 'right';
-            app.minVelocityVectorEditField.FontName = 'SansSerif';
-            app.minVelocityVectorEditField.Enable = 'off';
-            app.minVelocityVectorEditField.Position = [374 52 30 22];
-            app.minVelocityVectorEditField.Value = '0';
-            
-            % Create velocityVectortoEditFieldLabel
-            app.velocityVectortoEditFieldLabel = uilabel(app.VelocityVectorGroup);
-            app.velocityVectortoEditFieldLabel.HorizontalAlignment = 'right';
-            app.velocityVectortoEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVectortoEditFieldLabel.Enable = 'off';
-            app.velocityVectortoEditFieldLabel.Position = [397 52 25 22];
-            app.velocityVectortoEditFieldLabel.Text = 'to';
-            
-            % Create maxVelocityVectorEditField
-            app.maxVelocityVectorEditField = uieditfield(app.VelocityVectorGroup, 'text');
-            app.maxVelocityVectorEditField.ValueChangedFcn = createCallbackFcn(app, @maxVelocityVectorEditFieldValueChanged, true);
-            app.maxVelocityVectorEditField.HorizontalAlignment = 'right';
-            app.maxVelocityVectorEditField.FontName = 'SansSerif';
-            app.maxVelocityVectorEditField.Enable = 'off';
-            app.maxVelocityVectorEditField.Position = [426 52 32 22];
-            app.maxVelocityVectorEditField.Value = 'max';
+            app.TimeframeSpinner.Tooltip = {'shortcut ''←'' or ''→'''};
+            app.TimeframeSpinner.Position = [429 700 50 22];
             
             % Create VecPts_Label
             app.VecPts_Label = uilabel(app.VelocityVectorGroup);
@@ -4540,37 +4518,31 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VecPts.Position = [20 3 60 22];
             
             % Create SliceSpinner_2Label
-            app.SliceSpinner_2Label = uilabel(app.VelocityVectorGroup);
+            app.SliceSpinner_2Label = uilabel(app.Maps);
             app.SliceSpinner_2Label.HorizontalAlignment = 'right';
             app.SliceSpinner_2Label.FontName = 'SansSerif';
+            app.SliceSpinner_2Label.FontSize = 12;
             app.SliceSpinner_2Label.Enable = 'off';
             app.SliceSpinner_2Label.Visible = 'off';
-            app.SliceSpinner_2Label.Position = [36 27 32 22];
+            app.SliceSpinner_2Label.Position = [278 700 32 22];
             app.SliceSpinner_2Label.Text = 'slice';
             
             % Create SliceSpinner_2
-            app.SliceSpinner_2 = uispinner(app.VelocityVectorGroup);
+            app.SliceSpinner_2 = uispinner(app.Maps);
             app.SliceSpinner_2.ValueChangedFcn = createCallbackFcn(app, @SliceSpinner_2ValueChanged, true);
             app.SliceSpinner_2.FontName = 'SansSerif';
-            app.SliceSpinner_2.FontSize = 14;
+            app.SliceSpinner_2.FontSize = 12;
             app.SliceSpinner_2.Enable = 'off';
             app.SliceSpinner_2.Visible = 'off';
-            app.SliceSpinner_2.Tooltip = {'shortcut ''←'' or ''→'''};
-            app.SliceSpinner_2.Position = [20 3 60 22];
-            
-            % Create VectorType
-            app.VectorType = uilabel(app.VelocityVectorGroup);
-            app.VectorType.HorizontalAlignment = 'right';
-            app.VectorType.FontName = 'SansSerif';
-            app.VectorType.Position = [1 51 66 22];
-            app.VectorType.Text = 'Vector type';
+            app.SliceSpinner_2.Tooltip = {'shortcut ''↑'' or ''↓'''};
+            app.SliceSpinner_2.Position = [310 700 50 22];
             
             % Create VectorOptionsDropDown
-            app.VectorOptionsDropDown = uidropdown(app.VelocityVectorGroup);
+            app.VectorOptionsDropDown = uidropdown(app.Maps);
             app.VectorOptionsDropDown.Items = {'segmentation', 'slice-wise'};
             app.VectorOptionsDropDown.ValueChangedFcn = createCallbackFcn(app, @VectorOptionsDropDownValueChanged, true);
             app.VectorOptionsDropDown.FontName = 'SansSerif';
-            app.VectorOptionsDropDown.Position = [6 28 162 22];
+            app.VectorOptionsDropDown.Position = [1 700 162 22];
             app.VectorOptionsDropDown.Value = 'segmentation';
             
             % Create PeaksystoleEditFieldLabel
@@ -4597,19 +4569,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.CalculateMap.FontSize = 16;
             app.CalculateMap.Enable = 'off';
             app.CalculateMap.Tooltip = {'calculate WSS'};
-            app.CalculateMap.Position = [1036 654 145 28];
+            app.CalculateMap.Position = [1036 654 150 28];
             app.CalculateMap.Text = '(Re)Calculate Map';
-            
-            % Create SaveAnimation
-            app.SaveAnimation = uibutton(app.Maps, 'push');
-            app.SaveAnimation.ButtonPushedFcn = createCallbackFcn(app, @SaveAnimationButtonPushed, true);
-            app.SaveAnimation.IconAlignment = 'center';
-            app.SaveAnimation.FontName = 'SansSerif';
-            app.SaveAnimation.FontSize = 16;
-            app.SaveAnimation.Enable = 'off';
-            app.SaveAnimation.Tooltip = {'save animation of plots over time'};
-            app.SaveAnimation.Position = [1022 575 159 28];
-            app.SaveAnimation.Text = 'Save animation';
             
             % Create LinkplotsCheckBox
             app.LinkplotsCheckBox = uicheckbox(app.Maps);
@@ -4619,8 +4580,30 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.LinkplotsCheckBox.Text = 'Link plots';
             app.LinkplotsCheckBox.FontName = 'SansSerif';
             app.LinkplotsCheckBox.FontSize = 14;
-            app.LinkplotsCheckBox.Position = [1100 617 81 22];
+            app.LinkplotsCheckBox.Position = [1100 612 81 28];
             app.LinkplotsCheckBox.Value = true;
+            
+            % Create SaveAnimation
+            app.SaveAnimation = uibutton(app.Maps, 'push');
+            app.SaveAnimation.ButtonPushedFcn = createCallbackFcn(app, @SaveAnimationButtonPushed, true);
+            app.SaveAnimation.IconAlignment = 'center';
+            app.SaveAnimation.FontName = 'SansSerif';
+            app.SaveAnimation.FontSize = 16;
+            app.SaveAnimation.Enable = 'off';
+            app.SaveAnimation.Tooltip = {'save animation of plots over time'};
+            app.SaveAnimation.Position = [1036 570 150 28];
+            app.SaveAnimation.Text = 'Save animation';
+            
+            % Create VisOptions
+            app.VisOptions = uibutton(app.Maps, 'push');
+            app.VisOptions.ButtonPushedFcn = createCallbackFcn(app, @VisOptionsButtonPushed, true);
+            app.VisOptions.IconAlignment = 'center';
+            app.VisOptions.FontName = 'SansSerif';
+            app.VisOptions.FontSize = 16;
+            app.VisOptions.Enable = 'off';
+            app.VisOptions.Tooltip = {'open dialog for visualization settings'};
+            app.VisOptions.Position = [1036 528 150 28];
+            app.VisOptions.Text = 'Visualization options';
             
             % Create RotateLeft_2
             app.RotateLeft_2 = uibutton(app.Maps, 'push');
@@ -4699,7 +4682,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapType.Tooltip = {'select map to view'; 'currently not implemented: vorticity'};
             app.MapType.FontName = 'ZapfDingbats';
             app.MapType.FontSize = 14;
-            app.MapType.Position = [811 702 144 22];
+            app.MapType.Position = [481 700 144 22];
             app.MapType.Value = 'None';
             
             % Create flipvx

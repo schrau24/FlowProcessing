@@ -1,10 +1,8 @@
 To do:
 - write more functions for readability
-- save function in maps tab
 - save graphics/memory visualization with pre-calculated and save variables?
 - update PWV image output to match save animation
 - Dicom reading + saving
-- velocity vector density
-- options as second window to avoid obscuring images
-- eddy current additions?
+- slice-wise vecs in different orientations
 - draw region and output map value
+    - save function in maps tab

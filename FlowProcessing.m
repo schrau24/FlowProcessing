@@ -433,10 +433,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             numString_val = strsplit(numString_val);
             
             c = winter(length(textint2));
+            fontSz = round(length(textint2)/4);
             for C = 1:length(textint2)
                 Ntxt(C) = text(app.View3D_2,app.branchActual(textint2(C),2)-4,app.branchActual(textint2(C),1)-3,app.branchActual(textint2(C),3)+2,numString_val{C},...
                     'Color','k','HorizontalAlignment','right',...
-                    'FontSize',20,'FontWeight','Bold','HitTest','off','PickableParts','none');
+                    'FontSize',fontSz,'FontWeight','Bold','HitTest','off','PickableParts','none');
             end
             
             % update view angle
@@ -770,16 +771,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             currV = app.v(:,:,:,:,t);
             
-            interpFactor = 1;
+            subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
             switch app.VectorOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
                     % grab current slice
                     sl = app.SliceSpinner_2.Value;
-                    L = find(currSeg(1:interpFactor:end,1:interpFactor:end,sl));
-                    vx = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,1)/10;
-                    vy = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,2)/10;
-                    vz = -currSeg(1:interpFactor:end,1:interpFactor:end,sl).*currV(1:interpFactor:end,1:interpFactor:end,sl,3)/10;
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(currSeg,2))*app.pixdim(1),(1:interpFactor:size(currSeg,1))*app.pixdim(2), ...
+                    L = find(currSeg(1:subsample:end,1:subsample:end,sl));
+                    vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
+                    vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
+                    vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                         -10);   % cheat here and put the vel vectors at a negative location to overlay better
                     
                     img = repmat(app.MAG(:,:,sl,t),[1 1 3]);
@@ -804,6 +805,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         B = regiongrowing(B,pointColumn,pointRow);
                         
                         currL = find(B(:));
+                        currL = currL(1:subsample:end);
                         xcoor_grid = cat(1,xcoor_grid,x(currL));
                         ycoor_grid = cat(1,ycoor_grid,y(currL));
                         zcoor_grid = cat(1,zcoor_grid,z(currL));
@@ -817,6 +819,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         
                         L = cat(1,L,currL);
                     end
+                    
                     % we keep all L points now
                     L = 1:length(L);
                     
@@ -837,12 +840,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if ~app.isSegmentationLoaded
                         overLaySeg = app.segment;
                     end
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:interpFactor:size(overLaySeg,2))*app.pixdim(1),(1:interpFactor:size(overLaySeg,1))*app.pixdim(2), ...
-                        (1:interpFactor:size(overLaySeg,3))*app.pixdim(3));
-                    vx = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,1)/10;
-                    vy = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,2)/10;
-                    vz = -overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end).*currV(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end,3)/10;
-                    L = find(overLaySeg(1:interpFactor:end,1:interpFactor:end,1:interpFactor:end));
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(overLaySeg,2))*app.pixdim(1),(1:subsample:size(overLaySeg,1))*app.pixdim(2), ...
+                        (1:subsample:size(overLaySeg,3))*app.pixdim(3));
+                    vx = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,1)/10;
+                    vy = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,2)/10;
+                    vz = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,3)/10;
+                    L = find(overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end));
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
             
@@ -1504,6 +1507,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % enable intepolate button
             app.InterpolateData.Enable = 'on';
+            
+            app.ManualsegmentationupdateButton.Visible = 'on';
         end
         
         % Button pushed function: CleardataandrestartanalysisButton
@@ -3639,8 +3644,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
             end
             % reset plot limits and send changed flag
-            app.vvp_xlim = [];
-            app.vvp_ylim = [];
             app.vvp_changed = 1;
             viewVelocityVectors(app);
         end
@@ -3657,19 +3660,24 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: ManualsegmentationupdateButton
         function ManualsegmentationupdateButtonPushed(app, ~)
-            % grab current segmentations, angio and put into imtool3d
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
-            else
-                currSeg = app.aorta_seg;
-                keepSegs = zeros(size(currSeg,4),1);
-                % only edit currently selected segmentations
-                for ii = 1:size(currSeg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        keepSegs(ii) = 1;
+            if app.isSegmentationLoaded
+                % grab current segmentations, angio and put into imtool3d
+                if app.isTimeResolvedSeg
+                    currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
+                else
+                    currSeg = app.aorta_seg;
+                    keepSegs = zeros(size(currSeg,4),1);
+                    % only edit currently selected segmentations
+                    for ii = 1:size(currSeg,4)
+                        if eval(sprintf('app.mask%i.Value==1',ii))
+                            keepSegs(ii) = 1;
+                        end
                     end
+                    currSeg = currSeg(:,:,:,find(keepSegs));
                 end
-                currSeg = currSeg(:,:,:,find(keepSegs));
+            else
+                currSeg = app.segment;
+                keepSegs = 1;
             end
             
             clear tool
@@ -3680,16 +3688,20 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             waitfor(tool.getHandles.fig);
             h = tool.getTool;
-            if app.isTimeResolvedSeg
-                app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value) = h.getMaskOutput(1);
-            else
-                ctMask = 0;
-                for ii = 1:length(keepSegs)
-                    if keepSegs(ii)
-                        ctMask = ctMask+1;
-                        app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ctMask);
+            if app.isSegmentationLoaded
+                if app.isTimeResolvedSeg
+                    app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value) = h.getMaskOutput(1);
+                else
+                    ctMask = 0;
+                    for ii = 1:length(keepSegs)
+                        if keepSegs(ii)
+                            ctMask = ctMask+1;
+                            app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ctMask);
+                        end
                     end
                 end
+            else
+                app.segment = h.getMaskOutput(1);
             end
             
             View3DSegmentation(app);

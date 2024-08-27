@@ -18,6 +18,8 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         minMapEditField                 matlab.ui.control.EditField
         MapEditFieldLabel               matlab.ui.control.Label
         VectorPlotPanel                 matlab.ui.container.Panel
+        VectorsubsampleSlider           matlab.ui.control.Slider
+        VectorsubsampleLabel            matlab.ui.control.Label
         backgroundDropDown              matlab.ui.control.DropDown
         backgroundDropDownLabel         matlab.ui.control.Label
         TextcolorDropDown               matlab.ui.control.DropDown
@@ -30,7 +32,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         maxQuiverEditField              matlab.ui.control.EditField
         toXEditFieldLabel               matlab.ui.control.Label
         minQuiverEditField              matlab.ui.control.EditField
-        quiverscaleEditFieldLabel       matlab.ui.control.Label
+        vectorscaleLabel                matlab.ui.control.Label
         maxVelocityVectorEditField      matlab.ui.control.EditField
         velocityVectortoEditFieldLabel  matlab.ui.control.Label
         minVelocityVectorEditField      matlab.ui.control.EditField
@@ -93,6 +95,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             viewVelocityVectors(app.CallingApp);
         end
 
+        % Value changed function: VectorsubsampleSlider
+        function VectorsubsampleSliderValueChanged(app, event)
+             viewVelocityVectors(app.CallingApp);           
+        end
+        
         % Value changed function: LocationDropDown
         function LocationDropDownValueChanged(app, event)
             viewVelocityVectors(app.CallingApp);
@@ -266,7 +273,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create VisOptionsDialogUIFigure and hide until all components are created
             app.VisOptionsDialogUIFigure = uifigure('Visible', 'off');
-            app.VisOptionsDialogUIFigure.Position = [600 100 369 248];
+            app.VisOptionsDialogUIFigure.Position = [600 100 369 288];
             app.VisOptionsDialogUIFigure.Name = 'Options';
             app.VisOptionsDialogUIFigure.CloseRequestFcn = createCallbackFcn(app, @VisOptionsDialogCloseRequest, true);
 
@@ -278,13 +285,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VectorPlotPanel.FontName = 'SansSerif';
             app.VectorPlotPanel.FontWeight = 'bold';
             app.VectorPlotPanel.FontSize = 16;
-            app.VectorPlotPanel.Position = [1 1 185 248];
+            app.VectorPlotPanel.Position = [1 1 185 288];
 
             % Create velocityVectorEditFieldLabel
             app.velocityVectorEditFieldLabel = uilabel(app.VectorPlotPanel);
             app.velocityVectorEditFieldLabel.HorizontalAlignment = 'right';
             app.velocityVectorEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVectorEditFieldLabel.Position = [32 205 114 22];
+            app.velocityVectorEditFieldLabel.Position = [32 245 114 22];
             app.velocityVectorEditFieldLabel.Text = 'velocity scale (cm/s)';
 
             % Create minVelocityVectorEditField
@@ -292,14 +299,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minVelocityVectorEditField.ValueChangedFcn = createCallbackFcn(app, @minVelocityVectorEditFieldValueChanged, true);
             app.minVelocityVectorEditField.HorizontalAlignment = 'right';
             app.minVelocityVectorEditField.FontName = 'SansSerif';
-            app.minVelocityVectorEditField.Position = [43 184 30 22];
+            app.minVelocityVectorEditField.Position = [43 224 30 22];
             app.minVelocityVectorEditField.Value = '0';
 
             % Create velocityVectortoEditFieldLabel
             app.velocityVectortoEditFieldLabel = uilabel(app.VectorPlotPanel);
             app.velocityVectortoEditFieldLabel.HorizontalAlignment = 'center';
             app.velocityVectortoEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVectortoEditFieldLabel.Position = [73 184 25 22];
+            app.velocityVectortoEditFieldLabel.Position = [73 224 25 22];
             app.velocityVectortoEditFieldLabel.Text = 'to';
 
             % Create maxVelocityVectorEditField
@@ -307,29 +314,29 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxVelocityVectorEditField.ValueChangedFcn = createCallbackFcn(app, @maxVelocityVectorEditFieldValueChanged, true);
             app.maxVelocityVectorEditField.HorizontalAlignment = 'right';
             app.maxVelocityVectorEditField.FontName = 'SansSerif';
-            app.maxVelocityVectorEditField.Position = [99 184 37 22];
+            app.maxVelocityVectorEditField.Position = [99 224 37 22];
             app.maxVelocityVectorEditField.Value = 'max';
 
-            % Create quiverscaleEditFieldLabel
-            app.quiverscaleEditFieldLabel = uilabel(app.VectorPlotPanel);
-            app.quiverscaleEditFieldLabel.HorizontalAlignment = 'right';
-            app.quiverscaleEditFieldLabel.FontName = 'SansSerif';
-            app.quiverscaleEditFieldLabel.Position = [58 161 70 22];
-            app.quiverscaleEditFieldLabel.Text = 'quiver scale';
+            % Create vectorscaleLabel
+            app.vectorscaleLabel = uilabel(app.VectorPlotPanel);
+            app.vectorscaleLabel.HorizontalAlignment = 'right';
+            app.vectorscaleLabel.FontName = 'SansSerif';
+            app.vectorscaleLabel.Position = [52 201 70 22];
+            app.vectorscaleLabel.Text = 'vector scale';
 
             % Create minQuiverEditField
             app.minQuiverEditField = uieditfield(app.VectorPlotPanel, 'text');
             app.minQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @minQuiverEditFieldValueChanged, true);
             app.minQuiverEditField.HorizontalAlignment = 'right';
             app.minQuiverEditField.FontName = 'SansSerif';
-            app.minQuiverEditField.Position = [43 140 30 22];
+            app.minQuiverEditField.Position = [43 180 30 22];
             app.minQuiverEditField.Value = '2';
 
             % Create toXEditFieldLabel
             app.toXEditFieldLabel = uilabel(app.VectorPlotPanel);
             app.toXEditFieldLabel.HorizontalAlignment = 'center';
             app.toXEditFieldLabel.FontName = 'SansSerif';
-            app.toXEditFieldLabel.Position = [73 140 25 22];
+            app.toXEditFieldLabel.Position = [73 180 25 22];
             app.toXEditFieldLabel.Text = 'to';
 
             % Create maxQuiverEditField
@@ -337,21 +344,39 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @maxQuiverEditFieldValueChanged, true);
             app.maxQuiverEditField.HorizontalAlignment = 'right';
             app.maxQuiverEditField.FontName = 'SansSerif';
-            app.maxQuiverEditField.Position = [99 140 37 22];
+            app.maxQuiverEditField.Position = [99 180 37 22];
             app.maxQuiverEditField.Value = '10';
+            
+            % Create VectorsubsampleLabel
+            app.VectorsubsampleLabel = uilabel(app.VectorPlotPanel);
+            app.VectorsubsampleLabel.HorizontalAlignment = 'right';
+            app.VectorsubsampleLabel.WordWrap = 'on';
+            app.VectorsubsampleLabel.FontName = 'SansSerif';
+            app.VectorsubsampleLabel.Position = [3 128 59 43];
+            app.VectorsubsampleLabel.Text = 'Vector subsample';
+
+            % Create VectorsubsampleSlider
+            app.VectorsubsampleSlider = uislider(app.VectorPlotPanel);
+            app.VectorsubsampleSlider.ValueChangedFcn = createCallbackFcn(app, @VectorsubsampleSliderValueChanged, true);
+            app.VectorsubsampleSlider.FontName = 'SansSerif';
+            app.VectorsubsampleSlider.Limits = [1 5];
+            app.VectorsubsampleSlider.MajorTicks = [1 2 3 4 5];
+            app.VectorsubsampleSlider.MinorTicks = [];
+            app.VectorsubsampleSlider.Position = [71 158 101 3];
+            app.VectorsubsampleSlider.Value = 1;
 
             % Create velocityVectorEditFieldLabel_2
             app.velocityVectorEditFieldLabel_2 = uilabel(app.VectorPlotPanel);
             app.velocityVectorEditFieldLabel_2.HorizontalAlignment = 'right';
             app.velocityVectorEditFieldLabel_2.FontName = 'SansSerif';
             app.velocityVectorEditFieldLabel_2.FontWeight = 'bold';
-            app.velocityVectorEditFieldLabel_2.Position = [62 54 54 22];
+            app.velocityVectorEditFieldLabel_2.Position = [62 52 54 22];
             app.velocityVectorEditFieldLabel_2.Text = 'colorbar';
 
             % Create LocationDropDownLabel
             app.LocationDropDownLabel = uilabel(app.VectorPlotPanel);
             app.LocationDropDownLabel.FontName = 'SansSerif';
-            app.LocationDropDownLabel.Position = [4 31 65 22];
+            app.LocationDropDownLabel.Position = [4 29 65 22];
             app.LocationDropDownLabel.Text = 'Location';
 
             % Create LocationDropDown
@@ -359,13 +384,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.LocationDropDown.Items = {'bottom-left', 'mid-left', 'upper-left', 'bottom-right', 'mid-right', 'upper-right'};
             app.LocationDropDown.ValueChangedFcn = createCallbackFcn(app, @LocationDropDownValueChanged, true);
             app.LocationDropDown.FontName = 'SansSerif';
-            app.LocationDropDown.Position = [73 31 110 22];
+            app.LocationDropDown.Position = [73 29 110 22];
             app.LocationDropDown.Value = 'bottom-left';
 
             % Create ColormapDropDownLabel
             app.ColormapDropDownLabel = uilabel(app.VectorPlotPanel);
             app.ColormapDropDownLabel.FontName = 'SansSerif';
-            app.ColormapDropDownLabel.Position = [4 5 65 22];
+            app.ColormapDropDownLabel.Position = [4 3 65 22];
             app.ColormapDropDownLabel.Text = 'Colormap';
 
             % Create ColormapDropDown
@@ -373,13 +398,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.ColormapDropDown.Items = {'jet', 'parula', 'hot', 'spring', 'summer', 'autumn', 'winter', 'gray'};
             app.ColormapDropDown.ValueChangedFcn = createCallbackFcn(app, @ColormapDropDownValueChanged, true);
             app.ColormapDropDown.FontName = 'SansSerif';
-            app.ColormapDropDown.Position = [73 5 110 22];
+            app.ColormapDropDown.Position = [73 3 110 22];
             app.ColormapDropDown.Value = 'jet';
 
             % Create TextcolorDropDownLabel
             app.TextcolorDropDownLabel = uilabel(app.VectorPlotPanel);
             app.TextcolorDropDownLabel.FontName = 'SansSerif';
-            app.TextcolorDropDownLabel.Position = [4 74 65 22];
+            app.TextcolorDropDownLabel.Position = [4 72 65 22];
             app.TextcolorDropDownLabel.Text = 'Text color';
 
             % Create TextcolorDropDown
@@ -387,13 +412,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.TextcolorDropDown.Items = {'black', 'white'};
             app.TextcolorDropDown.ValueChangedFcn = createCallbackFcn(app, @TextcolorDropDownValueChanged, true);
             app.TextcolorDropDown.FontName = 'SansSerif';
-            app.TextcolorDropDown.Position = [73 74 110 22];
+            app.TextcolorDropDown.Position = [73 72 110 22];
             app.TextcolorDropDown.Value = 'black';
 
             % Create backgroundDropDownLabel
             app.backgroundDropDownLabel = uilabel(app.VectorPlotPanel);
             app.backgroundDropDownLabel.FontName = 'SansSerif';
-            app.backgroundDropDownLabel.Position = [4 100 68 22];
+            app.backgroundDropDownLabel.Position = [4 98 68 22];
             app.backgroundDropDownLabel.Text = 'background';
 
             % Create backgroundDropDown
@@ -401,7 +426,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.backgroundDropDown.Items = {'black', 'white'};
             app.backgroundDropDown.ValueChangedFcn = createCallbackFcn(app, @backgroundDropDownValueChanged, true);
             app.backgroundDropDown.FontName = 'SansSerif';
-            app.backgroundDropDown.Position = [73 100 110 22];
+            app.backgroundDropDown.Position = [73 98 110 22];
             app.backgroundDropDown.Value = 'white';
 
             % Create MapPlotPanel
@@ -412,13 +437,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.MapPlotPanel.FontName = 'SansSerif';
             app.MapPlotPanel.FontWeight = 'bold';
             app.MapPlotPanel.FontSize = 16;
-            app.MapPlotPanel.Position = [185 1 185 248];
+            app.MapPlotPanel.Position = [185 1 185 288];
 
             % Create MapEditFieldLabel
             app.MapEditFieldLabel = uilabel(app.MapPlotPanel);
             app.MapEditFieldLabel.HorizontalAlignment = 'center';
             app.MapEditFieldLabel.FontName = 'SansSerif';
-            app.MapEditFieldLabel.Position = [46 205 93 22];
+            app.MapEditFieldLabel.Position = [46 245 93 22];
             app.MapEditFieldLabel.Text = 'map scale';
 
             % Create minMapEditField
@@ -426,14 +451,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minMapEditField.ValueChangedFcn = createCallbackFcn(app, @minMapEditFieldValueChanged, true);
             app.minMapEditField.HorizontalAlignment = 'right';
             app.minMapEditField.FontName = 'SansSerif';
-            app.minMapEditField.Position = [46 184 30 22];
+            app.minMapEditField.Position = [46 224 30 22];
             app.minMapEditField.Value = '0';
 
             % Create MaptoEditFieldLabel
             app.MaptoEditFieldLabel = uilabel(app.MapPlotPanel);
             app.MaptoEditFieldLabel.HorizontalAlignment = 'center';
             app.MaptoEditFieldLabel.FontName = 'SansSerif';
-            app.MaptoEditFieldLabel.Position = [76 184 25 22];
+            app.MaptoEditFieldLabel.Position = [76 224 25 22];
             app.MaptoEditFieldLabel.Text = 'to';
 
             % Create maxMapEditField
@@ -441,7 +466,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxMapEditField.ValueChangedFcn = createCallbackFcn(app, @maxMapEditFieldValueChanged, true);
             app.maxMapEditField.HorizontalAlignment = 'right';
             app.maxMapEditField.FontName = 'SansSerif';
-            app.maxMapEditField.Position = [102 184 37 22];
+            app.maxMapEditField.Position = [102 224 37 22];
             app.maxMapEditField.Value = 'max';
 
             % Create MapColorbarEditFieldLabel

@@ -16,6 +16,11 @@ This software builds from previous work, and the use of this tool should be asso
   a. [Installation](#installation)\
   b. [Data needed](#data-needed)\
   c. [Starting the app](#starting-the-app)
+3. [Loading and Preprocessing Tab](#loading-preprocessing)\
+  a. [Load Data](#load-data)\
+  b. [Load Segmentation](#load-segmentation)\
+    i. [Manual segmentation update](#manual-segmentation-update)\
+  c. [Crop Data](#crop-data)
 
 ## Getting started  <a name="getting-started"></a>
 ### Installation  <a name="installation"></a>
@@ -36,3 +41,27 @@ SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
 Within Matlab, navigate to the folder containing FlowProcessing.mlapp. Type this into your command window:\
 `FlowProcessing`
 
+## Loading and Preprocessing Tab  <a name="loading-preprocessing"></a>
+### Load Data  <a name="load-data"></a>
+<img src="img2.png?raw=true" width="450px">
+
+Click `Load 4D Flow Data` \
+You will be prompted to find one of the reconstructed .rec files in order to locate the correct data folder.
+
+After loading completion, the tool 4D flow acquisition image information is displayed, as well as axial, coronal, and sagittal maximum intensity projections using a calculated angiographic image. An automated thresh-holding of the angiogram is used to display a 3D isosurface within the field of view:
+<img src="img3.png?raw=true" width="450px">
+
+### Load Segmentation  <a name="load-segmentation"></a>
+Using the `Load Segmentation` button, pre-segmented PC angiograms can be loaded in one of three formats: 
+- dicoms, .dcm suffix
+- nifti, .nii suffix
+- nifti, .nii.gz suffix
+<img src="img4.png?raw=true" width="450px">
+
+#### Manual segmentation update  <a name="manual-segmentation-update"></a>
+The user can manually update the thresh-holded or manually segmentated isosurface with the `Manual segmentation update` button.\
+An external 3D viewer, [imtool3d](https://github.com/tanguyduval/imtool3D_td), loads the current segmentation and angiogram:
+<img src="img5.png?raw=true" width="600px">
+
+### Crop Data  <a name="crop-data"></a>
+Cropping of data to include only the vessels of interest is recommended and can be performed using the individual `Crop button` above each MIP.

@@ -11,7 +11,7 @@ PARRECFILE = fullfile(directory,[fBase, '1.rec']);
 [IMG,h1] = readrec_V4_2(PARRECFILE);
 IMG = single(IMG);
 % this is the readout direction
-vx = squeeze(IMG(:,:,:,:,:,2,:));  
+vx = squeeze(IMG(:,:,:,:,:,2,:));
 mag1 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
 PARRECFILE = fullfile(directory,[fBase, '2.rec']);
@@ -60,16 +60,17 @@ switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         ori.vzlabel = 'F-H';
     case 2
         ori.label = 'sagittal';
-        vx = -vx;
-        vz = -vz; 
         if strcmp('AP',phasedir)
             ori.vxlabel = 'F-H';
             ori.vylabel = 'A-P';
         else    % phasedir == 'FH'
             ori.vxlabel = 'A-P';
             ori.vylabel = 'F-H';
+            tmp = vx; vx = vy; vy = tmp; clear tmp;
         end
         ori.vzlabel = 'R-L';
+        vx = -vx;
+        vz = -vz;
     case 3
         ori.label = 'coronal';
         vx = -vx;

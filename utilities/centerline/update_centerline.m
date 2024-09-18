@@ -81,6 +81,7 @@ while ~choice
     figure(fig);
     title('Step 3: Press Enter to recalculate')
     waitforbuttonpress;
+    data = padarray(data,[3 3 3],'both');
     branchActual_new = calculateCenterline(data,start_new,end_new,branchActual_orig);
     txtbox2.String{5} = sprintf('original centerline length = %i points',size(branchActual_orig,1));
     

@@ -44,24 +44,24 @@ function path = calculateCenterline(binaryVolume, startPoint, endPoint, original
         % Add the next point to the path
         path = [path; nextPoint];
         
-%         % plotting help
-%         % create a new figure, half-screen
-%         fig = figure(199); clf
-%         fig.Units = 'normalized';
-%         fig.Position = [0.0005    0.0380    0.4990    0.8833];
-%         
-%         hpatch = patch(isosurface(binaryVolume,0.05),'FaceAlpha',0.25);
-%         set(hpatch, 'FaceColor', 'k', 'EdgeColor', 'none');
-%         
-%         lighting( 'gouraud');
-%         lightangle( 0,0);
-%         axis('off','tight')
-%         view( [0 0 -1]);
-%         daspect([1 1 1]);
-%         % % overlay current centerline
-%         hline2 = line(path(:,2), path(:,1), path(:,3),...
-%             'Color','g','Marker','.','MarkerSize',12,'LineStyle','none','PickableParts','none');
-%         pause
+        % plotting help
+        % create a new figure, half-screen
+        fig = figure(199); clf
+        fig.Units = 'normalized';
+        fig.Position = [0.0005    0.0380    0.4990    0.8833];
+        
+        hpatch = patch(isosurface(binaryVolume,0.05),'FaceAlpha',0.25);
+        set(hpatch, 'FaceColor', 'k', 'EdgeColor', 'none');
+        
+        lighting( 'gouraud');
+        lightangle( 0,0);
+        axis('off','tight')
+        view( [0 0 -1]);
+        daspect([1 1 1]);
+        % % overlay current centerline
+        hline2 = line(path(:,2), path(:,1), path(:,3),...
+            'Color','g','Marker','.','MarkerSize',12,'LineStyle','none','PickableParts','none');
+        pause
         
         % Update current and previous points
         previousPoint = currentPoint;

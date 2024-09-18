@@ -285,7 +285,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             cla(app.View3D_2);
             
             if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
+                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
             else
                 currSeg = zeros(size(app.aorta_seg,1:3));
                 % only use segmentations that were selected in first tab
@@ -347,7 +347,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function view3D_wParams(app)
             
             if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
+                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
             else
                 currSeg = zeros(size(app.aorta_seg,1:3));
                 % only use segmentations that were selected in first tab
@@ -404,7 +404,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             cbar = colorbar(app.View3D_2);
             caxis(app.View3D_2,[0 0.95*max(cdata)])
             set(get(cbar,'xlabel'),'string',axisText,'fontsize',16,'Color','black');
-            set(cbar,'FontSize',16,'color','black','Location','west');
+            set(cbar,'FontSize',14,'color','black','Location','west');
+            pos = get(cbar,'position');
+            pos = [0.01 0.01 pos(3) 0.33];
+            set(cbar,'position',pos);
             
             % make it look good
             axis(app.View3D_2, 'vis3d')
@@ -433,9 +436,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             numString_val = strsplit(numString_val);
             
             c = winter(length(textint2));
-            fontSz = round(length(textint2)/4);
+            fontSz = 14;round(length(textint2)/2);
             for C = 1:length(textint2)
-                Ntxt(C) = text(app.View3D_2,app.branchActual(textint2(C),2)-4,app.branchActual(textint2(C),1)-3,app.branchActual(textint2(C),3)+2,numString_val{C},...
+                Ntxt(C) = text(app.View3D_2,app.branchActual(textint2(C),2)-2,app.branchActual(textint2(C),1),app.branchActual(textint2(C),3),numString_val{C},...
                     'Color','k','HorizontalAlignment','right',...
                     'FontSize',fontSz,'FontWeight','Bold','HitTest','off','PickableParts','none');
             end
@@ -550,13 +553,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 c = prism(size(app.aorta_seg,4));
                 ct = 0;
                 if app.isSegmentationLoaded
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            ct = ct+1;
-                            hold(gca,'on');
-                            h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
-                            set(h,'AlphaData',img2(:,:,ct))
-                            hold(gca,'off');
+                    if app.isTimeResolvedSeg
+                        ct = ct+1;
+                        hold(gca,'on');
+                        h = imagesc(cat(3,c(1,1)*ones(size(img)),c(1,2)*ones(size(img)),c(1,3)*ones(size(img))));
+                        set(h,'AlphaData',img2(:,:,ct))
+                        hold(gca,'off');
+                    else
+                        for ii = 1:size(app.aorta_seg,4)
+                            if eval(sprintf('app.mask%i.Value==1',ii))
+                                ct = ct+1;
+                                hold(gca,'on');
+                                h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
+                                set(h,'AlphaData',img2(:,:,ct))
+                                hold(gca,'off');
+                            end
                         end
                     end
                 end
@@ -577,13 +588,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 colormap('gray')
                 ct = 0;
                 if app.isSegmentationLoaded
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            ct = ct+1;
-                            hold(gca,'on');
-                            h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
-                            set(h,'AlphaData',img2(:,:,ct).*tmp_mask)
-                            hold(gca,'off');
+                    if app.isTimeResolvedSeg
+                        ct = ct+1;
+                        hold(gca,'on');
+                        h = imagesc(cat(3,c(1,1)*ones(size(img)),c(1,2)*ones(size(img)),c(1,3)*ones(size(img))));
+                        set(h,'AlphaData',img2(:,:,ct))
+                        hold(gca,'off');
+                    else
+                        for ii = 1:size(app.aorta_seg,4)
+                            if eval(sprintf('app.mask%i.Value==1',ii))
+                                ct = ct+1;
+                                hold(gca,'on');
+                                h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
+                                set(h,'AlphaData',img2(:,:,ct).*tmp_mask)
+                                hold(gca,'off');
+                            end
                         end
                     end
                 end
@@ -1079,6 +1098,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         function plotVelocities(app)
             if app.isTimeResolvedSeg
+                t = app.TimeframeSpinner_3.Value;
                 currSeg = app.aorta_seg(:,:,:,t);
             else
                 currSeg = zeros(size(app.aorta_seg,1:3));
@@ -1558,6 +1578,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
                 app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
+                if size(app.v,1) ~= size(app.aorta_seg,1)
+                    app.aorta_seg = permute(app.aorta_seg,[2 1 3]); % .nii need permutation along x/y
+                end
             else    % the files are still dicoms but not with a dicom ending?
                 files = dir([app.segDirectory '/*IM*']);
                 % reset the aorta segmentation
@@ -1986,9 +2009,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                         if ~app.isSegmentationLoaded
                             currSeg = app.segment;
                         end
-                    end
-                    for j = 1:app.nframes
-                        aortaSeg_timeResolved(:,:,:,j) = currSeg;
+                        for j = 1:app.nframes
+                            aortaSeg_timeResolved(:,:,:,j) = currSeg;
+                        end
                     end
                     
                     % Calculate flow over whole aorta
@@ -3070,7 +3093,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white');
                 
                 % Turn image into indexed image (the gif format needs this)
-                [imind,cm] = rgb2ind(im,256);
+                [imind,cm] = rgb2ind(im(1:673,:,:),256);
                 
                 delay = 2*app.timeres/1000;
                 if t == 1

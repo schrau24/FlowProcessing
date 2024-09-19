@@ -22,4 +22,7 @@ SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
 
 **Getting Started:**
 Within Matlab, navigate to the folder containing FlowProcessing.mlapp. Type this into your command window:
-FlowProcessing
+`FlowProcessing`
+
+**User manual:**
+For full explanation of the tool functionality, please refer to the markdown [FlowProcessing User Manual](utilities/doc/FlowProcessing_User_Manual.md)

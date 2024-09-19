@@ -100,7 +100,7 @@ Clicking the `Maps` button opens the [Maps tab](#maps-tab), and generates an ini
 #### Pulse Wave Velocity <a name="pulse-wave-velocity"></a>
 Clicking the `Pulse Wave Velocity` button opens the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab). The current segmentation is used to extract centerlines for all vascular branches. The initial view shows these branches in 3D with their corresponding branch numbers:
 
-<img src="img7.png?raw=true" width="600px">
+<img src="img7.png?raw=true" width="150px">
 
 ## Velocity Unwrapping Tab  <a name="velocity-unwrapping-tab"></a>
 Velocity unwrapping can be performed in three ways:

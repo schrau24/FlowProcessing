@@ -80,7 +80,10 @@ Cropping of data to include only the vessels of interest is recommended and can 
 
 ### Corrections  <a name="corrections"></a>
 #### Velocity Unwrapping <a name="velocity-unwrapping"></a>
-Clicking the `Velocity Unwrapping` button opens the [Velocity Unwrapping tab](#velocity-unwrapping-tab)
+Clicking the `Velocity Unwrapping` button opens the [Velocity Unwrapping tab](#velocity-unwrapping-tab), and generates an initial display of 3 velocity directions within the current segmentation, per slice and time frame:
+
+<img src="img8.png?raw=true" width="600px">
+
 #### Divergence Free <a name="divergence-free"></a>
 Clicking the `Divergence Free` button automatically performs a divergence-free wavelet denoising on the 4D flow velocity field within the current segmentation. This denoising code was adapted from open source software:
 [F. Ong et al. "Robust 4D flow denoising using divergence-free wavelet transform" MRM 2014](https://onlinelibrary.wiley.com/doi/full/10.1002/mrm.25176)\
@@ -88,11 +91,17 @@ original code is [here](https://frankong.com/)
 
 ### Processing  <a name="processing"></a>
 #### Maps <a name="maps"></a>
-Clicking the `Maps` button opens the [Maps tab](#maps-tab)
+Clicking the `Maps` button opens the [Maps tab](#maps-tab), and generates an initial view of 3D velocity vectors within the segmentation as well as an options dialog for viewing:
+
+<img src="img6.png?raw=true" width="600px">
+
 #### Pulse Wave Velocity <a name="pulse-wave-velocity"></a>
-Clicking the `Pulse Wave Velocity` button opens the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab)
+Clicking the `Pulse Wave Velocity` button opens the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab). The current segmentation is used to extract centerlines for all vascular branches. The initial view shows these branches in 3D with their corresponding branch numbers:
+
+<img src="img7.png?raw=true" width="600px">
 
 ## Velocity Unwrapping Tab  <a name="velocity-unwrapping-tab"></a>
+
 
 ## Maps Tab  <a name="maps-tab"></a>
 

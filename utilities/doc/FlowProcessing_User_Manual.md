@@ -116,6 +116,8 @@ The left panel displays 3D velocity vectors in one of 3 options:
 - 'slice-wise': vectors within a single slice are overlaid on the magnitude image
 - 'centerline contours': vectors from the centerline contours are displayed. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option
 
+<img src="vecs.png?raw=true" width="600px">
+
 The right panel allows for visualization of several maps derived for the 4D flow data:
 - [wall shear stress](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4329118/): needs to be calculated using the `(Re)Calculate Map' button, result is WSS over whole 3D isosurface
 - peak velocity: projected through the current slice orientation

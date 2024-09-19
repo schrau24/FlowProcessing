@@ -29,7 +29,11 @@ This software builds from previous work, and the use of this tool should be asso
       2. [Pulse Wave Velocity](#pulse-wave-velocity)
 4. [Velocity Unwrapping tab](#velocity-unwrapping-tab)
 5. [Maps tab](#maps-tab)
+      1. [Save animation](#save-animation)
 6. [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab)
+      1. [Flow results](#flow-results)
+      2. [PWV calculation](#pwv-calculation)
+      3. [Save results](#save)
 
 ## Getting started  <a name="getting-started"></a>
 ### Installation  <a name="installation"></a>
@@ -85,9 +89,7 @@ Clicking the `Velocity Unwrapping` button opens the [Velocity Unwrapping tab](#v
 <img src="img8.png?raw=true" width="600px">
 
 #### Divergence Free <a name="divergence-free"></a>
-Clicking the `Divergence Free` button automatically performs a divergence-free wavelet denoising on the 4D flow velocity field within the current segmentation. This denoising code was adapted from open source software:
-[F. Ong et al. "Robust 4D flow denoising using divergence-free wavelet transform" MRM 2014](https://onlinelibrary.wiley.com/doi/full/10.1002/mrm.25176)\
-original code is [here](https://frankong.com/)
+Clicking the `Divergence Free` button automatically performs a [divergence-free wavelet denoising](https://onlinelibrary.wiley.com/doi/full/10.1002/mrm.25176) on the 4D flow velocity field within the current segmentation. This denoising code was adapted from open source [software](https://frankong.com/)
 
 ### Processing  <a name="processing"></a>
 #### Maps <a name="maps"></a>
@@ -101,9 +103,54 @@ Clicking the `Pulse Wave Velocity` button opens the [Flow and Pulse Wave Velocit
 <img src="img7.png?raw=true" width="600px">
 
 ## Velocity Unwrapping Tab  <a name="velocity-unwrapping-tab"></a>
-
+Velocity unwrapping can be performed in three ways:
+- (automatic) [Laplacian unwrapping](https://onlinelibrary.wiley.com/doi/10.1002/jmri.25045): this is recommended as a first step
+- (semi-automatic) using the `Automatic unwrap slice`: assumes previous time frame in current slice is not wrapped, and identifies pixels that are wrapped in the current frame automatically
+- Manual unwrap: if `Unwrap manually` checkbox is on, clicking in the corresponding velocity direction will manually unwrap the selected pixel
 
 ## Maps Tab  <a name="maps-tab"></a>
+This tab is used for visualization purposes, offering both vectors and calculated maps.
+
+The left panel displays 3D velocity vectors in one of 3 options:
+- 'segmentation': vectors are displayed over the whole 3D isosurface
+- 'slice-wise': vectors within a single slice are overlaid on the magnitude image
+- 'centerline contours': vectors from the centerline contours are displayed. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option
+
+The right panel allows for visualization of several maps derived for the 4D flow data:
+- [wall shear stress](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4329118/): needs to be calculated using the `(Re)Calculate Map' button, result is WSS over whole 3D isosurface
+- peak velocity: projected through the current slice orientation
+- mean velocity: projected through the current slice orientation
+- kinetic energy: projected through the current slice orientation
+- [energy loss](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/): projected through the current slice orientation
+
+<img src="maps.png?raw=true" width="900px">
+
+### Save animation  <a name="save-animation"></a>
+Clicking the `Save animation` button saves a corresponding .gif of the velocity vectors and selected map (if applicable).
 
 ## Flow and Pulse Wave Velocity Tab  <a name="flow-and-pulse-wave-velocity-tab"></a>
+To segment the vessel of interest, individual branches need to be selected. Input the corresponding branch numbers in Set branches for vessel, adding or removing branches when necessary. Add branches from most distal (downstream) to most proximal (upstream). 
 
+Then click `Check centerline, calculate flow`. At each centerline point, an orthogonal cross section is calculated (using the norm of the centerline). Flow is calculated within each cross section over all cardiac time frames. Resulting cross section segmentations are displayed for certain distances along the vessel for visual inspection:
+
+<img src="img9.png?raw=true" width="450px">
+
+### Flow results  <a name="flow-results"></a>
+Resulting flow waveforms and values are shown for each centerline point. Subsets of points can be selected and shown using the PWV Points input and `Examine flow waveforms` button.
+
+### PWV calculation  <a name="pwv-calculation"></a>
+For the subset of PWV points selected, PWV can be calculated using the `Calculate PWV` button. This calculation will use the dropdown menu selected calculation method. The following is an overview of available methods:
+- [Wavelet](https://jcmr-online.biomedcentral.com/articles/10.1186/s12968-015-0164-7): wavelet cross-spectrum analysis to find waveform delays
+- [XCorr](https://pubmed.ncbi.nlm.nih.gov/18504758/): cross correlation to find waveform delays
+- [Maximum likelihood](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8504412/): best fit of a model of a velocity waveform and phase shifts depending on vascular depth and PWV as described in Björnfot et al.
+- [Jarvis XCorr](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9387532/): cross correlation with mean/median values and 4 mm spacing as described in Jarvis et al.
+
+### Save  <a name="save"></a>
+Resulting flow and pulse wave velocity can be saved via the `Save` button. This will create a 'PWV_results' folder and the following outputs:
+- an .xlsx spreadsheet with the calculated pulse wave velocity, all flow waveforms, velocity waveforms, and area waveforms over PWV points
+- a Matlab .mat file with a 'results' struct containing scan information and outputs listed above
+- a screenshot of the Flow and Pulse Wave Velocity tab
+
+Below is an example screenshot:
+
+<img src="img10.png?raw=true" width="600px">

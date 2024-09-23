@@ -125,6 +125,7 @@ The right panel allows for visualization of several maps derived for the 4D flow
 - mean velocity: projected through the current slice orientation
 - kinetic energy: projected through the current slice orientation
 - [energy loss](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/): projected through the current slice orientation
+- [vorticity](https://www.sciencedirect.com/science/article/pii/S1936878X23001493#bib21): projected through the current slice orientation
 
 <img src="maps.png?raw=true" width="900px">
 

@@ -2,7 +2,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
     
     % Properties that correspond to app components
     properties (Access = public)
-        VisOptionsDialogUIFigure                        matlab.ui.Figure
+        VisOptionsDialogUIFigure        matlab.ui.Figure
         MapPlotPanel                    matlab.ui.container.Panel
         backgroundDropDown_2            matlab.ui.control.DropDown
         backgroundDropDown_2Label       matlab.ui.control.Label
@@ -126,20 +126,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
         
         % Value changed function: maxMapEditField
@@ -148,20 +146,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
         
         % Value changed function: LocationDropDown_2
@@ -170,20 +166,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
         
         % Value changed function: ColormapDropDown_2
@@ -192,20 +186,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
         
         % Value changed function: TextcolorDropDown_2
@@ -214,20 +206,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
         
         % Value changed function: backgroundDropDown_2
@@ -236,20 +226,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'None'
                 case 'Wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                    viewWSS(app.CallingApp);
                 case 'Peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewPeakVelocity(app.CallingApp);
                 case 'Mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    viewMeanVelocity(app.CallingApp);
                 case 'Kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (mJ)';
-                    viewKE(app.CallingApp);
+                    app.MapEditFieldLabel.Text = 'KE (μJ)';
                 case 'Energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                    viewEL(app.CallingApp);
+                case 'Vorticity'
+                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
         end
     end
     
@@ -487,7 +475,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             
             % Create ColormapDropDown_2
             app.ColormapDropDown_2 = uidropdown(app.MapPlotPanel);
-            app.ColormapDropDown_2.Items = {'jet', 'parula', 'hot', 'spring', 'summer', 'autumn', 'winter', 'gray'};
+            app.ColormapDropDown_2.Items = {'jet', 'parula', 'hot', 'spring', 'summer', 'autumn', 'winter', 'gray','inverse jet'};
             app.ColormapDropDown_2.ValueChangedFcn = createCallbackFcn(app, @ColormapDropDown_2ValueChanged, true);
             app.ColormapDropDown_2.FontName = 'SansSerif';
             app.ColormapDropDown_2.Position = [74 5 110 22];
@@ -532,18 +520,31 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Construct app
         function app = VisOptionsDialog(varargin)
             
-            % Create VisOptionsDialogUIFigure and components
-            createComponents(app)
+            runningApp = getRunningApp(app);
             
-            % Register the app with App Designer
-            registerApp(app, app.VisOptionsDialogUIFigure)
-            
-            % Execute the startup function
-            runStartupFcn(app, @(app)StartupFcn(app, varargin{:}))
+            % Check for running singleton app
+            if isempty(runningApp)
+                
+                % Create VisOptionsDialogUIFigure and components
+                createComponents(app)
+                
+                % Register the app with App Designer
+                registerApp(app, app.VisOptionsDialogUIFigure)
+                
+                % Execute the startup function
+                runStartupFcn(app, @(app)StartupFcn(app, varargin{:}))
+            else
+                
+                % Focus the running singleton app
+                figure(runningApp.VisOptionsDialogUIFigure)
+                
+                app = runningApp;
+            end
             
             if nargout == 0
                 clear app
             end
+
         end
         
         % Code that executes before app deletion

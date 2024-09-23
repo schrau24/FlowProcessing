@@ -2103,7 +2103,9 @@ classdef imtool3D < handle
                     case {'.nii','.gz'}  % .nii.gz
                         if ~exist('hdr','var')
                             try
-                                niftiwrite(Mask,fullfile(PathName,FileName));
+                                FileName_niftiwrite = strrep(FileName,'.nii.gz',''); % To avoid the file being saved as '.nii.nii'
+                                niftiwrite(Mask,fullfile(PathName,FileName_niftiwrite));
+                                clear FileName_niftiwrite
                             catch
                                 err=1;
                                 while(err)

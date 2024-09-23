@@ -98,6 +98,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         RotateLeft_2                    matlab.ui.control.Button
         LinkplotsCheckBox               matlab.ui.control.CheckBox
         SaveAnimation                   matlab.ui.control.Button
+        MapROIanalysis                  matlab.ui.control.Button
         VisOptions                      matlab.ui.control.Button
         CalculateMap                    matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
@@ -938,26 +939,147 @@ classdef FlowProcessing < matlab.apps.AppBase
             hold(app.VelocityVectorsPlot,'off');
         end
         
-        function viewWSS(app)
+        function [map_img] = viewMap(app)
             cla(app.MapPlot);
             colorbar(app.MapPlot,'off');
-            if length(app.WSS_matrix) == 1
-                WSS = app.WSS_matrix{1};
-                faces = app.F_matrix{1};
-                verts = app.V_matrix{1};
+            isWSS = 0;
+            t = app.MapTimeframeSpinner.Value;
+            if app.isTimeResolvedSeg
+                currSeg = app.aorta_seg(:,:,:,t);
             else
-                t2 = app.MapTimeframeSpinner.Value;
-                WSS = app.WSS_matrix{t2};
-                faces = app.F_matrix{t2};
-                verts = app.V_matrix{t2};
+                currSeg = zeros(size(app.aorta_seg,1:3));
+                % only use segmentations that were selected in first tab
+                for ii = 1:size(app.aorta_seg,4)
+                    if eval(sprintf('app.mask%i.Value==1',ii))
+                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                    end
+                end
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
             end
-            WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
+            vx = currSeg.*squeeze(app.v(:,:,:,1,t))/10;
+            vy = currSeg.*squeeze(app.v(:,:,:,2,t))/10;
+            vz = currSeg.*squeeze(app.v(:,:,:,3,t))/10;
             
-             if ~isvalid(app.VisOptionsApp)
-                scale = [0 4];
+            switch app.MapType.Value
+                case 'Wall shear stress'
+                    isWSS = 1;
+                    if length(app.WSS_matrix) == 1
+                        WSS = app.WSS_matrix{1};
+                        faces = app.F_matrix{1};
+                        verts = app.V_matrix{1};
+                    else
+                        t2 = app.MapTimeframeSpinner.Value;
+                        WSS = app.WSS_matrix{t2};
+                        faces = app.F_matrix{t2};
+                        verts = app.V_matrix{t2};
+                    end
+                    WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
+                    scaletmp = [0 4];
+                    cBarString = 'WSS (Pa)';
+                    
+                case 'Peak velocity'
+                    scaletmp = [0 round(app.VENC/10)];
+                    cBarString = 'Peak velocity (cm/s)';
+                    % for cmap, calculate absolute max of the mean
+                    tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+                    tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    map_img = squeeze(max(tmp,[],3));
+                    
+                case 'Mean velocity'
+                    scaletmp = [0 round(app.VENC/50)];
+                    cBarString = 'Mean velocity (cm/s)';
+                    % for cmap, calculate absolute max of the mean
+                    tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+                    tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    map_img = squeeze(mean(tmp,3));
+                    
+                case 'Kinetic energy'
+                    scaletmp = [0 20];
+                    cBarString = 'Max KE (\muJ)';
+                    vx = vx/100; % in m/s
+                    vy = vy/100;
+                    vz = vz/100;
+                    
+                    % 1 Joule = 1 kg (m/s)^2
+                    rho = 1.060;                            % density of blood, in kg/L
+                    vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
+                    vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
+                    KE = 0.5*rho*vox_vol.*vel;
+                    tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    map_img = squeeze(1e6*max(tmp,[],3));    % in uJ
+                    
+                case 'Energy loss'
+                    scaletmp = [-0.001 4];
+                    cBarString = 'EL (mW)';
+                    
+                    % calculate viscous energy loss as the divergence of velocity,
+                    % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
+                    % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
+                    v1 = vx; v2 = vy; v3 = vz;
+                    % calculate gradients
+                    [v11, v12, v13] = gradient(v1);
+                    [v21, v22, v23] = gradient(v2);
+                    [v31, v32, v33] = gradient(v3);
+                    
+                    % divergence
+                    div = divergence(v1,v2,v3);
+                    
+                    % the viscous dissipation function at each voxel
+                    theta_v = 0;
+                    for ii = 1:3
+                        for jj = 1:3
+                            dij = 0;
+                            if ii==jj
+                                dij = 1;
+                            end
+                            theta_v = theta_v + eval(sprintf('((v%i%i + v%i%i) - 2/3*div.*dij).^2',ii,jj,jj,ii));
+                        end
+                    end
+                    theta_v = 1/2*theta_v;
+                    
+                    % dynamic viscosity mu = 0.004 Pa·s
+                    EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
+                    tmp = imrotate3(EL,app.rotAngles2(2),[0 -1 0]);
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    map_img = squeeze(max(tmp,[],3));
+                    
+                case 'Vorticity'
+                    scaletmp = [0 250];
+                    cBarString = 'vorticity (rad)';
+                    
+                    % code adopted from open source left atrial post-processing
+                    % software from Oxford (Dr. Aaron Hess):
+                    % https://ora.ox.ac.uk/objects/uuid:8f2910d9-44ed-4479-85b1-dbd4f06ea54c
+                    
+                    vx = currSeg.*app.v(:,:,:,1,t)/1000.*currSeg; % in m/s
+                    vy = currSeg.*app.v(:,:,:,2,t)/1000.*currSeg;
+                    vz = currSeg.*app.v(:,:,:,3,t)/1000.*currSeg;
+                    
+                    pixelspacing = app.pixdim./1000;          % in m
+                    [X, Y, Z] = meshgrid((1:size(app.v,2))*pixelspacing(1),(1:size(app.v,1))*pixelspacing(2),(1:size(app.v,3))*pixelspacing(3));clear pixelspacing_meter
+                    
+                    %             curlx = zeros(size(vx));
+                    %             curly = curlx;
+                    %             curlz = curlx;
+                    %             cav = curlx;
+                    [curlx,curly,curlz,cav] = curl(X,Y,Z,vx,vy,vz);
+                    vorticity = sqrt(curlx.^2+curly.^2+curlz.^2);
+                    
+                    tmp = imrotate3(vorticity,app.rotAngles2(2),[0 -1 0]);
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    map_img = squeeze(max(tmp,[],3));
+            end
+            
+            if ~isvalid(app.VisOptionsApp)
+                scale = scaletmp;
                 backgroundC = [1 1 1];
                 axisText = [0 0 0];
-                cmap = 'jet';
+                cmap = 'jet(256)';
                 cbarLoc = 'bottom-left';
             else
                 scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
@@ -969,17 +1091,29 @@ classdef FlowProcessing < matlab.apps.AppBase
                 if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
                     axisText = [1 1 1];
                 end
-                cmap = app.VisOptionsApp.ColormapDropDown_2.Value;
+                if contains(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse')
+                    eval(['cmap=' erase(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse ') '(256);']);
+                    cmap = flip(cmap,1);
+                else
+                    eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                end
                 cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
-             end
+            end
+            cmap(1,:) = backgroundC;
             
-            patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
+            % the plotting
+            if isWSS
+                patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
+            else
+                imagesc(app.MapPlot, map_img+0.001);
+            end
+            
             caxis(app.MapPlot, scale);
             colormap(app.MapPlot,cmap)
             cbar = colorbar(app.MapPlot);
             app.MapGroup.BackgroundColor = backgroundC;
             app.MapGroup.ForegroundColor = axisText;
-            set(get(cbar,'xlabel'),'string','WSS (Pa)','Color',axisText);
+            set(get(cbar,'xlabel'),'string',cBarString,'Color',axisText);
             set(cbar,'FontSize',12,'color',axisText,'Location','west');
             % change cbar size to fit in corner
             pos = get(cbar,'position');
@@ -1003,97 +1137,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             axis(app.MapPlot, 'off','tight')
             view(app.MapPlot, [0 0 1]);
             daspect(app.MapPlot,[1 1 1])
-            if ~isempty(app.vvp_xlim)
-                xlim(app.MapPlot,app.vvp_xlim)
-                ylim(app.MapPlot,app.vvp_ylim)
-            end
-            
-            % update view angle
-            camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
-        end
-        
-        function viewPeakVelocity(app)
-            cla(app.MapPlot);
-            colorbar(app.MapPlot,'off');
-            t = app.MapTimeframeSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
+            if isWSS
+                if ~isempty(app.vvp_xlim)
+                    xlim(app.MapPlot,app.vvp_xlim)
+                    ylim(app.MapPlot,app.vvp_ylim)
                 end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
+                
+                % update view angle
+                camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
             end
-            vx = currSeg.*app.v(:,:,:,1,t)/10;
-            vy = currSeg.*app.v(:,:,:,2,t)/10;
-            vz = currSeg.*app.v(:,:,:,3,t)/10;
-            tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
-            tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
-            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-            sysvel_mip = max(tmp,[],3);
-            
-            imagesc(app.MapPlot, sysvel_mip+0.001);
-            
-            if ~isvalid(app.VisOptionsApp)
-                scale = [0 round(app.VENC/10)];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet(256)';
-                cbarLoc = 'bottom-left';
-            else
-                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
-                    axisText = [1 1 1];
-                end
-                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
-                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
-            end
-            cmap(1,:) = backgroundC;
-            
-            caxis(app.MapPlot, scale);
-            colormap(app.MapPlot,cmap)
-            cbar = colorbar(app.MapPlot);
-            app.MapGroup.BackgroundColor = backgroundC;
-            app.MapGroup.ForegroundColor = axisText;
-            app.MapTimeframeSpinnerLabel.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','Peak velocity (cm/s)','Color',axisText);
-            set(cbar,'color',axisText,'Location','west','FontSize',12);
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.01 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [1-pos(3) 0.01 pos(3) 0.2];
-                case 'mid-right'
-                    pos = [1-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [1-pos(3) 0.78 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
-            
-            % make it look good
-            axis(app.MapPlot, 'off','tight')
-            daspect(app.MapPlot,[1 1 1])
-            %             if ~isempty(app.vvp_xlim)
-            %                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-            %                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            %             end
-            
         end
         
         function plotVelocities(app)
@@ -1144,282 +1196,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             pos = get(cbar,'position');
             set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
             
-        end
-        
-        function viewMeanVelocity(app)
-            cla(app.MapPlot);
-            colorbar(app.MapPlot,'off');
-            t = app.MapTimeframeSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
-            vx = currSeg.*squeeze(app.v(:,:,:,1,t))/10;
-            vy = currSeg.*squeeze(app.v(:,:,:,2,t))/10;
-            vz = currSeg.*squeeze(app.v(:,:,:,3,t))/10;
-            % for cmap, calculate absolute max of the mean
-            tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
-            tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
-            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-            vel_mip = squeeze(mean(tmp,3));
-            
-            if ~isvalid(app.VisOptionsApp)
-                scale = [0 round(app.VENC/50)];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet(256)';
-                cbarLoc = 'bottom-left';
-            else
-                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
-                    axisText = [1 1 1];
-                end
-                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
-                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
-            end
-            cmap(1,:) = backgroundC;
-            
-            imagesc(app.MapPlot, vel_mip+0.001);
-            caxis(app.MapPlot, scale);
-            colormap(app.MapPlot,cmap)
-            cbar = colorbar(app.MapPlot);
-            app.MapGroup.BackgroundColor = backgroundC;
-            app.MapGroup.ForegroundColor = axisText;
-            app.MapTimeframeSpinnerLabel.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','Mean velocity (cm/s)','Color',axisText);
-            set(cbar,'color',axisText,'Location','west','FontSize',12);
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.01 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [1-pos(3) 0.01 pos(3) 0.2];
-                case 'mid-right'
-                    pos = [1-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [1-pos(3) 0.78 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
-            
-            % make it look good
-            axis(app.MapPlot, 'off','tight')
-            daspect(app.MapPlot,[1 1 1])
-            %             if ~isempty(app.vvp_xlim)
-            %                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-            %                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            %             end
-        end
-        
-        function viewKE(app)
-            cla(app.MapPlot);
-            colorbar(app.MapPlot,'off');
-            t = app.MapTimeframeSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
-            vx = currSeg.*app.v(:,:,:,1,t)/10.*currSeg;
-            vy = currSeg.*app.v(:,:,:,2,t)/10.*currSeg;
-            vz = currSeg.*app.v(:,:,:,3,t)/10.*currSeg;
-            
-            % 1 Joule = 1 kg (m/s)^2
-            rho = 1.060;                            % density of blood, in kg/L
-            vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
-            vel = (vx.^2 + vy.^2 + vz.^2)/100;      % velocity in m^2/s^2
-            KE = 0.5*rho*vox_vol.*vel;
-            tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
-            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-            KE_mip = squeeze(1e3*max(tmp,[],3));    % in mJ
-            
-            if ~isvalid(app.VisOptionsApp)
-                scale = [0 10];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet(256)';
-                cbarLoc = 'bottom-left';
-            else
-                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
-                    axisText = [1 1 1];
-                end
-                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
-                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
-            end
-            cmap(1,:) = backgroundC;
-            
-            imagesc(app.MapPlot, KE_mip+0.001);
-            caxis(app.MapPlot, scale);
-            colormap(app.MapPlot,cmap)
-            cbar = colorbar(app.MapPlot);
-            app.MapGroup.BackgroundColor = backgroundC;
-            app.MapGroup.ForegroundColor = axisText;
-            app.MapTimeframeSpinnerLabel.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','Max KE (mJ)','Color',axisText);
-            set(cbar,'color',axisText,'Location','west','FontSize',12);
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.01 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [1-pos(3) 0.01 pos(3) 0.2];
-                case 'mid-right'
-                    pos = [1-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [1-pos(3) 0.78 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
-            
-            % make it look good
-            axis(app.MapPlot, 'off','tight')
-            daspect(app.MapPlot,[1 1 1])
-            %             if ~isempty(app.vvp_xlim)
-            %                 xlim(app.MapPlot,app.vvp_xlim./app.pixdim(1))
-            %                 ylim(app.MapPlot,app.vvp_ylim./app.pixdim(2))
-            %             end
-        end
-        
-        function viewEL(app)
-            cla(app.MapPlot);
-            colorbar(app.MapPlot,'off');
-            t = app.MapTimeframeSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
-            v1 = currSeg.*app.v(:,:,:,1,t)/10.*currSeg;
-            v2 = currSeg.*app.v(:,:,:,2,t)/10.*currSeg;
-            v3 = currSeg.*app.v(:,:,:,3,t)/10.*currSeg;
-            
-            % calculate viscous energy loss as the divergence of velocity,
-            % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
-            % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
-            
-            % calculate gradients
-            [v11, v12, v13] = gradient(v1);
-            [v21, v22, v23] = gradient(v2);
-            [v31, v32, v33] = gradient(v3);
-            
-            % divergence
-            div = divergence(v1,v2,v3);
-            
-            % the viscous dissipation function at each voxel
-            theta_v = 0;
-            for ii = 1:3
-                for jj = 1:3
-                    dij = 0;
-                    if ii==jj
-                        dij = 1;
-                    end
-                    theta_v = theta_v + eval(sprintf('((v%i%i + v%i%i) - 2/3*div.*dij).^2',ii,jj,jj,ii));
-                end
-            end
-            theta_v = 1/2*theta_v;
-            
-            % dynamic viscosity mu = 0.004 Pa·s
-            EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
-            
-            tmp = imrotate3(EL,app.rotAngles2(2),[0 -1 0]);
-            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-            EL_mip = squeeze(max(tmp,[],3));
-            
-            if ~isvalid(app.VisOptionsApp)
-                scale = [-0.1 3];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet(256)';
-                cbarLoc = 'bottom-left';
-            else
-                scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
-                    axisText = [1 1 1];
-                end
-                eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
-                cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
-            end
-            cmap(1,:) = backgroundC;
-            
-            imagesc(app.MapPlot, EL_mip+0.00001);
-            caxis(app.MapPlot, scale);
-            colormap(app.MapPlot,cmap)
-            cbar = colorbar(app.MapPlot);
-            app.MapGroup.BackgroundColor = backgroundC;
-            app.MapGroup.ForegroundColor = axisText;
-            app.MapTimeframeSpinnerLabel.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','Max EL (mW)','Color',axisText);
-            set(cbar,'color',axisText,'Location','west','FontSize',12);
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.01 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [1-pos(3) 0.01 pos(3) 0.2];fmap
-                case 'mid-right'
-                    pos = [1-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [1-pos(3) 0.78 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
-            
-            % make it look good
-            axis(app.MapPlot, 'off','tight')
-            daspect(app.MapPlot,[1 1 1])
         end
     end
     
@@ -1847,6 +1623,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.SaveAnimation.Enable = 'on';
             app.VisOptions.Enable = 'on';
+            app.MapROIanalysis.Enable = 'on';
         end
         
         % Button pushed function: PulseWaveVelocityPushButton
@@ -2779,20 +2556,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function TimeframeSpinnerValueChanged(app, ~)
             if app.LinkplotsCheckBox.Value
                 app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
-                switch app.MapType.Value
-                    case 'Wall shear stress'
-                        if app.isWSScalculated && length(app.WSS_matrix) > 1
-                            viewWSS(app);
-                        end
-                    case 'Peak velocity'
-                        viewPeakVelocity(app);
-                    case 'Mean velocity'
-                        viewMeanVelocity(app);
-                    case 'Kinetic energy'
-                        viewKE(app);
-                    case 'Energy loss'
-                        viewEL(app);
-                end
+                viewMap(app);
             end
             viewVelocityVectors(app);
         end
@@ -2822,7 +2586,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
-                    viewPeakVelocity(app);
                     
                 case 'Mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
@@ -2831,7 +2594,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
-                    viewMeanVelocity(app);
                     
                 case 'Kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
@@ -2840,7 +2602,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
-                    viewKE(app);
                     
                 case 'Energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
@@ -2849,24 +2610,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
-                    viewEL(app);
+                    
+                case 'Vorticity'
+                    app.VisOptionsApp.MapEditFieldLabel.Text = 'vorticity (rad)';
+                    app.VisOptionsApp.minMapEditField.Value = '0';
+                    app.VisOptionsApp.maxMapEditField.Value = '300';
+                    
+                    app.MapTimeframeSpinner.Enable = 'on';
+                    app.LinkplotsCheckBox.Enable = 'on';
             end
+            viewMap(app);
         end
         
         % Value changed function: MapTimeframeSpinner
         function MapTimeframeSpinnerValueChanged(app, ~)
-            switch app.MapType.Value
-                case 'Wall shear stress'
-                    viewWSS(app);
-                case 'Peak velocity'
-                    viewPeakVelocity(app);
-                case 'Mean velocity'
-                    viewMeanVelocity(app);
-                case 'Kinetic energy'
-                    viewKE(app);
-                case 'Energy loss'
-                    viewEL(app);
-            end
+            viewMap(app);
             if app.LinkplotsCheckBox.Value
                 app.TimeframeSpinner.Value = app.MapTimeframeSpinner.Value;
                 viewVelocityVectors(app);
@@ -3025,7 +2783,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         close(h);
                     end
                     
-                    viewWSS(app)
+                    viewMap(app);
                     if peakSystole  % disable spinner as only one frame available
                         app.MapTimeframeSpinner.Enable = 'off';
                         app.LinkplotsCheckBox.Enable = 'off';
@@ -3048,6 +2806,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: SaveAnimation
         function SaveAnimationButtonPushed(app, ~)
             % temporarily hide other things for plotting
+            app.MapPlot.Toolbar.Visible = 'off';
+            app.VelocityVectorsPlot.Toolbar.Visible = 'off';
             app.TimeframeSpinner.Visible = 'off';
             app.TimeframeSpinnerLabel.Visible = 'off';
             app.VectorOptionsDropDown.Visible = 'off';
@@ -3069,18 +2829,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 
                 if app.LinkplotsCheckBox.Value && ~strncmp(app.MapType.Value,'None',4)
                     app.MapTimeframeSpinner.Value = t;
-                    switch app.MapType.Value
-                        case 'Wall shear stress'
-                            viewWSS(app);
-                        case 'Peak velocity'
-                            viewPeakVelocity(app);
-                        case 'Mean velocity'
-                            viewMeanVelocity(app);
-                        case 'Kinetic energy'
-                            viewKE(app);
-                        case 'Energy loss'
-                            viewEL(app);
-                    end
+                    viewMap(app);
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
                 else
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
@@ -3118,6 +2867,115 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapTimeframeSpinner.Visible = 'on';
             app.MapTimeframeSpinnerLabel.Visible = 'on';
             app.MapType.Visible = 'on';
+            app.MapPlot.Toolbar.Visible = 'on';
+            app.VelocityVectorsPlot.Toolbar.Visible = 'on';
+        end
+        
+        % Button pushed function: MapROIanalysis
+        function MapROIanalysisPushed(app, ~)
+            clc; close(figure(700));
+            choice = 2;
+            while choice == 2
+                close(figure(700));
+                disp('Draw ROI in map image to check results')
+                app.MapPlot.Toolbar.Visible = 'off';
+                h = drawpolygon(app.MapPlot,'color',app.VisOptionsApp.TextcolorDropDown_2.Value,'FaceAlpha',0);
+                BW = createMask(h); idx = find(BW);
+                
+                % first save image with current ROI and time frame
+                ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
+                % Turn screenshot into image
+                im = frame2im(ff);
+                app.MapPlot.Toolbar.Visible = 'on';
+                
+                % save linkplot checkbox state and turn off
+                saveState = app.LinkplotsCheckBox.Value;
+                saveFrame = app.MapTimeframeSpinner.Value;
+                
+                app.LinkplotsCheckBox.Value = 0;
+                % loop through all 2D frames with ROI, report summary statistics
+                map_var = zeros(length(idx),app.nframes);
+                for t = 1:app.nframes
+                    app.MapTimeframeSpinner.Value = t;
+                    map_img = viewMap(app);
+                    map_var(:,t) = map_img(idx);
+                end
+                
+                switch app.MapType.Value
+                    case 'Peak velocity'
+                        paramString = 'Peak velocity (cm/s)';
+                        saveString = 'peak_velocity';
+                    case 'Mean velocity'
+                        paramString = 'Mean velocity (cm/s)';
+                        saveString = 'mean_velocity';
+                    case 'Kinetic energy'
+                        paramString = 'Max KE (\muJ)';
+                        saveString = 'KE';
+                    case 'Energy loss'
+                        paramString = 'EL (mW)';
+                        saveString = 'EL';
+                    case 'Vorticity'
+                        paramString = 'vorticity (rad)';
+                        saveString = 'vorticity';
+                end
+                
+                % make image
+                card_time = (0:app.nframes-1)*app.timeres;
+                fig = figure(700); clf;
+                set(fig,'position',[2    42   958   684])
+                subplot(121);
+                image(im); axis off;
+                subplot(122);
+                plot(card_time,mean(map_var,1),'*-k','linewidth',2)
+                hold on;
+                plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
+                xlabel('cardiac time (ms)'); ylabel(paramString); box off;
+                set(gca,'fontsize',16)
+                legend('ROI average', 'ROI max')
+                hold off;
+                set(fig,'color', 'w')
+                
+                app.LinkplotsCheckBox.Value = saveState;
+                app.MapTimeframeSpinner.Value = saveFrame;
+                viewMap(app);
+                
+                % check if user wants to save
+                choice = choosedialog_2;
+                
+                if choice == 1
+                    savePrefix = saveString;
+                    saveFolder = fullfile(app.directory,'map_results'); mkdir(saveFolder);
+                    saveName =  fullfile(saveFolder,'map_results');
+
+                    % save variable
+                    tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
+                    tbl.Properties.VariableNames = ["cardiac time(ms)","ROI_average","ROI_max"];
+                    writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
+                    
+                    % grab and save image
+                    robot = java.awt.Robot();
+                    temp = fig.Position; % returns position as [left bottom width height]
+                    allMonPos = get(0,'MonitorPositions');
+                    curMon = find(temp(1)<(allMonPos(:,1)+allMonPos(:,3)),1,'first');
+                    curMonHeight = allMonPos(curMon,4)+1;
+                    pos = [temp(1) curMonHeight-(temp(2)+temp(4)) temp(3)-1 temp(4)]; % [left top width height].... UL X, UL Y, width, height
+                    rect = java.awt.Rectangle(pos(1),pos(2),pos(3),pos(4));
+                    cap = robot.createScreenCapture(rect);
+                    % Convert to an RGB image
+                    rgb = typecast(cap.getRGB(0,0,cap.getWidth,cap.getHeight,[],0,cap.getWidth),'uint8');
+                    imgData = zeros(cap.getHeight,cap.getWidth,3,'uint8');
+                    imgData(:,:,1) = reshape(rgb(3:4:end),cap.getWidth,[])';
+                    imgData(:,:,2) = reshape(rgb(2:4:end),cap.getWidth,[])';
+                    imgData(:,:,3) = reshape(rgb(1:4:end),cap.getWidth,[])';
+                    imwrite(imgData, [saveName '_' savePrefix '.tiff']);
+                    
+                    break;
+                elseif choice == 0
+                    close(figure(700));
+                    disp('ROI analysis cancelled')
+                end
+            end
+                
         end
         
         % Button pushed function: Axial
@@ -3132,9 +2990,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [90 0];
             end
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: Sagittal
@@ -3149,9 +3005,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 90];
             end
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: Coronal
@@ -3166,9 +3020,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 0];
             end
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: ResetRotation_2
@@ -3176,9 +3028,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [0 0];
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: RotateUp_2
@@ -3186,9 +3036,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: RotateDown_2
@@ -3196,9 +3044,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: RotateRight_2
@@ -3206,9 +3052,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: RotateLeft_2
@@ -3216,9 +3060,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
             viewVelocityVectors(app);
-            if (app.isWSScalculated && strcmp(app.MapType.Value,'Wall shear stress'))
-                viewWSS(app);
-            end
+            viewMap(app);
         end
         
         % Button pushed function: VelocityUnwrapping
@@ -4646,6 +4488,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisOptions.Position = [1036 528 150 28];
             app.VisOptions.Text = 'Visualization options';
             
+            % Create MapROIanalysis
+            app.MapROIanalysis = uibutton(app.Maps, 'push');
+            app.MapROIanalysis.ButtonPushedFcn = createCallbackFcn(app, @MapROIanalysisPushed, true);
+            app.MapROIanalysis.IconAlignment = 'center';
+            app.MapROIanalysis.FontName = 'SansSerif';
+            app.MapROIanalysis.FontSize = 16;
+            app.MapROIanalysis.Enable = 'off';
+            app.MapROIanalysis.Tooltip = {'draw ROI in map and save results'};
+            app.MapROIanalysis.Position = [1036 486 150 28];
+            app.MapROIanalysis.Text = 'Map ROI analysis';
+            
             % Create RotateLeft_2
             app.RotateLeft_2 = uibutton(app.Maps, 'push');
             app.RotateLeft_2.ButtonPushedFcn = createCallbackFcn(app, @RotateLeft_2ButtonPushed, true);
@@ -4718,7 +4571,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create MapType
             app.MapType = uidropdown(app.Maps);
-            app.MapType.Items = {'None', 'Wall shear stress', 'Peak velocity', 'Mean velocity', 'Kinetic energy', 'Energy loss', 'Vortex detection'};
+            app.MapType.Items = {'None', 'Wall shear stress', 'Peak velocity', 'Mean velocity', 'Kinetic energy', 'Energy loss', 'Vorticity'};
             app.MapType.ValueChangedFcn = createCallbackFcn(app, @MapTypeValueChanged, true);
             app.MapType.Tooltip = {'select map to view'; 'currently not implemented: vorticity'};
             app.MapType.FontName = 'ZapfDingbats';

@@ -30,6 +30,7 @@ This software builds from previous work, and the use of this tool should be asso
 4. [Velocity Unwrapping tab](#velocity-unwrapping-tab)
 5. [Maps tab](#maps-tab)
       1. [Save animation](#save-animation)
+      2. [Map ROI analysis](#map-roi-analysis)
 6. [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab)
       1. [Flow results](#flow-results)
       2. [PWV calculation](#pwv-calculation)
@@ -129,6 +130,11 @@ The right panel allows for visualization of several maps derived for the 4D flow
 
 ### Save animation  <a name="save-animation"></a>
 Clicking the `Save animation` button saves a corresponding .gif of the velocity vectors and selected map (if applicable).
+
+### Map ROI analysis <a name="map-roi-analysis"></a>
+Clicking the `Map ROI analysis` button allows the user to draw an ROI in the current selected map (displayed on the current time frame). Within the ROI all time frames are analyzed and an output image is shown. The user has the option to save this figure and corresponding summary statistics to an xlsx spreadsheet.
+
+<img src="ROI.png?raw=true" width="600px">
 
 ## Flow and Pulse Wave Velocity Tab  <a name="flow-and-pulse-wave-velocity-tab"></a>
 To segment the vessel of interest, individual branches need to be selected. Input the corresponding branch numbers in Set branches for vessel, adding or removing branches when necessary. Add branches from most distal (downstream) to most proximal (upstream). 

@@ -794,8 +794,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
             switch app.VectorOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
+                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
+                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    for f = 1:3
+                        tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
+                        currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    end
+                    currV = currV_tmp; clear currV_tmp;
+                    
                     % grab current slice
                     sl = app.SliceSpinner_2.Value;
+                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                    end
+                    if sl > size(currV,3)
+                        sl = round(size(currV,3)/2);
+                    end
                     L = find(currSeg(1:subsample:end,1:subsample:end,sl));
                     vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
                     vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
@@ -803,7 +817,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                         -10);   % cheat here and put the vel vectors at a negative location to overlay better
                     
-                    img = repmat(app.MAG(:,:,sl,t),[1 1 3]);
+                    tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
+                    currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    img = repmat(currMAG(:,:,sl),[1 1 3]);
                     imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                     hold(app.VelocityVectorsPlot,'on');
                 case 'centerline contours' % contours from centerline
@@ -934,8 +950,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                 ylim(app.VelocityVectorsPlot,app.vvp_ylim)
             end
             
-            % update view angle
-            camorbit(app.VelocityVectorsPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+            if ~contains(app.VectorOptionsDropDown.Value,'slice-wise')
+                % update view angle
+                camorbit(app.VelocityVectorsPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+            end
             hold(app.VelocityVectorsPlot,'off');
         end
         
@@ -2556,7 +2574,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         function TimeframeSpinnerValueChanged(app, ~)
             if app.LinkplotsCheckBox.Value
                 app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
-                viewMap(app);
+                if ~contains(app.MapType.Value,'None')
+                    viewMap(app);
+                end
             end
             viewVelocityVectors(app);
         end
@@ -2575,9 +2595,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.maxMapEditField.Value = '4';
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
                     
-                    if app.isWSScalculated
-                        viewWSS(app);
-                    end
+%                     if app.isWSScalculated
+%                         viewWSS(app);
+%                     end
                     
                 case 'Peak velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
@@ -2619,7 +2639,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.MapTimeframeSpinner.Enable = 'on';
                     app.LinkplotsCheckBox.Enable = 'on';
             end
-            viewMap(app);
+            if ~contains(app.MapType.Value,'None')
+                viewMap(app);
+            end
         end
         
         % Value changed function: MapTimeframeSpinner
@@ -2827,7 +2849,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.TimeframeSpinner.Value = t;
                 viewVelocityVectors(app);
                 
-                if app.LinkplotsCheckBox.Value && ~strncmp(app.MapType.Value,'None',4)
+                if app.LinkplotsCheckBox.Value && ~contains(app.MapType.Value,'None')
                     app.MapTimeframeSpinner.Value = t;
                     viewMap(app);
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
@@ -2990,7 +3012,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [90 0];
             end
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: Sagittal
@@ -3005,7 +3029,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 90];
             end
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: Coronal
@@ -3020,7 +3046,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 0];
             end
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: ResetRotation_2
@@ -3028,7 +3056,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [0 0];
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: RotateUp_2
@@ -3036,7 +3066,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: RotateDown_2
@@ -3044,7 +3076,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: RotateRight_2
@@ -3052,7 +3086,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: RotateLeft_2
@@ -3060,7 +3096,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
             viewVelocityVectors(app);
-            viewMap(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Button pushed function: VelocityUnwrapping

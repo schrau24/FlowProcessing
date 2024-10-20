@@ -1,4 +1,4 @@
 To do:
 - save graphics/memory visualization with pre-calculated and save variables?
 - Dicom reading + saving
-- slice-wise vecs in different orientations
+- volumetric streamline option

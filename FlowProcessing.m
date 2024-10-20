@@ -96,7 +96,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         Rotate_2                        matlab.ui.control.Label
         RotateRight_2                   matlab.ui.control.Button
         RotateLeft_2                    matlab.ui.control.Button
-        LinkplotsCheckBox               matlab.ui.control.CheckBox
         SaveAnimation                   matlab.ui.control.Button
         MapROIanalysis                  matlab.ui.control.Button
         VisOptions                      matlab.ui.control.Button
@@ -214,9 +213,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         FullBranchDistance;         % the full distance vector (in mm)
         
         R2;                         % the r-squared value of the fit for cross-correlation or wavelet PWV measurement
-        vvp_xlim;                   % velocity vector x limits
-        vvp_ylim;                   % velocity vector y limits
-        vvp_changed = 1;            % has the type of velocity vector plot changed?
         time_peak;                  % the determined peak systolic phase
         WSS_matrix;                 % calculated WSS matrix
         F_matrix;                   % faces for 3D vis
@@ -941,14 +937,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             axis(app.VelocityVectorsPlot, 'off','tight')
             view(app.VelocityVectorsPlot,[0 0 1]);
             daspect(app.VelocityVectorsPlot,[1 1 1])
-            if app.vvp_changed
-                app.vvp_xlim = app.VelocityVectorsPlot.XLim;
-                app.vvp_ylim = app.VelocityVectorsPlot.YLim;
-                app.vvp_changed = 0; % reset
-            else
-                xlim(app.VelocityVectorsPlot,app.vvp_xlim)
-                ylim(app.VelocityVectorsPlot,app.vvp_ylim)
-            end
             
             if ~contains(app.VectorOptionsDropDown.Value,'slice-wise')
                 % update view angle
@@ -976,9 +964,31 @@ classdef FlowProcessing < matlab.apps.AppBase
                     currSeg = app.segment;
                 end
             end
-            vx = currSeg.*squeeze(app.v(:,:,:,1,t))/10;
-            vy = currSeg.*squeeze(app.v(:,:,:,2,t))/10;
-            vz = currSeg.*squeeze(app.v(:,:,:,3,t))/10;
+            currV = app.v(:,:,:,:,t)/10;
+            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
+            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+            
+            for f = 1:3
+                tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
+                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+            end
+            currV = currV_tmp; clear currV_tmp;
+            vx = currSeg.*currV(:,:,:,1);
+            vy = currSeg.*currV(:,:,:,2);
+            vz = currSeg.*currV(:,:,:,3);
+            
+            isSliceWise = 0;
+            if contains(app.VectorOptionsDropDown.Value,'slice-wise')
+                isSliceWise = 1;
+                % grab current slice
+                sl = app.SliceSpinner_2.Value;
+                if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                    app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                end
+                if sl > size(currV,3)
+                    sl = round(size(currV,3)/2);
+                end
+            end
             
             switch app.MapType.Value
                 case 'Wall shear stress'
@@ -1002,18 +1012,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cBarString = 'Peak velocity (cm/s)';
                     % for cmap, calculate absolute max of the mean
                     tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
-                    tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
-                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                    map_img = squeeze(max(tmp,[],3));
+                    map_img = squeeze(tmp);
                     
                 case 'Mean velocity'
                     scaletmp = [0 round(app.VENC/50)];
                     cBarString = 'Mean velocity (cm/s)';
                     % for cmap, calculate absolute max of the mean
                     tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
-                    tmp = imrotate3(tmp,app.rotAngles2(2),[0 -1 0]);
-                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                    map_img = squeeze(mean(tmp,3));
+                    map_img = squeeze(tmp);
                     
                 case 'Kinetic energy'
                     scaletmp = [0 20];
@@ -1027,9 +1033,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
                     vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
                     KE = 0.5*rho*vox_vol.*vel;
-                    tmp = imrotate3(KE,app.rotAngles2(2),[0 -1 0]);
-                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                    map_img = squeeze(1e6*max(tmp,[],3));    % in uJ
+                    map_img = squeeze(1e6*squeeze(KE));    % in uJ
                     
                 case 'Energy loss'
                     scaletmp = [-0.001 4];
@@ -1062,9 +1066,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % dynamic viscosity mu = 0.004 Pa·s
                     EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
-                    tmp = imrotate3(EL,app.rotAngles2(2),[0 -1 0]);
-                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                    map_img = squeeze(max(tmp,[],3));
+                    map_img = squeeze(EL);
                     
                 case 'Vorticity'
                     scaletmp = [0 250];
@@ -1074,12 +1076,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % software from Oxford (Dr. Aaron Hess):
                     % https://ora.ox.ac.uk/objects/uuid:8f2910d9-44ed-4479-85b1-dbd4f06ea54c
                     
-                    vx = currSeg.*app.v(:,:,:,1,t)/1000.*currSeg; % in m/s
-                    vy = currSeg.*app.v(:,:,:,2,t)/1000.*currSeg;
-                    vz = currSeg.*app.v(:,:,:,3,t)/1000.*currSeg;
+                    vx = vx/100; % in m/s
+                    vy = vy/100;
+                    vz = vz/100;
                     
                     pixelspacing = app.pixdim./1000;          % in m
-                    [X, Y, Z] = meshgrid((1:size(app.v,2))*pixelspacing(1),(1:size(app.v,1))*pixelspacing(2),(1:size(app.v,3))*pixelspacing(3));clear pixelspacing_meter
+                    [X, Y, Z] = meshgrid((1:size(vx,2))*pixelspacing(1),(1:size(vx,1))*pixelspacing(2),(1:size(vx,3))*pixelspacing(3));clear pixelspacing_meter
                     
                     %             curlx = zeros(size(vx));
                     %             curly = curlx;
@@ -1087,10 +1089,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     %             cav = curlx;
                     [curlx,curly,curlz,cav] = curl(X,Y,Z,vx,vy,vz);
                     vorticity = sqrt(curlx.^2+curly.^2+curlz.^2);
-                    
-                    tmp = imrotate3(vorticity,app.rotAngles2(2),[0 -1 0]);
-                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                    map_img = squeeze(max(tmp,[],3));
+                    map_img = squeeze(vorticity);
             end
             
             if ~isvalid(app.VisOptionsApp)
@@ -1123,7 +1122,13 @@ classdef FlowProcessing < matlab.apps.AppBase
             if isWSS
                 patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
             else
-                imagesc(app.MapPlot, map_img+0.001);
+                if isSliceWise
+                    h = imagesc(app.MapPlot, map_img(:,:,sl)+0.001);
+                elseif contains(app.MapType.Value,'Mean')
+                    h = imagesc(app.MapPlot, mean(map_img,3)+0.001);
+                else
+                    h = imagesc(app.MapPlot, max(map_img,[],3)+0.001);
+                end
             end
             
             caxis(app.MapPlot, scale);
@@ -1131,6 +1136,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             cbar = colorbar(app.MapPlot);
             app.MapGroup.BackgroundColor = backgroundC;
             app.MapGroup.ForegroundColor = axisText;
+            if isSliceWise && contains(app.MapType.Value,'velocity')
+                cBarString = 'velocity cm/s';
+            end
             set(get(cbar,'xlabel'),'string',cBarString,'Color',axisText);
             set(cbar,'FontSize',12,'color',axisText,'Location','west');
             % change cbar size to fit in corner
@@ -1156,19 +1164,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             view(app.MapPlot, [0 0 1]);
             daspect(app.MapPlot,[1 1 1])
             if isWSS
-                if ~isempty(app.vvp_xlim)
-                    xlim(app.MapPlot,app.vvp_xlim)
-                    ylim(app.MapPlot,app.vvp_ylim)
-                end
-                
                 % update view angle
                 camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
             end
         end
         
         function plotVelocities(app)
+            
+            t = app.TimeframeSpinner_3.Value;
+            s = app.SliceSpinner.Value;
             if app.isTimeResolvedSeg
-                t = app.TimeframeSpinner_3.Value;
                 currSeg = app.aorta_seg(:,:,:,t);
             else
                 currSeg = zeros(size(app.aorta_seg,1:3));
@@ -1183,25 +1188,25 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
             
-            PCA_masked = app.v.*repmat(permute(currSeg,[1 2 3 5 4]),[1 1 1 3 1])/10;
+            PCA_masked = app.v(:,:,:,:,t).*repmat(permute(currSeg,[1 2 3 5 4]),[1 1 1 3 1])/10;
             
             % determine scaling for visualization
             scaling = round(max(abs(PCA_masked(:))));
             cmap_scaling = dopplermap(1000,1);
             
-            imagesc(app.Unwrap_1,PCA_masked(:,:,app.SliceSpinner.Value,1,app.TimeframeSpinner_3.Value),'tag', 'alldata');
+            imagesc(app.Unwrap_1,PCA_masked(:,:,s,1),'tag', 'alldata');
             axis(app.Unwrap_1,'equal','off');
             colormap(app.Unwrap_1,cmap_scaling);
             caxis(app.Unwrap_1, [-scaling scaling]);
             title(app.Unwrap_1,app.ori.vxlabel);
             
-            imagesc(app.Unwrap_2,PCA_masked(:,:,app.SliceSpinner.Value,2,app.TimeframeSpinner_3.Value),'tag', 'alldata');
+            imagesc(app.Unwrap_2,PCA_masked(:,:,s,2),'tag', 'alldata');
             axis(app.Unwrap_2,'equal','off')
             colormap(app.Unwrap_2,cmap_scaling);
             caxis(app.Unwrap_2, [-scaling scaling]);
             title(app.Unwrap_2,app.ori.vylabel);
             
-            imagesc(app.Unwrap_3,PCA_masked(:,:,app.SliceSpinner.Value,3,app.TimeframeSpinner_3.Value),'tag', 'alldata');
+            imagesc(app.Unwrap_3,PCA_masked(:,:,s,3),'tag', 'alldata');
             axis(app.Unwrap_3,'equal','off')
             colormap(app.Unwrap_3,cmap_scaling);
             caxis(app.Unwrap_3, [-scaling scaling]);
@@ -1635,10 +1640,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             % view vectors
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
             viewVelocityVectors(app);
-            % set initial limits for later plotting
-            app.vvp_xlim = app.VelocityVectorsPlot.XLim;
-            app.vvp_ylim = app.VelocityVectorsPlot.YLim;
-            
             app.SaveAnimation.Enable = 'on';
             app.VisOptions.Enable = 'on';
             app.MapROIanalysis.Enable = 'on';
@@ -2572,11 +2573,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: TimeframeSpinner
         function TimeframeSpinnerValueChanged(app, ~)
-            if app.LinkplotsCheckBox.Value
-                app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
-                if ~contains(app.MapType.Value,'None')
-                    viewMap(app);
-                end
+            app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
+            if ~contains(app.MapType.Value,'None')
+                viewMap(app);
             end
             viewVelocityVectors(app);
         end
@@ -2595,49 +2594,40 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.maxMapEditField.Value = '4';
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
                     
-%                     if app.isWSScalculated
-%                         viewWSS(app);
-%                     end
+                    if ~app.isWSScalculated
+                        msgbox('WSS not yet calculated, push Calculate Map');
+                        return;
+                    end
                     
                 case 'Peak velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/10));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    
                     app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
                     
                 case 'Mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/50));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                    
                     app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
                     
                 case 'Kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '10';
-                    
                     app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
                     
                 case 'Energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
                     app.VisOptionsApp.minMapEditField.Value = '-0.1';
                     app.VisOptionsApp.maxMapEditField.Value = '3';
-                    
                     app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
                     
                 case 'Vorticity'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'vorticity (rad)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '300';
-                    
                     app.MapTimeframeSpinner.Enable = 'on';
-                    app.LinkplotsCheckBox.Enable = 'on';
             end
             if ~contains(app.MapType.Value,'None')
                 viewMap(app);
@@ -2647,16 +2637,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Value changed function: MapTimeframeSpinner
         function MapTimeframeSpinnerValueChanged(app, ~)
             viewMap(app);
-            if app.LinkplotsCheckBox.Value
-                app.TimeframeSpinner.Value = app.MapTimeframeSpinner.Value;
-                viewVelocityVectors(app);
-            end
-            
+            app.TimeframeSpinner.Value = app.MapTimeframeSpinner.Value;
+            viewVelocityVectors(app);
         end
         
         % Value changed function: SliceSpinner_2
         function SliceSpinner_2ValueChanged(app, ~)
             viewVelocityVectors(app);
+            viewMap(app);
         end
         
         function VisOptionsButtonPushed(app, ~)
@@ -2808,20 +2796,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     viewMap(app);
                     if peakSystole  % disable spinner as only one frame available
                         app.MapTimeframeSpinner.Enable = 'off';
-                        app.LinkplotsCheckBox.Enable = 'off';
                     else
                         app.MapTimeframeSpinner.Enable = 'on';
-                        app.LinkplotsCheckBox.Enable = 'on';
                     end
                     
                     app.isWSScalculated = 1;
-            end
-        end
-        
-        % Value changed function: LinkplotsCheckBox
-        function LinkplotsCheckBoxValueChanged(app, ~)
-            if app.LinkplotsCheckBox.Value
-                app.MapTimeframeSpinner.Value = app.TimeframeSpinner.Value;
             end
         end
         
@@ -2849,7 +2828,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.TimeframeSpinner.Value = t;
                 viewVelocityVectors(app);
                 
-                if app.LinkplotsCheckBox.Value && ~contains(app.MapType.Value,'None')
+                if ~contains(app.MapType.Value,'None')
                     app.MapTimeframeSpinner.Value = t;
                     viewMap(app);
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
@@ -2857,6 +2836,24 @@ classdef FlowProcessing < matlab.apps.AppBase
                     ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
                 end
                 
+                % freeze limits to avoid jittering in gif
+                if t == 1
+                    veclim_x = app.VelocityVectorsPlot.XLim;
+                    veclim_y = app.VelocityVectorsPlot.YLim;
+                    veclim_z = app.VelocityVectorsPlot.ZLim;
+                    app.VelocityVectorsPlot.XLimMode = 'manual';
+                    app.VelocityVectorsPlot.YLimMode = 'manual';
+                    app.VelocityVectorsPlot.ZLimMode = 'manual';
+                    maplim_x = app.MapPlot.XLim;
+                    maplim_y = app.MapPlot.YLim;
+                else
+                    app.VelocityVectorsPlot.XLim = veclim_x;
+                    app.VelocityVectorsPlot.YLim = veclim_y;
+                    app.VelocityVectorsPlot.ZLim = veclim_z;
+                    app.MapPlot.XLim = maplim_x;
+                    app.MapPlot.YLim = maplim_y;
+                end
+                pause(0.01);
                 
                 % Turn screenshot into image
                 im = frame2im(ff);
@@ -2875,6 +2872,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             
             % turn back on
+            app.VelocityVectorsPlot.XLimMode = 'auto';
+            app.VelocityVectorsPlot.YLimMode = 'auto';
+            app.VelocityVectorsPlot.ZLimMode = 'auto';
             app.TimeframeSpinner.Visible = 'on';
             app.TimeframeSpinnerLabel.Visible = 'on';
             app.VectorOptionsDropDown.Visible = 'on';
@@ -2910,11 +2910,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 im = frame2im(ff);
                 app.MapPlot.Toolbar.Visible = 'on';
                 
-                % save linkplot checkbox state and turn off
-                saveState = app.LinkplotsCheckBox.Value;
+                % save state
                 saveFrame = app.MapTimeframeSpinner.Value;
                 
-                app.LinkplotsCheckBox.Value = 0;
                 % loop through all 2D frames with ROI, report summary statistics
                 map_var = zeros(length(idx),app.nframes);
                 for t = 1:app.nframes
@@ -2957,7 +2955,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 hold off;
                 set(fig,'color', 'w')
                 
-                app.LinkplotsCheckBox.Value = saveState;
                 app.MapTimeframeSpinner.Value = saveFrame;
                 viewMap(app);
                 
@@ -2968,7 +2965,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     savePrefix = saveString;
                     saveFolder = fullfile(app.directory,'map_results'); mkdir(saveFolder);
                     saveName =  fullfile(saveFolder,'map_results');
-
+                    
                     % save variable
                     tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
                     tbl.Properties.VariableNames = ["cardiac time(ms)","ROI_average","ROI_max"];
@@ -2997,7 +2994,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     disp('ROI analysis cancelled')
                 end
             end
-                
+            
         end
         
         % Button pushed function: Axial
@@ -3217,6 +3214,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             if exist('h')
                 close(h);
             end
+            app.DFW.Enable = 'off';
         end
         
         % Value changed function: SliceSpinner
@@ -3546,9 +3544,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Enable = 'on';
                     
             end
-            % reset plot limits and send changed flag
-            app.vvp_changed = 1;
             viewVelocityVectors(app);
+            if ~contains(app.MapType.Value, 'None')
+                viewMap(app);
+            end
         end
         
         % Value changed function: ParameterDropDown
@@ -4492,17 +4491,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.CalculateMap.Tooltip = {'calculate WSS'};
             app.CalculateMap.Position = [1036 654 150 28];
             app.CalculateMap.Text = '(Re)Calculate Map';
-            
-            % Create LinkplotsCheckBox
-            app.LinkplotsCheckBox = uicheckbox(app.Maps);
-            app.LinkplotsCheckBox.ValueChangedFcn = createCallbackFcn(app, @LinkplotsCheckBoxValueChanged, true);
-            app.LinkplotsCheckBox.Enable = 'off';
-            app.LinkplotsCheckBox.Tooltip = {'link timing for velocity vector and wss plots (only if WSS calculated for all time frames)'};
-            app.LinkplotsCheckBox.Text = 'Link plots';
-            app.LinkplotsCheckBox.FontName = 'SansSerif';
-            app.LinkplotsCheckBox.FontSize = 14;
-            app.LinkplotsCheckBox.Position = [1100 612 81 28];
-            app.LinkplotsCheckBox.Value = true;
             
             % Create SaveAnimation
             app.SaveAnimation = uibutton(app.Maps, 'push');

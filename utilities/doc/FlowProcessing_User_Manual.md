@@ -44,6 +44,7 @@ Additionally, the use of this software requires the following Matlab toolboxes:
 - Signal Processing Toolbox
 - Image Processing Toolbox
 - Statistics and Machine Learning Toolbox
+- Computer Vision Toolbox
 
 ### Data needed  <a name="data-needed"></a>
 The tool works directly on reconstructed .par / .rec files from a Philips 4D flow acquisition. It assumes these are all located within a single folder. The files needed are as follows:\

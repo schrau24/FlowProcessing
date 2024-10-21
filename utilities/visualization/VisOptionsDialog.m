@@ -4,6 +4,8 @@ classdef VisOptionsDialog < matlab.apps.AppBase
     properties (Access = public)
         VisOptionsDialogUIFigure        matlab.ui.Figure
         MapPlotPanel                    matlab.ui.container.Panel
+        projectionDropDown_Label        matlab.ui.control.Label
+        projectionDropDown              matlab.ui.control.DropDown
         backgroundDropDown_2            matlab.ui.control.DropDown
         backgroundDropDown_2Label       matlab.ui.control.Label
         TextcolorDropDown_2             matlab.ui.control.DropDown
@@ -217,6 +219,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'Vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
+        end
+        
+        % Value changed function: projectionDropDownValueChanged
+        function projectionDropDownValueChanged(app, event)
             viewMap(app.CallingApp);
         end
         
@@ -494,6 +501,21 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.TextcolorDropDown_2.FontName = 'SansSerif';
             app.TextcolorDropDown_2.Position = [74 74 110 22];
             app.TextcolorDropDown_2.Value = 'black';
+            
+            % Create projectionDropDown_Label
+            app.projectionDropDown_Label = uilabel(app.MapPlotPanel);
+            app.projectionDropDown_Label.WordWrap = 'on';
+            app.projectionDropDown_Label.FontName = 'SansSerif';
+            app.projectionDropDown_Label.Position = [2 140 68 30];
+            app.projectionDropDown_Label.Text = 'map slice projection';
+            
+            % Create projectionDropDown
+            app.projectionDropDown = uidropdown(app.MapPlotPanel);
+            app.projectionDropDown.Items = {'mean', 'max'};
+            app.projectionDropDown.ValueChangedFcn = createCallbackFcn(app, @projectionDropDownValueChanged, true);
+            app.projectionDropDown.FontName = 'SansSerif';
+            app.projectionDropDown.Position = [74 140 110 22];
+            app.projectionDropDown.Value = 'max';
             
             % Create backgroundDropDown_2Label
             app.backgroundDropDown_2Label = uilabel(app.MapPlotPanel);

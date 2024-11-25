@@ -160,6 +160,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         WaveformsDisplay                matlab.ui.control.UIAxes
         ResetWorkSpace                  matlab.ui.container.Tab
         CleardataandrestartanalysisButton  matlab.ui.control.Button
+        orthogonal_reorient_button_last_pushed % Bobby
     end
     
     properties (Access = private)
@@ -790,72 +791,45 @@ classdef FlowProcessing < matlab.apps.AppBase
 
 
 
-            reorient_method_Bobby_viewVelocityVectors = 1;
-            if reorient_method_Bobby_viewVelocityVectors
+            Bobby_manier_roteren_2 = 1;
+            if Bobby_manier_roteren_2
                 switch app.VectorOptionsDropDown.Value  % the current vector vis state
                     case 'slice-wise'   % slicewise vectors
-                        switch app.ori.label
-                            case 'axial'
-                                fprintf('WARNING: This is an axial scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
-                                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                for f = 1:3
-                                    tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
-                                    currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                end
-                                currV = currV_tmp; clear currV_tmp;
-                                
-                                % grab current slice
-                                sl = app.SliceSpinner_2.Value;
-                                if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                    app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                end
-                                if sl > size(currV,3)
-                                    sl = round(size(currV,3)/2);
-                                end
-                                L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                                vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                                vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                                vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                                [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                    -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                if ~isequal(app.pixdim(1),app.pixdim(2))
-                                    fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                end
-                                tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
-                                currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                img = repmat(currMAG(:,:,sl),[1 1 3]);
-                                imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                                hold(app.VelocityVectorsPlot,'on');
-                            case 'sagittal'
-                                if isequal(app.rotAngles2,[0,0])
-                                    % grab current slice
-                                    sl = app.SliceSpinner_2.Value;
-                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                    end
-                                    if sl > size(currV,3)
-                                        sl = round(size(currV,3)/2);
-                                    end
-                                    currSeg = squeeze(currSeg(:,:,sl));
-                                    currV_1 = squeeze(currV(:,:,sl,1));
-                                    currV_2 = squeeze(currV(:,:,sl,2));
-                                    currV_3 = squeeze(currV(:,:,sl,3));
-                                    L = find(currSeg(1:subsample:end,1:subsample:end));
-                                    vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
-                                    vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
-                                    vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
-                                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                        -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                    if ~isequal(app.pixdim(1),app.pixdim(2))
-                                        fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                    end
-                                    currMAG = app.MAG(:,:,:,t);
-                                    img = repmat(currMAG(:,:,sl),[1 1 3]);
-                                    imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                                    hold(app.VelocityVectorsPlot,'on');
-                                    clear currV_1 currV_2 currV_3
-                                elseif isequal(app.rotAngles2,[90,0])
+                        if app.orthogonal_reorient_button_last_pushed == 0 % original method
+                            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
+                            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                            for f = 1:3
+                                tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
+                                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                            end
+                            currV = currV_tmp; clear currV_tmp;
+                            
+                            % grab current slice
+                            sl = app.SliceSpinner_2.Value;
+                            if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                                app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                            end
+                            if sl > size(currV,3)
+                                sl = round(size(currV,3)/2);
+                            end
+                            L = find(currSeg(1:subsample:end,1:subsample:end,sl));
+                            vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
+                            vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
+                            vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
+                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            
+                            tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
+                            currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                            img = repmat(currMAG(:,:,sl),[1 1 3]);
+                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VelocityVectorsPlot,'on');
+                        elseif app.orthogonal_reorient_button_last_pushed == 1 % axial
+                            switch app.ori.label
+                                case 'axial'
+                                    fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                    return
+                                case 'sagittal'
                                     % grab current slice
                                     sl = app.SliceSpinner_2.Value;
                                     if app.SliceSpinner_2.Limits(2) ~= size(currV,1)
@@ -874,105 +848,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                                     vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
                                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(3), ...
                                         -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                    if ~isequal(app.pixdim(1),app.pixdim(2))
-                                        fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                    end
                                     currMAG = app.MAG(:,:,:,t);
                                     img = repmat(rot90(squeeze(currMAG(sl,:,:))),[1 1 3]);
                                     imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                                     hold(app.VelocityVectorsPlot,'on');
                                     clear currV_1 currV_2 currV_3
-                                elseif isequal(app.rotAngles2,[0,90])
-                                     % grab current slice
-                                    sl = app.SliceSpinner_2.Value;
-                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,2)
-                                        app.SliceSpinner_2.Limits = [1 size(currV,2)];
-                                    end
-                                    if sl > size(currV,2)
-                                        sl = round(size(currV,2)/2);
-                                    end
-                                    currSeg = squeeze(currSeg(:,end-sl+1,:));
-                                    currV_1 = squeeze(currV(:,end-sl+1,:,1));
-                                    currV_2 = squeeze(currV(:,end-sl+1,:,2));
-                                    currV_3 = squeeze(currV(:,end-sl+1,:,3));
-                                    L = find(currSeg(1:subsample:end,1:subsample:end));
-                                    vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
-                                    vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
-                                    vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
-                                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(3),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                        -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                    if ~isequal(app.pixdim(1),app.pixdim(2))
-                                        fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                    end
-                                    currMAG = app.MAG(:,:,:,t);
-                                    img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
-                                    imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                                    hold(app.VelocityVectorsPlot,'on');
-                                    clear currV_1 currV_2 currV_3
-                                else
-                                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                    for f = 1:3
-                                        tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
-                                        currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                    end
-                                    currV = currV_tmp; clear currV_tmp;
-                                    
-                                    % grab current slice
-                                    sl = app.SliceSpinner_2.Value;
-                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                    end
-                                    if sl > size(currV,3)
-                                        sl = round(size(currV,3)/2);
-                                    end
-                                    L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                                    vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                                    vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                                    vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                        -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                    if ~isequal(app.pixdim(1),app.pixdim(2))
-                                        fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                    end
-                                    tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
-                                    currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                    img = repmat(currMAG(:,:,sl),[1 1 3]);
-                                    imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                                    hold(app.VelocityVectorsPlot,'on');
-                                end
-                            case 'coronal'
-                                fprintf('WARNING: This is a coronal scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
-                                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                for f = 1:3
-                                    tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
-                                    currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                end
-                                currV = currV_tmp; clear currV_tmp;
-                                
-                                % grab current slice
-                                sl = app.SliceSpinner_2.Value;
-                                if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                    app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                end
-                                if sl > size(currV,3)
-                                    sl = round(size(currV,3)/2);
-                                end
-                                L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                                vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                                vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                                vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                                [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                    -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                                if ~isequal(app.pixdim(1),app.pixdim(2))
-                                    fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                                end
-                                tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
-                                currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                img = repmat(currMAG(:,:,sl),[1 1 3]);
-                                imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                                hold(app.VelocityVectorsPlot,'on');
+                                case 'coronal'
+                                    fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                    return
+                            end
                         end
                     case 'centerline contours' % contours from centerline
                         str = app.VecPts.Value;
@@ -1194,7 +1078,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             hold(app.VelocityVectorsPlot,'off');
         end
         
-        function [outImg, outVol, idx_from_currSeg_in_viewMap] = viewMap(app)
+        function [outImg, outVol] = viewMap(app)
             cla(app.MapPlot);
             colorbar(app.MapPlot,'off');
             if ~contains(app.MapType.Value,'None')
@@ -1215,68 +1099,32 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                 end
 
-                reorient_method_Bobby_viewMap = 1;
-                if reorient_method_Bobby_viewMap
-                    switch app.ori.label
-                        case 'axial'
-                            fprintf('WARNING: This is an axial scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
-                            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                            
-                            if contains(app.MapTime.Value,'resolved')
-                                currV = app.v(:,:,:,:,t)/10;
-                            else
-                                currV = app.v/10;
-                            end
-                            for tt = 1:size(currV,5)
-                                for f = 1:3
-                                    tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0]);
-                                    currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                end
-                            end
-                            currV = currV_tmp; clear currV_tmp;
-                        case 'sagittal'
-                            if isequal(app.rotAngles2,[0,0]) || isequal(app.rotAngles2,[90,0]) || isequal(app.rotAngles2,[0,90])
-                                if contains(app.MapTime.Value,'resolved')
-                                    currV = app.v(:,:,:,:,t)/10;
-                                else
-                                    currV = app.v/10;
-                                end
-                            else
-                                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                
-                                if contains(app.MapTime.Value,'resolved')
-                                    currV = app.v(:,:,:,:,t)/10;
-                                else
-                                    currV = app.v/10;
-                                end
-                                for tt = 1:size(currV,5)
-                                    for f = 1:3
-                                        tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0]);
-                                        currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                    end
-                                end
-                                currV = currV_tmp; clear currV_tmp;
-                            end
-                        case 'coronal'
-                            fprintf('WARNING: This is a coronal scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
-                            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                            
-                            if contains(app.MapTime.Value,'resolved')
-                                currV = app.v(:,:,:,:,t)/10;
-                            else
-                                currV = app.v/10;
-                            end
-                            for tt = 1:size(currV,5)
-                                for f = 1:3
-                                    tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0]);
-                                    currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
-                                end
-                            end
-                            currV = currV_tmp; clear currV_tmp;
+                % oktober 2024 changes Bobby, start
+                Bobby_manier_roteren = 1;
+                if Bobby_manier_roteren
+                    if app.orthogonal_reorient_button_last_pushed ~= 0
+                        if contains(app.MapTime.Value,'resolved')
+                            currV = app.v(:,:,:,:,t)/10;
+                        else
+                            currV = app.v/10;
                         end
+                    elseif app.orthogonal_reorient_button_last_pushed == 0
+                        tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
+                        currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                        
+                        if contains(app.MapTime.Value,'resolved')
+                            currV = app.v(:,:,:,:,t)/10;
+                        else
+                            currV = app.v/10;
+                        end
+                        for tt = 1:size(currV,5)
+                            for f = 1:3
+                                tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0]);
+                                currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                            end
+                        end
+                        currV = currV_tmp; clear currV_tmp;
+                    end
                 else
                     tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
                     currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
@@ -1294,82 +1142,53 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     currV = currV_tmp; clear currV_tmp;
                 end
+                % oktober 2024 changes Bobby, end
                     vx = currSeg.*currV(:,:,:,1,:);
                     vy = currSeg.*currV(:,:,:,2,:);
                     vz = currSeg.*currV(:,:,:,3,:);
 
-                    if reorient_method_Bobby_viewMap
-                        switch app.ori.label
+                    if Bobby_manier_roteren
+                        if app.orthogonal_reorient_button_last_pushed == 0
+                            isSliceWise = 0;
+                            if contains(app.VectorOptionsDropDown.Value,'slice-wise')
+                                isSliceWise = 1;
+                                % grab current slice
+                                sl = app.SliceSpinner_2.Value;
+                                if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                                    app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                                end
+                                if sl > size(currV,3)
+                                    sl = round(size(currV,3)/2);
+                                end
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 1 % axial
+                            switch app.ori.label
                             case 'axial'
-                                fprintf('WARNING: This is an axial scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            case 'sagittal'
                                 isSliceWise = 0;
                                 if contains(app.VectorOptionsDropDown.Value,'slice-wise')
                                     isSliceWise = 1;
                                     % grab current slice
                                     sl = app.SliceSpinner_2.Value;
-                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,1)
+                                        app.SliceSpinner_2.Limits = [1 size(currV,1)];
                                     end
-                                    if sl > size(currV,3)
-                                        sl = round(size(currV,3)/2);
-                                    end
-                                end
-                            case 'sagittal'
-                                if isequal(app.rotAngles2,[0,0])
-                                    isSliceWise = 0;
-                                    if contains(app.VectorOptionsDropDown.Value,'slice-wise')
-                                        isSliceWise = 1;
-                                        % grab current slice
-                                        sl = app.SliceSpinner_2.Value;
-                                        if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                        end
-                                        if sl > size(currV,3)
-                                            sl = round(size(currV,3)/2);
-                                        end
-                                    end
-                                elseif isequal(app.rotAngles2,[90,0])
-                                    isSliceWise = 0;
-                                    if contains(app.VectorOptionsDropDown.Value,'slice-wise')
-                                        isSliceWise = 1;
-                                        % grab current slice
-                                        sl = app.SliceSpinner_2.Value;
-                                        if app.SliceSpinner_2.Limits(2) ~= size(currV,1)
-                                            app.SliceSpinner_2.Limits = [1 size(currV,1)];
-                                        end
-                                        if sl > size(currV,1)
-                                            sl = round(size(currV,1)/2);
-                                        end
-                                    end
-                                elseif isequal(app.rotAngles2,[0,90])
-                                    isSliceWise = 0;
-                                    if contains(app.VectorOptionsDropDown.Value,'slice-wise')
-                                        isSliceWise = 1;
-                                        % grab current slice
-                                        sl = app.SliceSpinner_2.Value;
-                                        if app.SliceSpinner_2.Limits(2) ~= size(currV,2)
-                                            app.SliceSpinner_2.Limits = [1 size(currV,2)];
-                                        end
-                                        if sl > size(currV,2)
-                                            sl = round(size(currV,2)/2);
-                                        end
-                                    end
-                                else
-                                    isSliceWise = 0;
-                                    if contains(app.VectorOptionsDropDown.Value,'slice-wise')
-                                        isSliceWise = 1;
-                                        % grab current slice
-                                        sl = app.SliceSpinner_2.Value;
-                                        if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                                        end
-                                        if sl > size(currV,3)
-                                            sl = round(size(currV,3)/2);
-                                        end
+                                    if sl > size(currV,1)
+                                        sl = round(size(currV,1)/2);
                                     end
                                 end
                             case 'coronal'
-                                fprintf('WARNING: This is a coronal scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 2 % sagittal
+                            switch app.ori.label
+                            case 'axial'
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            case 'sagittal'
                                 isSliceWise = 0;
                                 if contains(app.VectorOptionsDropDown.Value,'slice-wise')
                                     isSliceWise = 1;
@@ -1382,6 +1201,32 @@ classdef FlowProcessing < matlab.apps.AppBase
                                         sl = round(size(currV,3)/2);
                                     end
                                 end
+                            case 'coronal'
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 3 % coronal
+                            switch app.ori.label
+                            case 'axial'
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            case 'sagittal'
+                                isSliceWise = 0;
+                                if contains(app.VectorOptionsDropDown.Value,'slice-wise')
+                                    isSliceWise = 1;
+                                    % grab current slice
+                                    sl = app.SliceSpinner_2.Value;
+                                    if app.SliceSpinner_2.Limits(2) ~= size(currV,2)
+                                        app.SliceSpinner_2.Limits = [1 size(currV,2)];
+                                    end
+                                    if sl > size(currV,2)
+                                        sl = round(size(currV,2)/2);
+                                    end
+                                end
+                            case 'coronal'
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
                         end
                     else
                         isSliceWise = 0;
@@ -1421,14 +1266,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         % for cmap, calculate absolute max of the mean
                         tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
 
-                        do_mask_erosion_Bobby = 1;
-                        if do_mask_erosion_Bobby 
-                            currSeg = mask_erosion_Bobby(currSeg,0);
+                        do_mask_erosion = 1; % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                        if do_mask_erosion  % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                            currSeg = mask_erosion_dev(currSeg,0); % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
                         end
-                        do_extra_currSeg_multiplication_afterwards_Bobby = 1;
-                        if do_extra_currSeg_multiplication_afterwards_Bobby
-                            tmp = currSeg.*tmp;
-                        end
+                        tmp = currSeg.*tmp;
 
                         outVol = squeeze(tmp);
                         
@@ -1438,14 +1280,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         % for cmap, calculate absolute max of the mean
                         tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
 
-                        do_mask_erosion_Bobby = 1; 
-                        if do_mask_erosion_Bobby  
-                            currSeg = mask_erosion_Bobby(currSeg,0); 
+                        do_mask_erosion = 1; % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                        if do_mask_erosion  % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                            currSeg = mask_erosion_dev(currSeg,0); % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
                         end
-                        do_extra_currSeg_multiplication_afterwards_Bobby = 1;
-                        if do_extra_currSeg_multiplication_afterwards_Bobby
-                            tmp = currSeg.*tmp;
-                        end
+                        tmp = currSeg.*tmp;
 
                         outVol = squeeze(tmp);
                         
@@ -1462,14 +1301,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
                         KE = 0.5*rho*vox_vol.*vel;
 
-                        do_mask_erosion_Bobby = 1; 
-                        if do_mask_erosion_Bobby  
-                            currSeg = mask_erosion_Bobby(currSeg,0); 
+                        do_mask_erosion = 1; % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                        if do_mask_erosion  % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                            currSeg = mask_erosion_dev(currSeg,0); % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
                         end
-                        do_extra_currSeg_multiplication_afterwards_Bobby = 1;
-                        if do_extra_currSeg_multiplication_afterwards_Bobby
-                            KE = currSeg.*KE;
-                        end
+                        KE = currSeg.*KE; % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
 
                         outVol = squeeze(1e6*squeeze(KE));    % in uJ
                         
@@ -1507,14 +1343,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         % dynamic viscosity mu = 0.004 Pa·s
                         EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
 
-                        do_mask_erosion_Bobby = 1; 
-                        if do_mask_erosion_Bobby  
-                            currSeg = mask_erosion_Bobby(currSeg,0); 
+                        do_mask_erosion = 1; % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen. Voor Energy Loss adviseer ik dit sowieso op 1 te zetten.
+                        if do_mask_erosion  % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                            currSeg = mask_erosion_dev(currSeg,0); % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
                         end
-                        do_extra_currSeg_multiplication_afterwards_Bobby = 1;
-                        if do_extra_currSeg_multiplication_afterwards_Bobby
-                            EL = currSeg.*EL;
-                        end
+                        EL = currSeg.*EL;
 
                         outVol = squeeze(EL);
                         
@@ -1538,14 +1371,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                             cx(:,:,:,tt) = curlx; cy(:,:,:,tt) = curly; cz(:,:,:,tt) = curlz;
                         end
                         vorticity = sqrt(cx.^2+cy.^2+cz.^2);
-                        do_mask_erosion_Bobby = 1; 
-                        if do_mask_erosion_Bobby  
-                            currSeg = mask_erosion_Bobby(currSeg,0); 
+                        do_mask_erosion = 1; % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen. Voor Vorticity adviseer ik dit sowieso op 1 te zetten.
+                        if do_mask_erosion  % Toevoeging Bobby 23 okt 2024. Hier moet een soort button voor komen.
+                            currSeg = mask_erosion_dev(currSeg,0); % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten.
                         end
-                        do_extra_currSeg_multiplication_afterwards_Bobby = 1;
-                        if do_extra_currSeg_multiplication_afterwards_Bobby
-                            vorticity = currSeg.*vorticity;
-                        end
+                        vorticity = currSeg.*vorticity; % Toevoeging Bobby 23 okt 2024. Nog aan Eric laten weten. 
                         clear cx cy cz curlx curly curlz;
                         outVol = squeeze(vorticity);
                 end
@@ -1592,62 +1422,69 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % then project the image, or choose a slice
 
-                    if reorient_method_Bobby_viewMap
-                        switch app.ori.label
+                    if Bobby_manier_roteren
+                        if app.orthogonal_reorient_button_last_pushed == 0 % original method
+                            if isSliceWise
+                                outImg = outImg(:,:,sl);
+                            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                outImg = mean(outImg,3);
+                            else          % app.VisOptions.MapProjection.Value = 'max'  
+                                outImg = max(outImg,[],3);
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 1 % axial
+                            switch app.ori.label
                             case 'axial'
-                                fprintf('WARNING: This is an axial scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
-                                if isSliceWise
-                                    outImg = outImg(:,:,sl);
-                                elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                    outImg = mean(outImg,3);
-                                else          % app.VisOptions.MapProjection.Value = 'max'  
-                                    outImg = max(outImg,[],3);
-                                end
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
                             case 'sagittal'
-                                if isequal(app.rotAngles2,[0,0])
-                                    if isSliceWise
-                                        outImg = outImg(:,:,sl);
-                                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                        outImg = squeeze(mean(outImg,3));
-                                    else
-                                        outImg = squeeze(max(outImg,[],3));
-                                    end
-                                elseif isequal(app.rotAngles2,[90,0])
-                                    if isSliceWise
-                                        outImg = rot90(squeeze(outImg(sl,:,:)));
-                                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                        outImg = rot90(squeeze(mean(outImg,1)));
-                                    else
-                                        outImg = rot90(squeeze(max(outImg,[],1)));
-                                    end
-                                elseif isequal(app.rotAngles2,[0,90])
-                                    if isSliceWise
-                                        outImg = squeeze(outImg(:,end-sl+1,:));
-                                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                        outImg = squeeze(mean(outImg,2));
-                                    else
-                                        outImg = squeeze(max(outImg,[],2));
-                                    end
+                                if isSliceWise
+                                    outImg = rot90(squeeze(outImg(sl,:,:)));
+                                elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                    outImg = rot90(squeeze(mean(outImg,1)));
                                 else
-                                    if isSliceWise
-                                        outImg = outImg(:,:,sl);
-                                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                        outImg = mean(outImg,3);
-                                    else          % app.VisOptions.MapProjection.Value = 'max'  
-                                        outImg = max(outImg,[],3);
-                                    end
+                                    outImg = rot90(squeeze(max(outImg,[],1)));
                                 end
                             case 'coronal'
-                                fprintf('WARNING: This is a coronal scan. Visualization/reorientation has only been optimized yet for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 2 % sagittal
+                            switch app.ori.label
+                            case 'axial'
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            case 'sagittal'
                                 if isSliceWise
                                     outImg = outImg(:,:,sl);
                                 elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                                    outImg = mean(outImg,3);
-                                else          % app.VisOptions.MapProjection.Value = 'max'  
-                                    outImg = max(outImg,[],3);
+                                    outImg = squeeze(mean(outImg,3));
+                                else
+                                    outImg = squeeze(max(outImg,[],3));
                                 end
+                            case 'coronal'
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
+                        elseif app.orthogonal_reorient_button_last_pushed == 3 % coronal
+                            switch app.ori.label
+                            case 'axial'
+                                fprintf('Re-orientation of an axial scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. /n')
+                                return
+                            case 'sagittal'
+                                if isSliceWise
+                                    outImg = squeeze(outImg(:,end-sl+1,:));
+                                elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                    outImg = squeeze(mean(outImg,2));
+                                else
+                                    outImg = squeeze(max(outImg,[],2));
+                                end
+                            case 'coronal'
+                                fprintf('Re-orientation of a coronal scan is not implemented yet. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                                return
+                            end
                         end
                     else
+
                         if isSliceWise
                             outImg = outImg(:,:,sl);
                         elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
@@ -1697,7 +1534,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
                 end
             end
-            idx_from_currSeg_in_viewMap = find(currSeg); % To be used in MapVolumetricanalysisPushed function, when use_idx_from_currSeg_from_viewMap_method_Bobby equals 1.
         end
         
         function plotVelocities(app)
@@ -1787,6 +1623,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: LoadDataButton
         function LoadDataButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024. Don't know where else to initialize this.
             clc;
             
             % from load data
@@ -3445,7 +3282,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 map_var = zeros(length(idx),app.nframes);
                 for t = 1:app.nframes
                     app.TimeframeSpinner.Value = t;
-                    [outImg, ~, ~] = viewMap(app);
+                    [outImg, ~] = viewMap(app);
                     map_var(:,t) = outImg(idx);
                 end
                 
@@ -3534,76 +3371,46 @@ classdef FlowProcessing < matlab.apps.AppBase
             close(figure(701));
             app.MapPlot.Toolbar.Visible = 'off';
             
-            use_idx_from_currSeg_from_viewMap_method_Bobby = 1;
-            if use_idx_from_currSeg_from_viewMap_method_Bobby
-                t = app.TimeframeSpinner.Value;
-                % first save image with current ROI and time frame
-                ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
-                % Turn screenshot into image
-                im = frame2im(ff);
-                app.MapPlot.Toolbar.Visible = 'on';
-                % save state
-                saveFrame = t;
-
-                % loop through all frames using the 3D volume as the ROI, report summary statistics
-                if contains(app.MapTime.Value,'resolved')
-                    for t = 1:app.nframes
-                        app.TimeframeSpinner.Value = t;
-                        [~, outVol, idx_from_currSeg_in_viewMap] = viewMap(app);
-                        if t == 1 % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
-                            map_var = zeros(length(idx_from_currSeg_in_viewMap),app.nframes);
-                        end
-                        map_var(:,t) = outVol(idx_from_currSeg_in_viewMap);
-                    end
-                else    % outVol has all time frames
-                    [~, outVol, idx_from_currSeg_in_viewMap] = viewMap(app);
-                    map_var = zeros(length(idx_from_currSeg_in_viewMap),app.nframes); % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
-                    for t = 1:app.nframes
-                        tmp = reshape(outVol,prod(size(outVol,1:3)),app.nframes);
-                        map_var(:,t) = tmp(idx_from_currSeg_in_viewMap,t);
-                    end
-                end
+            % grab current segmentation to use as ROI
+            t = app.TimeframeSpinner.Value;
+            if app.isTimeResolvedSeg
+                currSeg = app.aorta_seg(:,:,:,t);
             else
-                % grab current segmentation to use as ROI
-                t = app.TimeframeSpinner.Value;
-                if app.isTimeResolvedSeg
-                    currSeg = app.aorta_seg(:,:,:,t);
-                else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
-                    end
-                    if ~app.isSegmentationLoaded
-                        currSeg = app.segment;
+                currSeg = zeros(size(app.aorta_seg,1:3));
+                % only use segmentations that were selected in first tab
+                for ii = 1:size(app.aorta_seg,4)
+                    if eval(sprintf('app.mask%i.Value==1',ii))
+                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
                     end
                 end
-                idx = find(currSeg);
-                % first save image with current ROI and time frame
-                ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
-                % Turn screenshot into image
-                im = frame2im(ff);
-                app.MapPlot.Toolbar.Visible = 'on';
-                
-                % save state
-                saveFrame = t;
-                
-                % loop through all frames using the 3D volume as the ROI, report summary statistics
-                map_var = zeros(length(idx),app.nframes);
-                if contains(app.MapTime.Value,'resolved')
-                    for t = 1:app.nframes
-                        app.TimeframeSpinner.Value = t;
-                        [~, outVol, ~] = viewMap(app);
-                        map_var(:,t) = outVol(idx);
-                    end
-                else    % outVol has all time frames
-                    [~, outVol, ~] = viewMap(app);
-                    for t = 1:app.nframes
-                        tmp = reshape(outVol,prod(size(outVol,1:3)),app.nframes);
-                        map_var(:,t) = tmp(idx,t);
-                    end
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
+            end
+            idx = find(currSeg);
+            
+            % first save image with current ROI and time frame
+            ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
+            % Turn screenshot into image
+            im = frame2im(ff);
+            app.MapPlot.Toolbar.Visible = 'on';
+            
+            % save state
+            saveFrame = t;
+            
+            % loop through all frames using the 3D volume as the ROI, report summary statistics
+            map_var = zeros(length(idx),app.nframes);
+            if contains(app.MapTime.Value,'resolved')
+                for t = 1:app.nframes
+                    app.TimeframeSpinner.Value = t;
+                    [~, outVol] = viewMap(app);
+                    map_var(:,t) = outVol(idx);
+                end
+            else    % outVol has all time frames
+                [~, outVol] = viewMap(app);
+                for t = 1:app.nframes
+                    tmp = reshape(outVol,prod(size(outVol,1:3)),app.nframes);
+                    map_var(:,t) = tmp(idx,t);
                 end
             end
             map_var_integral = sum(mean(map_var,1))*app.timeres/1000; % 1 number. app.timeres/1000 is temporal resolution in seconds
@@ -3682,6 +3489,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: Axial
         function AxialButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 1; % 1 for axial, 2 for sagittal, 3 for coronal. addition Bobby okt 2024
             switch app.ori.label
                 case 'axial'
                     % this was an axial scan, reset rotation
@@ -3697,6 +3505,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: Sagittal
         function SagittalButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 2; % 1 for axial, 2 for sagittal, 3 for coronal. addition Bobby okt 2024
             switch app.ori.label
                 case 'axial'
                     app.rotAngles2 = [0 90];
@@ -3712,6 +3521,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: Coronal
         function CoronalButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 3; % 1 for axial, 2 for sagittal, 3 for coronal. addition Bobby okt 2024
             switch app.ori.label
                 case 'axial'
                     app.rotAngles2 = [90 0];
@@ -3727,6 +3537,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: ResetRotation_2
         function ResetRotation_2ButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024.
             % update rotate angles
             app.rotAngles2 = [0 0];
             viewVelocityVectors(app);
@@ -3735,6 +3546,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: RotateUp_2
         function RotateUp_2ButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024.
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
             viewVelocityVectors(app);
@@ -3743,6 +3555,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: RotateDown_2
         function RotateDown_2ButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024.
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
             viewVelocityVectors(app);
@@ -3751,6 +3564,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: RotateRight_2
         function RotateRight_2ButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024.
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
             viewVelocityVectors(app);
@@ -3759,6 +3573,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Button pushed function: RotateLeft_2
         function RotateLeft_2ButtonPushed(app, ~)
+            app.orthogonal_reorient_button_last_pushed = 0; % Bobby october 2024.
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
             viewVelocityVectors(app);

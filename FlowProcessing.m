@@ -914,8 +914,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VelocityVectorGroup.ForegroundColor = axisText;
             app.TimeframeSpinnerLabel.FontColor = axisText;
             app.SliceSpinner_2Label.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','Velocity (cm/s)','Color',axisText);
-            set(cbar,'FontSize',12,'color',axisText,'Location','west');
+            set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
+            set(cbar,'FontSize',14,'color',axisText,'Location','west');
             pos = get(cbar,'position');
             switch cbarLoc
                 case 'bottom-left'
@@ -1160,7 +1160,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cBarString = 'velocity cm/s';
                 end
                 set(get(cbar,'xlabel'),'string',cBarString,'Color',axisText);
-                set(cbar,'FontSize',12,'color',axisText,'Location','west');
+                set(cbar,'FontSize',14,'color',axisText,'Location','west');
                 % change cbar size to fit in corner
                 pos = get(cbar,'position');
                 switch cbarLoc
@@ -2812,11 +2812,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     
                     viewMap(app);
-                    if peakSystole  % disable spinner as only one frame available
-                        app.MapTimeframeSpinner.Enable = 'off';
-                    else
-                        app.MapTimeframeSpinner.Enable = 'on';
-                    end
                     
                     app.isWSScalculated = 1;
             end
@@ -2835,8 +2830,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VecPts_Label.Visible = 'off';
             app.VecPts.Visible = 'off';
             
-            app.MapTimeframeSpinner.Visible = 'off';
-            app.MapTimeframeSpinnerLabel.Visible = 'off';
             app.MapType.Visible = 'off';
             
             [file,path] = uiputfile('*.gif','Selection file name and location');
@@ -2845,14 +2838,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             for t = 1:app.nframes
                 app.TimeframeSpinner.Value = t;
                 viewVelocityVectors(app);
-                
-                if ~contains(app.MapType.Value,'None')
-                    app.TimeframeSpinner.Value = t;
-                    viewMap(app);
-                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
-                else
-                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
-                end
                 
                 % freeze limits to avoid jittering in gif
                 if t == 1
@@ -2873,10 +2858,17 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 pause(0.01);
                 
+                if ~contains(app.MapType.Value,'None')
+                    app.TimeframeSpinner.Value = t;
+                    viewMap(app);
+                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
+                else
+                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
+                end
                 % Turn screenshot into image
                 im = frame2im(ff);
                 % add time label
-                im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white');
+                im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
                 
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);
@@ -2904,8 +2896,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.VecPts.Visible = 'on';
             end
             
-            app.MapTimeframeSpinner.Visible = 'on';
-            app.MapTimeframeSpinnerLabel.Visible = 'on';
             app.MapType.Visible = 'on';
             app.MapPlot.Toolbar.Visible = 'on';
             app.VelocityVectorsPlot.Toolbar.Visible = 'on';

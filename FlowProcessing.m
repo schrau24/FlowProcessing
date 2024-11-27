@@ -2618,6 +2618,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '4';
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
                     if ~app.isWSScalculated
                         msgbox('WSS not yet calculated, push Calculate Map');
@@ -2628,26 +2629,32 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/10));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
                 case 'Mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/50));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
                 case 'Kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '10';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
                 case 'Energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
                     app.VisOptionsApp.minMapEditField.Value = '-0.1';
                     app.VisOptionsApp.maxMapEditField.Value = '3';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
                     
                 case 'Vorticity'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'vorticity (rad)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '300';
+                    app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
+                    
             end
             if ~contains(app.MapType.Value,'None')
                 viewMap(app);

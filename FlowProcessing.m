@@ -1193,8 +1193,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % update view angle
                     camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
                 end
+                idx_currSeg = find(currSeg);
             end
-            idx_currSeg = find(currSeg);
         end
         
         function plotVelocities(app)
@@ -3663,7 +3663,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.MapVolumetricanalysis.Enable = 'on';
             end
             viewVelocityVectors(app);
-            viewMap(app);
+                viewMap(app);
         end
         
         % Value changed function: ParameterDropDown

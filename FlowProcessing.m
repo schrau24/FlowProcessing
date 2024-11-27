@@ -790,11 +790,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
             switch app.VectorOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
-                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                     for f = 1:3
-                        tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0]);
-                        currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                        tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
+                        currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                     end
                     currV = currV_tmp; clear currV_tmp;
                     
@@ -813,8 +813,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                         -10);   % cheat here and put the vel vectors at a negative location to overlay better
                     
-                    tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0]);
-                    currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                    tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
+                    currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                     img = repmat(currMAG(:,:,sl),[1 1 3]);
                     imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                     hold(app.VelocityVectorsPlot,'on');
@@ -945,7 +945,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             hold(app.VelocityVectorsPlot,'off');
         end
         
-        function [outImg, outVol] = viewMap(app)
+        function [outImg, outVol, idx_currSeg] = viewMap(app)
             cla(app.MapPlot);
             colorbar(app.MapPlot,'off');
             if ~contains(app.MapType.Value,'None')
@@ -965,9 +965,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                         currSeg = app.segment;
                     end
                 end
-                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0]);
-                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                 
+                % do erosion is mask_erosion_checkbox checked
+                if app.VisOptionsApp.mask_erosion_checkbox.Value
+                    currSeg = mask_erosion(currSeg,0);
+                end
+                
+                % grab current velocity
                 if contains(app.MapTime.Value,'resolved')
                     currV = app.v(:,:,:,:,t)/10;
                 else
@@ -975,8 +981,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 for tt = 1:size(currV,5)
                     for f = 1:3
-                        tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0]);
-                        currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0]);
+                        tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
+                        currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                     end
                 end
                 currV = currV_tmp; clear currV_tmp;
@@ -1018,14 +1024,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                         scaletmp = [0 round(app.VENC/10)];
                         cBarString = 'Peak velocity (cm/s)';
                         % for cmap, calculate absolute max of the mean
-                        tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+                        tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
                         outVol = squeeze(tmp);
                         
                     case 'Mean velocity'
                         scaletmp = [0 round(app.VENC/50)];
                         cBarString = 'Mean velocity (cm/s)';
                         % for cmap, calculate absolute max of the mean
-                        tmp = sqrt(vx.^2 + vy.^2 + vz.^2);
+                        tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
                         outVol = squeeze(tmp);
                         
                     case 'Kinetic energy'
@@ -1039,7 +1045,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         rho = 1.060;                            % density of blood, in kg/L
                         vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
                         vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
-                        KE = 0.5*rho*vox_vol.*vel;
+                        KE = currSeg.*0.5*rho*vox_vol.*vel;
                         outVol = squeeze(1e6*squeeze(KE));    % in uJ
                         
                     case 'Energy loss'
@@ -1074,7 +1080,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         theta_v = 1/2*theta_v;
                         
                         % dynamic viscosity mu = 0.004 Pa·s
-                        EL = 0.004 * theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
+                        EL = currSeg.*0.004 .* theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
                         outVol = squeeze(EL);
                         
                     case 'Vorticity'
@@ -1096,7 +1102,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             [curlx,curly,curlz,cav] = curl(X,Y,Z,vx(:,:,:,tt),vy(:,:,:,tt),vz(:,:,:,tt));
                             cx(:,:,:,tt) = curlx; cy(:,:,:,tt) = curly; cz(:,:,:,tt) = curlz;
                         end
-                        vorticity = sqrt(cx.^2+cy.^2+cz.^2);
+                        vorticity = currSeg.*sqrt(cx.^2+cy.^2+cz.^2);
                         clear cx cy cz curlx curly curlz;
                         outVol = squeeze(vorticity);
                 end
@@ -1145,7 +1151,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         outImg = outImg(:,:,sl);
                     elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
                         outImg = mean(outImg,3);
-                    else          % app.VisOptions.MapProjection.Value = 'max'  
+                    else          % app.VisOptions.MapProjection.Value = 'max'
                         outImg = max(outImg,[],3);
                     end
                     imagesc(app.MapPlot,outImg+0.001);
@@ -1188,6 +1194,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
                 end
             end
+            idx_currSeg = find(currSeg);
         end
         
         function plotVelocities(app)
@@ -2655,7 +2662,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             else
                 app.VisOptionsApp.projectionDropDown.Enable = 'on';
                 app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
-            end 
+            end
             viewMap(app);
         end
         
@@ -2925,7 +2932,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 map_var = zeros(length(idx),app.nframes);
                 for t = 1:app.nframes
                     app.TimeframeSpinner.Value = t;
-                    [outImg, ~] = viewMap(app);
+                    [outImg, ~, ~] = viewMap(app);
                     map_var(:,t) = outImg(idx);
                 end
                 
@@ -3014,46 +3021,31 @@ classdef FlowProcessing < matlab.apps.AppBase
             close(figure(701));
             app.MapPlot.Toolbar.Visible = 'off';
             
-            % grab current segmentation to use as ROI
             t = app.TimeframeSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
-            idx = find(currSeg);
-            
             % first save image with current ROI and time frame
             ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
             % Turn screenshot into image
             im = frame2im(ff);
             app.MapPlot.Toolbar.Visible = 'on';
-            
             % save state
             saveFrame = t;
             
             % loop through all frames using the 3D volume as the ROI, report summary statistics
-            map_var = zeros(length(idx),app.nframes);
             if contains(app.MapTime.Value,'resolved')
                 for t = 1:app.nframes
                     app.TimeframeSpinner.Value = t;
-                    [~, outVol] = viewMap(app);
-                    map_var(:,t) = outVol(idx);
+                    [~, outVol, idx_currSeg] = viewMap(app);
+                    if t == 1 % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
+                        map_var = zeros(length(idx_currSeg),app.nframes);
+                    end
+                    map_var(:,t) = outVol(idx_currSeg);
                 end
             else    % outVol has all time frames
-                [~, outVol] = viewMap(app);
+                [~, outVol, idx_currSeg] = viewMap(app);
+                map_var = zeros(length(idx_currSeg),app.nframes); % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
                 for t = 1:app.nframes
                     tmp = reshape(outVol,prod(size(outVol,1:3)),app.nframes);
-                    map_var(:,t) = tmp(idx,t);
+                    map_var(:,t) = tmp(idx_currSeg,t);
                 end
             end
             map_var_integral = sum(mean(map_var,1))*app.timeres/1000; % 1 number. app.timeres/1000 is temporal resolution in seconds
@@ -3142,7 +3134,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [90 0];
             end
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: Sagittal
@@ -3157,7 +3149,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 90];
             end
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: Coronal
@@ -3172,7 +3164,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.rotAngles2 = [0 0];
             end
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: ResetRotation_2
@@ -3180,7 +3172,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [0 0];
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: RotateUp_2
@@ -3188,7 +3180,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: RotateDown_2
@@ -3196,7 +3188,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: RotateRight_2
@@ -3204,7 +3196,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: RotateLeft_2
@@ -3212,7 +3204,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Button pushed function: VelocityUnwrapping
@@ -3664,7 +3656,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.MapVolumetricanalysis.Enable = 'on';
             end
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Value changed function: ParameterDropDown

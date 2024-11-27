@@ -4,6 +4,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
     properties (Access = public)
         VisOptionsDialogUIFigure        matlab.ui.Figure
         MapPlotPanel                    matlab.ui.container.Panel
+        mask_erosion_checkbox           matlab.ui.control.CheckBox
         projectionDropDown_Label        matlab.ui.control.Label
         projectionDropDown              matlab.ui.control.DropDown
         backgroundDropDown_2            matlab.ui.control.DropDown
@@ -219,6 +220,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 case 'Vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
+            viewMap(app.CallingApp);
+        end
+        
+        % Value changed function: mask_erosion_checkboxChanged
+        function mask_erosion_checkboxChanged(app, event)
             viewMap(app.CallingApp);
         end
         
@@ -501,6 +507,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.TextcolorDropDown_2.FontName = 'SansSerif';
             app.TextcolorDropDown_2.Position = [74 74 110 22];
             app.TextcolorDropDown_2.Value = 'black';
+            
+            % Create mask_erosion_checkbox
+            app.mask_erosion_checkbox = uicheckbox(app.MapPlotPanel);
+            app.mask_erosion_checkbox.ValueChangedFcn = createCallbackFcn(app, @mask_erosion_checkboxChanged, true);
+            app.mask_erosion_checkbox.Tooltip = {'erode mask 1 voxel for selected map'};
+            app.mask_erosion_checkbox.Text = 'mask erosion';
+            app.mask_erosion_checkbox.FontName = 'SansSerif';
+            app.mask_erosion_checkbox.Position = [46 180 146 22];
             
             % Create projectionDropDown_Label
             app.projectionDropDown_Label = uilabel(app.MapPlotPanel);

@@ -2610,7 +2610,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             switch app.MapType.Value
                 case 'None'
-                    app.MapTime.Value.Enable = 'off';
+                    app.MapTime.Enable = 'off';
                     cla(app.MapPlot);
                     colorbar(app.MapPlot,'off');
                     
@@ -2657,6 +2657,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
             end
             if ~contains(app.MapType.Value,'None')
+                app.MapTime.Enable = 'on';
                 viewMap(app);
             end
         end

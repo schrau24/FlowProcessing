@@ -1286,19 +1286,33 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
             
-            % from load data
-            [filename,directory] = uigetfile('*.rec;*.mat','Select Reconstructed Data');
+            list = {'Philips .rec','mrStruct .mat','Siemens dicom'};
+            [indx,tf] = listdlg('PromptString',{'4D flow file type',...
+                'Only one file can be selected',''},...
+                'SelectionMode','single','ListString',list);
+            filetype = list{indx};
             
-            if endsWith(filename,'.rec')
-                [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
-                    app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC(directory, filename);
-            else % .mat mrStruct file
-                % quick check that both files exist
-                if ~exist(fullfile(directory,'mag_struct.mat'),'file') || ~exist(fullfile(directory,'vel_struct.mat'),'file')
-                    error('both mag_struct.mat and vel_struct.mat needed for loading in mrStruct files');
-                end
-                [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
-                    app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadMrStruct(directory);
+            switch filetype
+                case 'Philips .rec'
+                    [filename,directory] = uigetfile('*.rec','Select Reconstructed Data');
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC(directory, filename);
+                case 'mrStruct .mat'
+                    [filename,directory] = uigetfile('*.mat','Select Reconstructed Data');
+                    % quick check that both files exist
+                    if ~exist(fullfile(directory,'mag_struct.mat'),'file') || ~exist(fullfile(directory,'vel_struct.mat'),'file')
+                        error('both mag_struct.mat and vel_struct.mat needed for loading in mrStruct files');
+                    end
+                    [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadMrStruct(directory);
+                case 'Siemens dicom'
+                    directory = uigetdir('Select parent Siemens dicom directory (with 4 subfolders)');
+                    % quick check that all directories exist
+                    if length(dir(directory)) ~= 6 % inclues . and ..
+                        error('directory does not contain 4 subfolders (with Siemens dicoms)');
+                    end
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadSiemensDicom(directory);
             end
             app.directory = directory;
             

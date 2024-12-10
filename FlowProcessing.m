@@ -968,11 +968,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
                 currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                 
-                % do erosion is mask_erosion_checkbox checked
-                if app.VisOptionsApp.mask_erosion_checkbox.Value
-                    currSeg = mask_erosion(currSeg,0);
-                end
-                
                 % grab current velocity
                 if contains(app.MapTime.Value,'resolved')
                     currV = app.v(:,:,:,:,t)/10;
@@ -989,6 +984,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                 vx = currSeg.*currV(:,:,:,1,:);
                 vy = currSeg.*currV(:,:,:,2,:);
                 vz = currSeg.*currV(:,:,:,3,:);
+                
+                % do erosion is mask_erosion_checkbox checked
+                if app.VisOptionsApp.mask_erosion_checkbox.Value
+                    currSeg = mask_erosion(currSeg,0);
+                end
                 
                 isSliceWise = 0;
                 if contains(app.VectorOptionsDropDown.Value,'slice-wise')

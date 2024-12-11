@@ -127,17 +127,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function minMapEditFieldValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);
@@ -147,17 +147,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function maxMapEditFieldValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);
@@ -167,17 +167,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function LocationDropDown_2ValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);
@@ -187,17 +187,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function ColormapDropDown_2ValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);
@@ -207,17 +207,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function TextcolorDropDown_2ValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);
@@ -237,17 +237,17 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function backgroundDropDown_2ValueChanged(app, event)
             switch app.CallingApp.MapType.Value
                 case 'None'
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'Energy loss'
+                case 'energy loss'
                     app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'Vorticity'
+                case 'vorticity'
                     app.MapEditFieldLabel.Text = 'vorticity (rad)';
             end
             viewMap(app.CallingApp);

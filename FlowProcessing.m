@@ -384,12 +384,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'Peak Flow'
                     cdata = max(app.flowPulsatile_vol(index,:),[],2);
                     axisText = 'Peak flow (mL/s)';
-                case 'Mean velocity'
+                case 'mean velocity'
                     cdata = mean(app.flowPulsatile_vol(index,:)./app.area_val,2);
-                    axisText = 'Mean velocity (cm/s)';
-                case 'Peak velocity'
+                    axisText = 'mean velocity (cm/s)';
+                case 'peak velocity'
                     cdata = max(app.flowPulsatile_vol(index,:)./app.area_val,[],2);
-                    axisText = 'Peak velocity (cm/s)';
+                    axisText = 'peak velocity (cm/s)';
             end
             
             hSurface = surface(app.View3D_2,'XData',[y(:) y(:)],'YData',[x(:) x(:)],'ZData',[z(:) z(:)],...
@@ -790,32 +790,152 @@ classdef FlowProcessing < matlab.apps.AppBase
             subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
             switch app.VectorOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
-                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                    for f = 1:3
-                        tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
-                        currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                    if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
+                        fprintf('WARNING: This is a %s scan. Visualization/reorientation has only been optimized for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n',app.ori.label);
+                        
+                        % do the rotation
+                        tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                        currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        for f = 1:3
+                            tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
+                            currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        end
+                        currV = currV_tmp; clear currV_tmp;
+                        
+                        % grab current slice
+                        sl = app.SliceSpinner_2.Value;
+                        if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                        end
+                        if sl > size(currV,3)
+                            sl = round(size(currV,3)/2);
+                        end
+                        L = find(currSeg(1:subsample:end,1:subsample:end,sl));
+                        vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
+                        vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
+                        vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
+                        [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                            -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                        
+                        tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
+                        currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        img = repmat(currMAG(:,:,sl),[1 1 3]);
+                    else % sagittal scan
+                        if isequal(app.rotAngles2,[0,0]) % no additional rotation
+                            % grab current slice
+                            sl = app.SliceSpinner_2.Value;
+                            if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                                app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                            end
+                            if sl > size(currV,3)
+                                sl = round(size(currV,3)/2);
+                            end
+                            currSeg = squeeze(currSeg(:,:,sl));
+                            currV_1 = squeeze(currV(:,:,sl,1));
+                            currV_2 = squeeze(currV(:,:,sl,2));
+                            currV_3 = squeeze(currV(:,:,sl,3));
+                            L = find(currSeg(1:subsample:end,1:subsample:end));
+                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
+                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
+                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
+                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            if ~isequal(app.pixdim(1),app.pixdim(2))
+                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
+                            end
+                            currMAG = app.MAG(:,:,:,t);
+                            img = repmat(currMAG(:,:,sl),[1 1 3]);
+                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VelocityVectorsPlot,'on');
+                            clear currV_1 currV_2 currV_3
+                        elseif isequal(app.rotAngles2,[90,0]) % rotate into axial view
+                            % grab current slice
+                            sl = app.SliceSpinner_2.Value;
+                            if app.SliceSpinner_2.Limits(2) ~= size(currV,1)
+                                app.SliceSpinner_2.Limits = [1 size(currV,1)];
+                            end
+                            if sl > size(currV,1)
+                                sl = round(size(currV,1)/2);
+                            end
+                            currSeg = rot90(squeeze(currSeg(sl,:,:)));
+                            currV_1 = rot90(squeeze(currV(sl,:,:,1)));
+                            currV_2 = rot90(squeeze(currV(sl,:,:,2)));
+                            currV_3 = rot90(squeeze(currV(sl,:,:,3)));
+                            L = find(currSeg(1:subsample:end,1:subsample:end));
+                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
+                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
+                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
+                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(3), ...
+                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            if ~isequal(app.pixdim(1),app.pixdim(2))
+                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
+                            end
+                            currMAG = app.MAG(:,:,:,t);
+                            img = repmat(rot90(squeeze(currMAG(sl,:,:))),[1 1 3]);
+                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VelocityVectorsPlot,'on');
+                            clear currV_1 currV_2 currV_3
+                        elseif isequal(app.rotAngles2,[0,90]) % rotate into coronal view
+                            % grab current slice
+                            sl = app.SliceSpinner_2.Value;
+                            if app.SliceSpinner_2.Limits(2) ~= size(currV,2)
+                                app.SliceSpinner_2.Limits = [1 size(currV,2)];
+                            end
+                            if sl > size(currV,2)
+                                sl = round(size(currV,2)/2);
+                            end
+                            currSeg = squeeze(currSeg(:,end-sl+1,:));
+                            currV_1 = squeeze(currV(:,end-sl+1,:,1));
+                            currV_2 = squeeze(currV(:,end-sl+1,:,2));
+                            currV_3 = squeeze(currV(:,end-sl+1,:,3));
+                            L = find(currSeg(1:subsample:end,1:subsample:end));
+                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
+                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
+                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
+                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(3),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            if ~isequal(app.pixdim(1),app.pixdim(2))
+                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
+                            end
+                            currMAG = app.MAG(:,:,:,t);
+                            img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
+                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VelocityVectorsPlot,'on');
+                            clear currV_1 currV_2 currV_3
+                        else
+                            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            for f = 1:3
+                                tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
+                                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            end
+                            currV = currV_tmp; clear currV_tmp;
+                            
+                            % grab current slice
+                            sl = app.SliceSpinner_2.Value;
+                            if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                                app.SliceSpinner_2.Limits = [1 size(currV,3)];
+                            end
+                            if sl > size(currV,3)
+                                sl = round(size(currV,3)/2);
+                            end
+                            L = find(currSeg(1:subsample:end,1:subsample:end,sl));
+                            vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
+                            vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
+                            vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
+                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            if ~isequal(app.pixdim(1),app.pixdim(2))
+                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
+                            end
+                            tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
+                            currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            img = repmat(currMAG(:,:,sl),[1 1 3]);
+                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VelocityVectorsPlot,'on');
+                        end
                     end
-                    currV = currV_tmp; clear currV_tmp;
                     
-                    % grab current slice
-                    sl = app.SliceSpinner_2.Value;
-                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                    end
-                    if sl > size(currV,3)
-                        sl = round(size(currV,3)/2);
-                    end
-                    L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                    vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                    vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                    vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                        -10);   % cheat here and put the vel vectors at a negative location to overlay better
-                    
-                    tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
-                    currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                    img = repmat(currMAG(:,:,sl),[1 1 3]);
                     imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                     hold(app.VelocityVectorsPlot,'on');
                 case 'centerline contours' % contours from centerline
@@ -915,21 +1035,21 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.TimeframeSpinnerLabel.FontColor = axisText;
             app.SliceSpinner_2Label.FontColor = axisText;
             set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
-            set(cbar,'FontSize',14,'color',axisText,'Location','west');
+            set(cbar,'FontSize',13,'color',axisText,'Location','west');
             pos = get(cbar,'position');
             switch cbarLoc
                 case 'bottom-left'
-                    pos = [0.01 0.01 pos(3) 0.2];
+                    pos = [0.01 0.02 pos(3) 0.2];
                 case 'mid-left'
                     pos = [0.01 0.41 pos(3) 0.2];
                 case 'upper-left'
                     pos = [0.01 0.78 pos(3) 0.2];
                 case 'bottom-right'
-                    pos = [1-pos(3) 0.01 pos(3) 0.2];
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
                 case 'mid-right'
-                    pos = [1-pos(3) 0.41 pos(3) 0.2];
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
                 case 'upper-right'
-                    pos = [1-pos(3) 0.78 pos(3) 0.2];
+                    pos = [0.99-pos(3) 0.78 pos(3) 0.2];
             end
             set(cbar,'position',pos);
             
@@ -965,46 +1085,70 @@ classdef FlowProcessing < matlab.apps.AppBase
                         currSeg = app.segment;
                     end
                 end
-                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                
+                if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
+                    fprintf('WARNING: This is a %s scan. Visualization/reorientation has only been optimized for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n',app.ori.label);
+                    
+                    tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                    
+                    % grab current velocity
+                    if contains(app.MapTime.Value,'resolved')
+                        currV = app.v(:,:,:,:,t)/10;
+                    else
+                        currV = app.v/10;
+                    end
+                    for tt = 1:size(currV,5)
+                        for f = 1:3
+                            tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
+                            currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        end
+                    end
+                    currV = currV_tmp; clear currV_tmp;
+                else    % sagittal scan
+                    if isequal(app.rotAngles2,[0,0]) || isequal(app.rotAngles2,[90,0]) || isequal(app.rotAngles2,[0,90]) % no, axial or coronal rotation
+                        if contains(app.MapTime.Value,'resolved')
+                            currV = app.v(:,:,:,:,t)/10;
+                        else
+                            currV = app.v/10;
+                        end
+                    else
+                        tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
+                        currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        
+                        if contains(app.MapTime.Value,'resolved')
+                            currV = app.v(:,:,:,:,t)/10;
+                        else
+                            currV = app.v/10;
+                        end
+                        for tt = 1:size(currV,5)
+                            for f = 1:3
+                                tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
+                                currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            end
+                        end
+                        currV = currV_tmp; clear currV_tmp;
+                    end
+                end
+                vx = currSeg.*currV(:,:,:,1,:);
+                vy = currSeg.*currV(:,:,:,2,:);
+                vz = currSeg.*currV(:,:,:,3,:);
                 
                 % do erosion is mask_erosion_checkbox checked
                 if app.VisOptionsApp.mask_erosion_checkbox.Value
                     currSeg = mask_erosion(currSeg,0);
                 end
                 
-                % grab current velocity
-                if contains(app.MapTime.Value,'resolved')
-                    currV = app.v(:,:,:,:,t)/10;
-                else
-                    currV = app.v/10;
-                end
-                for tt = 1:size(currV,5)
-                    for f = 1:3
-                        tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
-                        currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                    end
-                end
-                currV = currV_tmp; clear currV_tmp;
-                vx = currSeg.*currV(:,:,:,1,:);
-                vy = currSeg.*currV(:,:,:,2,:);
-                vz = currSeg.*currV(:,:,:,3,:);
-                
                 isSliceWise = 0;
                 if contains(app.VectorOptionsDropDown.Value,'slice-wise')
                     isSliceWise = 1;
-                    % grab current slice
+                    % grab current slice, limits already correctly set in
+                    % viewVelocityVectors above
                     sl = app.SliceSpinner_2.Value;
-                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                    end
-                    if sl > size(currV,3)
-                        sl = round(size(currV,3)/2);
-                    end
                 end
                 
                 switch app.MapType.Value
-                    case 'Wall shear stress'
+                    case 'wall shear stress'
                         isWSS = 1;
                         if length(app.WSS_matrix) == 1
                             WSS = app.WSS_matrix{1};
@@ -1020,23 +1164,23 @@ classdef FlowProcessing < matlab.apps.AppBase
                         scaletmp = [0 4];
                         cBarString = 'WSS (Pa)';
                         
-                    case 'Peak velocity'
+                    case 'peak velocity'
                         scaletmp = [0 round(app.VENC/10)];
-                        cBarString = 'Peak velocity (cm/s)';
+                        cBarString = 'peak velocity (cm/s)';
                         % for cmap, calculate absolute max of the mean
                         tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
                         outVol = squeeze(tmp);
                         
-                    case 'Mean velocity'
+                    case 'mean velocity'
                         scaletmp = [0 round(app.VENC/50)];
-                        cBarString = 'Mean velocity (cm/s)';
+                        cBarString = 'mean velocity (cm/s)';
                         % for cmap, calculate absolute max of the mean
                         tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
                         outVol = squeeze(tmp);
                         
-                    case 'Kinetic energy'
+                    case 'kinetic energy'
                         scaletmp = [0 20];
-                        cBarString = 'Max KE (\muJ)';
+                        cBarString = 'KE (\muJ)';
                         vx = vx/100; % in m/s
                         vy = vy/100;
                         vz = vz/100;
@@ -1048,7 +1192,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         KE = currSeg.*0.5*rho*vox_vol.*vel;
                         outVol = squeeze(1e6*squeeze(KE));    % in uJ
                         
-                    case 'Energy loss'
+                    case 'energy loss'
                         scaletmp = [-0.001 4];
                         cBarString = 'EL (mW)';
                         
@@ -1083,7 +1227,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         EL = currSeg.*0.004 .* theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
                         outVol = squeeze(EL);
                         
-                    case 'Vorticity'
+                    case 'vorticity'
                         scaletmp = [0 250];
                         cBarString = 'vorticity (rad)';
                         
@@ -1147,12 +1291,48 @@ classdef FlowProcessing < matlab.apps.AppBase
                             outImg = max(outVol,[],4);
                     end
                     % then project the image, or choose a slice
-                    if isSliceWise
-                        outImg = outImg(:,:,sl);
-                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                        outImg = mean(outImg,3);
-                    else          % app.VisOptions.MapProjection.Value = 'max'
-                        outImg = max(outImg,[],3);
+                    if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
+                        if isSliceWise
+                            outImg = outImg(:,:,sl);
+                        elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                            outImg = mean(outImg,3);
+                        else          % app.VisOptions.MapProjection.Value = 'max'
+                            outImg = max(outImg,[],3);
+                        end
+                    else    % sagittal scan
+                        if isequal(app.rotAngles2,[0,0])
+                            if isSliceWise
+                                outImg = outImg(:,:,sl);
+                            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                outImg = squeeze(mean(outImg,3));
+                            else
+                                outImg = squeeze(max(outImg,[],3));
+                            end
+                        elseif isequal(app.rotAngles2,[90,0])
+                            if isSliceWise
+                                outImg = rot90(squeeze(outImg(sl,:,:)));
+                            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                outImg = rot90(squeeze(mean(outImg,1)));
+                            else
+                                outImg = rot90(squeeze(max(outImg,[],1)));
+                            end
+                        elseif isequal(app.rotAngles2,[0,90])
+                            if isSliceWise
+                                outImg = squeeze(outImg(:,end-sl+1,:));
+                            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                outImg = squeeze(mean(outImg,2));
+                            else
+                                outImg = squeeze(max(outImg,[],2));
+                            end
+                        else
+                            if isSliceWise
+                                outImg = outImg(:,:,sl);
+                            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                                outImg = mean(outImg,3);
+                            else          % app.VisOptions.MapProjection.Value = 'max'
+                                outImg = max(outImg,[],3);
+                            end
+                        end
                     end
                     imagesc(app.MapPlot,outImg+0.001);
                 end
@@ -1166,22 +1346,22 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cBarString = 'velocity cm/s';
                 end
                 set(get(cbar,'xlabel'),'string',cBarString,'Color',axisText);
-                set(cbar,'FontSize',14,'color',axisText,'Location','west');
+                set(cbar,'FontSize',13,'color',axisText,'Location','west');
                 % change cbar size to fit in corner
                 pos = get(cbar,'position');
                 switch cbarLoc
                     case 'bottom-left'
-                        pos = [0.01 0.01 pos(3) 0.2];
+                        pos = [0.01 0.02 pos(3) 0.2];
                     case 'mid-left'
                         pos = [0.01 0.41 pos(3) 0.2];
                     case 'upper-left'
                         pos = [0.01 0.78 pos(3) 0.2];
                     case 'bottom-right'
-                        pos = [1-pos(3) 0.01 pos(3) 0.2];
+                        pos = [0.99-pos(3) 0.02 pos(3) 0.2];
                     case 'mid-right'
-                        pos = [1-pos(3) 0.41 pos(3) 0.2];
+                        pos = [0.99-pos(3) 0.41 pos(3) 0.2];
                     case 'upper-right'
-                        pos = [1-pos(3) 0.78 pos(3) 0.2];
+                        pos = [0.99-pos(3) 0.78 pos(3) 0.2];
                 end
                 set(cbar,'position',pos);
                 
@@ -2614,7 +2794,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cla(app.MapPlot);
                     colorbar(app.MapPlot,'off');
                     
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '4';
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
@@ -2625,31 +2805,31 @@ classdef FlowProcessing < matlab.apps.AppBase
                         return;
                     end
                     
-                case 'Peak velocity'
+                case 'peak velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/10));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
-                case 'Mean velocity'
+                case 'mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/50));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '10';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     
-                case 'Energy loss'
+                case 'energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
                     app.VisOptionsApp.minMapEditField.Value = '-0.1';
                     app.VisOptionsApp.maxMapEditField.Value = '3';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
                     
-                case 'Vorticity'
+                case 'vorticity'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'vorticity (rad)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '300';
@@ -2664,13 +2844,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: MapTime
         function MapTimeValueChanged(app, ~)
-            if contains(app.MapTime.Value,'resolved')
-                app.VisOptionsApp.projectionDropDown.Enable = 'off';
-                app.VisOptionsApp.projectionDropDown_Label.Enable = 'off';
-            else
-                app.VisOptionsApp.projectionDropDown.Enable = 'on';
-                app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
-            end
             viewMap(app);
         end
         
@@ -2688,7 +2861,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function CalculateMapPushed(app, ~)
             
             switch app.MapType.Value
-                case 'Wall shear stress'
+                case 'wall shear stress'
                     % gather parameters for calculation
                     prompt = {'Frames (peak systole (0) or all frames (1)):','Use wall effects (0 or 1):',...
                         'Viscosity (Pa•s):'};
@@ -2945,19 +3118,19 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 
                 switch app.MapType.Value
-                    case 'Peak velocity'
-                        paramString = 'Peak velocity (cm/s)';
+                    case 'peak velocity'
+                        paramString = 'peak velocity (cm/s)';
                         saveString = 'peak_velocity';
-                    case 'Mean velocity'
-                        paramString = 'Mean velocity (cm/s)';
+                    case 'mean velocity'
+                        paramString = 'mean velocity (cm/s)';
                         saveString = 'mean_velocity';
-                    case 'Kinetic energy'
+                    case 'kinetic energy'
                         paramString = 'Max KE (\muJ)';
                         saveString = 'KE';
-                    case 'Energy loss'
+                    case 'energy loss'
                         paramString = 'EL (mW)';
                         saveString = 'EL';
-                    case 'Vorticity'
+                    case 'vorticity'
                         paramString = 'vorticity (rad)';
                         saveString = 'vorticity';
                 end
@@ -2987,29 +3160,22 @@ classdef FlowProcessing < matlab.apps.AppBase
                 
                 if choice == 1
                     savePrefix = saveString;
+                    prompt = {'save name:'};
+                    dlgtitle = 'set save name ROI analysis';
+                    dims = [1 50];
+                    definput = {'vessel'};
+                    answer = inputdlg(prompt,dlgtitle,dims,definput);
+                    savePrefix = strcat(answer{1},'_',savePrefix);
+                    
                     saveFolder = fullfile(app.directory,'map_results'); mkdir(saveFolder);
                     saveName =  fullfile(saveFolder,'mapROI_results');
                     
                     % save variable
                     tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
                     tbl.Properties.VariableNames = ["cardiac time(ms)","ROI_average","ROI_max"];
-                    writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
+                    writetable(tbl,[saveName '.xlsx'],'Sheet',savePrefix,'WriteMode','overwritesheet');
                     
-                    % grab and save image
-                    robot = java.awt.Robot();
-                    temp = fig.Position; % returns position as [left bottom width height]
-                    allMonPos = get(0,'MonitorPositions');
-                    curMon = find(temp(1)<(allMonPos(:,1)+allMonPos(:,3)),1,'first');
-                    curMonHeight = allMonPos(curMon,4)+1;
-                    pos = [temp(1) curMonHeight-(temp(2)+temp(4)) temp(3)-1 temp(4)]; % [left top width height].... UL X, UL Y, width, height
-                    rect = java.awt.Rectangle(pos(1),pos(2),pos(3),pos(4));
-                    cap = robot.createScreenCapture(rect);
-                    % Convert to an RGB image
-                    rgb = typecast(cap.getRGB(0,0,cap.getWidth,cap.getHeight,[],0,cap.getWidth),'uint8');
-                    imgData = zeros(cap.getHeight,cap.getWidth,3,'uint8');
-                    imgData(:,:,1) = reshape(rgb(3:4:end),cap.getWidth,[])';
-                    imgData(:,:,2) = reshape(rgb(2:4:end),cap.getWidth,[])';
-                    imgData(:,:,3) = reshape(rgb(1:4:end),cap.getWidth,[])';
+                    imgData = frame2im(getframe(fig));
                     imwrite(imgData, [saveName '_' savePrefix '.tiff']);
                     
                     % inform of the saving
@@ -3060,19 +3226,19 @@ classdef FlowProcessing < matlab.apps.AppBase
             map_var_peak = max(mean(map_var,1)); % 1 number. peak vorticity along cardiac dimension
             
             switch app.MapType.Value
-                case 'Peak velocity'
-                    paramString = 'Peak velocity (cm/s)';
+                case 'peak velocity'
+                    paramString = 'peak velocity (cm/s)';
                     saveString = 'peak_velocity';
-                case 'Mean velocity'
-                    paramString = 'Mean velocity (cm/s)';
+                case 'mean velocity'
+                    paramString = 'mean velocity (cm/s)';
                     saveString = 'mean_velocity';
-                case 'Kinetic energy'
+                case 'kinetic energy'
                     paramString = 'Max KE (\muJ)';
                     saveString = 'KE';
-                case 'Energy loss'
+                case 'energy loss'
                     paramString = 'EL (mW)';
                     saveString = 'EL';
-                case 'Vorticity'
+                case 'vorticity'
                     paramString = 'vorticity (rad)';
                     saveString = 'vorticity';
             end
@@ -3097,7 +3263,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             app.TimeframeSpinner.Value = saveFrame;
             
-            savePrefix = saveString;
+            savePrefix = strcat('volumetric_',saveString);
             saveFolder = fullfile(app.directory,'map_results'); mkdir(saveFolder);
             saveName =  fullfile(saveFolder,'mapVol_results');
             
@@ -3107,23 +3273,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
             tbl = array2table(cat(2,map_var_integral,map_var_peak));
             tbl.Properties.VariableNames = ["integral over time", "peak over time"];
-            writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','inplace','Range','D1');
+            writetable(tbl,[saveName '.xlsx'],'Sheet',savePrefix,'WriteMode','inplace','Range','D1');
             
             % grab and save image
-            robot = java.awt.Robot();
-            temp = fig.Position; % returns position as [left bottom width height]
-            allMonPos = get(0,'MonitorPositions');
-            curMon = find(temp(1)<(allMonPos(:,1)+allMonPos(:,3)),1,'first');
-            curMonHeight = allMonPos(curMon,4)+1;
-            pos = [temp(1) curMonHeight-(temp(2)+temp(4)) temp(3)-1 temp(4)]; % [left top width height].... UL X, UL Y, width, height
-            rect = java.awt.Rectangle(pos(1),pos(2),pos(3),pos(4));
-            cap = robot.createScreenCapture(rect);
-            % Convert to an RGB image
-            rgb = typecast(cap.getRGB(0,0,cap.getWidth,cap.getHeight,[],0,cap.getWidth),'uint8');
-            imgData = zeros(cap.getHeight,cap.getWidth,3,'uint8');
-            imgData(:,:,1) = reshape(rgb(3:4:end),cap.getWidth,[])';
-            imgData(:,:,2) = reshape(rgb(2:4:end),cap.getWidth,[])';
-            imgData(:,:,3) = reshape(rgb(1:4:end),cap.getWidth,[])';
+            imgData = frame2im(getframe(fig));
             imwrite(imgData, [saveName '_' savePrefix '.tiff']);
             
             % inform of the saving
@@ -3642,6 +3795,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'off';
                     app.VecPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'off';
+                    app.VisOptionsApp.projectionDropDown.Enable = 'off';
+                    app.VisOptionsApp.projectionDropDown_Label.Enable = 'off';
                 case 'segmentation'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
@@ -3652,6 +3807,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'off';
                     app.VecPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'on';
+                    app.VisOptionsApp.projectionDropDown.Enable = 'on';
+                    app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
                 case 'centerline contours'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
@@ -3662,9 +3819,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'on';
                     app.VecPts.Enable = 'on';
                     app.MapVolumetricanalysis.Enable = 'on';
+                    app.VisOptionsApp.projectionDropDown.Enable = 'on';
+                    app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
             end
             viewVelocityVectors(app);
-                viewMap(app);
+            viewMap(app);
         end
         
         % Value changed function: ParameterDropDown
@@ -4710,7 +4869,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create MapType
             app.MapType = uidropdown(app.Maps);
-            app.MapType.Items = {'None', 'Wall shear stress', 'Peak velocity', 'Mean velocity', 'Kinetic energy', 'Energy loss', 'Vorticity'};
+            app.MapType.Items = {'None', 'wall shear stress', 'peak velocity', 'mean velocity', 'kinetic energy', 'energy loss', 'vorticity'};
             app.MapType.ValueChangedFcn = createCallbackFcn(app, @MapTypeValueChanged, true);
             app.MapType.Tooltip = {'select map to view'};
             app.MapType.FontName = 'ZapfDingbats';
@@ -4874,7 +5033,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create ParameterDropDown
             app.ParameterDropDown = uidropdown(app.SegmentationAndCenterline);
-            app.ParameterDropDown.Items = {'Total Flow', 'Peak Flow', 'Mean velocity', 'Peak velocity'};
+            app.ParameterDropDown.Items = {'Total Flow', 'Peak Flow', 'mean velocity', 'peak velocity'};
             app.ParameterDropDown.ValueChangedFcn = createCallbackFcn(app, @ParameterDropDownValueChanged, true);
             app.ParameterDropDown.Enable = 'off';
             app.ParameterDropDown.Visible = 'off';

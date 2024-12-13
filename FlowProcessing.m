@@ -2810,12 +2810,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/10));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
+                    app.VisOptionsApp.projectionDropDown.Value = 'max';
                     
                 case 'mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = num2str(round(app.VENC/50));
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
+                    app.VisOptionsApp.projectionDropDown.Value = 'mean';
                     
                 case 'kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';

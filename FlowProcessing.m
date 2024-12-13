@@ -1134,7 +1134,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 vy = currSeg.*currV(:,:,:,2,:);
                 vz = currSeg.*currV(:,:,:,3,:);
                 
-                % do erosion is mask_erosion_checkbox checked
+                % do erosion if mask_erosion_checkbox checked
                 if app.VisOptionsApp.mask_erosion_checkbox.Value
                     currSeg = mask_erosion(currSeg,0);
                 end
@@ -3209,14 +3209,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                 for t = 1:app.nframes
                     app.TimeframeSpinner.Value = t;
                     [~, outVol, idx_currSeg] = viewMap(app);
-                    if t == 1 % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
+                    if t == 1 % now we know the length of idx_currSeg to do preallocation
                         map_var = zeros(length(idx_currSeg),app.nframes);
                     end
                     map_var(:,t) = outVol(idx_currSeg);
                 end
             else    % outVol has all time frames
                 [~, outVol, idx_currSeg] = viewMap(app);
-                map_var = zeros(length(idx_currSeg),app.nframes); % now we know the length of idx_from_currSeg_in_viewMap to do preallocation
+                map_var = zeros(length(idx_currSeg),app.nframes); % now we know the length of idx_currSeg to do preallocation
                 for t = 1:app.nframes
                     tmp = reshape(outVol,prod(size(outVol,1:3)),app.nframes);
                     map_var(:,t) = tmp(idx_currSeg,t);

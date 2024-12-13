@@ -230,6 +230,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         
         % Value changed function: projectionDropDownValueChanged
         function projectionDropDownValueChanged(app, event)
+            if contains(app.CallingApp.MapType.Value,'mean velocity')
+                app.projectionDropDown.Value = 'mean';  % force to mean with mean velocity
+            elseif contains(app.CallingApp.MapType.Value,'peak velocity')
+                app.projectionDropDown.Value = 'max';  % force to max with peak velocity
+            end 
             viewMap(app.CallingApp);
         end
         

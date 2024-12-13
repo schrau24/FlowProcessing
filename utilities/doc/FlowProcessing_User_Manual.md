@@ -31,6 +31,7 @@ This software builds from previous work, and the use of this tool should be asso
 5. [Maps tab](#maps-tab)
       1. [Save animation](#save-animation)
       2. [Map ROI analysis](#map-roi-analysis)
+      3. [Map volume analysis](#map-volume-analysis)
 6. [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab)
       1. [Flow results](#flow-results)
       2. [PWV calculation](#pwv-calculation)
@@ -137,6 +138,14 @@ Clicking the `Save animation` button saves a corresponding .gif of the velocity 
 Clicking the `Map ROI analysis` button allows the user to draw an ROI in the current selected map (displayed on the current time frame). Within the ROI all time frames are analyzed and an output image is shown. The user has the option to save this figure and corresponding summary statistics to an xlsx spreadsheet.
 
 <img src="ROI.png?raw=true" width="600px">
+
+### Map volume analysis <a name="map-volume-analysis"></a>
+Similar to the Map ROI analysis, clicking the `Map volume analysis` button displays volumetric time-resolved results for the current selected map. Note this uses all voxels within the current segmentation. An output image and summary statistics are automatically saved to the corresponding xlsx spreadsheet.
+
+<img src="map_volume.png?raw=true" width="600px">
+
+#### note on map summary statistics:
+Due to the nature of interpolation upon rotation, map summary statistics (quantitative volumetric parameters) are recommended only for orthogonal views (Axial, Sagittal, Coronal). Non-orthogonal views/quantitative volumetric parameters should be used with caution.
 
 ## Flow and Pulse Wave Velocity Tab  <a name="flow-and-pulse-wave-velocity-tab"></a>
 To segment the vessel of interest, individual branches need to be selected. Input the corresponding branch numbers in Set branches for vessel, adding or removing branches when necessary. Add branches from most distal (downstream) to most proximal (upstream). 

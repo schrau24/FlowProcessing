@@ -102,6 +102,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         SaveAnimation                   matlab.ui.control.Button
         MapROIanalysis                  matlab.ui.control.Button
         MapVolumetricanalysis           matlab.ui.control.Button
+        StreamlineCalc                  matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
         VelocityVectorGroup             matlab.ui.container.Panel
@@ -1849,6 +1850,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisOptions.Enable = 'on';
             app.MapROIanalysis.Enable = 'on';
             app.MapVolumetricanalysis.Enable = 'on';
+            app.StreamlineCalc.Enable = 'on';
         end
         
         % Button pushed function: PulseWaveVelocityPushButton
@@ -3285,6 +3287,166 @@ classdef FlowProcessing < matlab.apps.AppBase
             msgbox(['results saved to ' saveName '.xlsx'], 'Saving complete','replace')
         end
         
+        % Button pushed function: StreamlineCalcPushed
+        function StreamlineCalcPushed(app,~)
+            %reset streamline figure
+            fig = figure(420); clf;
+            set(fig,'Name','Streamlines')
+            set(fig,'position',[2    42  475 702])
+            
+            t = app.TimeframeSpinner.Value;
+            if t == 0   % to prevent errors when coming from other tabs
+                t = 1;
+            end
+            
+            if app.isSegmentationLoaded
+                if app.isTimeResolvedSeg
+                    currSeg = app.aorta_seg(:,:,:,t);
+                else
+                    currSeg = zeros(size(app.aorta_seg,1:3));
+                    % only use segmentations that were selected in first tab
+                    for ii = 1:size(app.aorta_seg,4)
+                        if eval(sprintf('app.mask%i.Value==1',ii))
+                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                        end
+                    end
+                end
+            else
+                currSeg = app.segment;
+            end
+
+            currV = app.v(:,:,:,:,t);
+            
+            subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
+            vx = -currSeg.*currV(:,:,:,1)/10;
+            vy = -currSeg.*currV(:,:,:,2)/10;
+            vz = -currSeg.*currV(:,:,:,3)/10;
+            vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
+            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                (1:size(currSeg,3))*app.pixdim(3));
+            
+            % we need a 3D patch for this setting
+            hpatch = patch(isosurface(xcoor_grid,ycoor_grid,zcoor_grid,smooth3(currSeg)),'FaceAlpha',0.10);
+            
+            reducepatch(hpatch,0.6);
+            set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+            camlight();
+            lighting('gouraud');
+            lightangle(0,0);
+            
+            % determine start positions of streamlines
+            switch app.VectorOptionsDropDown.Value  % the current vector vis state, slice-wise not allowed
+                case 'centerline contours'
+                    % set the subsampling to reduce number of streamlines
+                    substreams = subsample;
+                    str = app.VecPts.Value;
+                    eval(['ptRange=[' str '];']);
+                    
+                    % get oblique slices
+                    startX = []; startY = []; startZ = [];
+                    for ii = ptRange
+                        currCP = [app.branchActual(ii,2),app.branchActual(ii,1),app.branchActual(ii,3)];
+                        currNorm = app.tangent_V(ii,:); currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
+                        [B,x,y,z] = obliqueslice(currSeg,currCP,currNorm,'FillValues',0);
+                        % do a quick region grow from our centerline point
+                        tmp = cat(2,x(:),y(:),z(:)) - currCP;
+                        tmp = sqrt(sum(tmp.*tmp,2));
+                        [~, pointLinearIndexInSlice] = min(tmp);
+                        [pointColumn,pointRow] = ind2sub(size(B),pointLinearIndexInSlice(1));
+                        B = regiongrowing(B,pointColumn,pointRow);
+                        
+                        currL = find(B(:));
+                        currL = currL(1:substreams:end);
+                        % the start points in true image coordinates
+                        startX = cat(1,startX,x(currL)*app.pixdim(1));
+                        startY = cat(1,startY,y(currL)*app.pixdim(2));
+                        startZ = cat(1,startZ,z(currL)*app.pixdim(3));
+                        
+                    end
+                    
+                case 'segmentation'   % 3d vectors from the whole segmentation
+                    % set the subsampling to reduce number of streamlines,
+                    % this is ~5x larger than subsample for computational
+                    % reason
+                    substreams = round(5*subsample);
+                    L = find(currSeg);
+                    startX = xcoor_grid(L(1:substreams:end));
+                    startY = ycoor_grid(L(1:substreams:end));
+                    startZ = zcoor_grid(L(1:substreams:end));
+            end
+            
+            % make streamlines, then color according to vmag
+            h = streamline(stream3(xcoor_grid,ycoor_grid,zcoor_grid,-vy,-vx,-vz,...
+                startX,startY,startZ));
+            
+            minVel = 5;     % minimum velocity for streamline to be plotted, in cm/s
+            for ii = 1:length(h)
+                h(ii).Visible = 'off';
+                XX = h(ii).XData';
+                YY = h(ii).YData';
+                ZZ = h(ii).ZData';
+                c = interp3(xcoor_grid,ycoor_grid,zcoor_grid,vmagn,XX,YY,ZZ);
+                % find c > min velocity, only plot those
+                c(c < minVel) = nan;
+                p = patchline(XX,YY,ZZ,'CData',cat(1,c,nan),'EdgeColor','flat','linewidth',1);
+            end
+
+            
+            if ~isvalid(app.VisOptionsApp)
+                scale = [0 round(app.VENC/10)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minVelocityVectorEditField.Value) str2double(app.VisOptionsApp.maxVelocityVectorEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
+                    axisText = [1 1 1];
+                end
+                cmap = app.VisOptionsApp.ColormapDropDown.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
+            end
+            
+            caxis(scale);
+            colormap(cmap);
+            cbar = colorbar();
+            set(gca,'color',backgroundC);
+            set(gcf,'color',backgroundC);
+            set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
+            set(cbar,'FontSize',13,'color',axisText,'Location','west');
+            pos = get(cbar,'position');
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.02 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [0.99-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
+            
+            % make it look good
+            axis(gca, 'off','tight')
+            view(gca,[0 0 1]);
+            daspect(gca,[1 1 1])
+            set(gca,'YDir','reverse');
+            set(gca,'ZDir','reverse');
+
+            camorbit(gca,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+            hold(gca,'off');
+        end
+        
         % Button pushed function: Axial
         function AxialButtonPushed(app, ~)
             switch app.ori.label
@@ -3797,6 +3959,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'off';
                     app.VecPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'off';
+                    app.StreamlineCalc.Enable = 'off';
                     app.VisOptionsApp.projectionDropDown.Enable = 'off';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'off';
                 case 'segmentation'
@@ -3809,6 +3972,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'off';
                     app.VecPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'on';
+                    app.StreamlineCalc.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
                 case 'centerline contours'
@@ -3821,6 +3985,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VecPts.Visible = 'on';
                     app.VecPts.Enable = 'on';
                     app.MapVolumetricanalysis.Enable = 'on';
+                    app.StreamlineCalc.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
             end
@@ -4798,6 +4963,18 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapVolumetricanalysis.Tooltip = {'draw ROI in map and save results'};
             app.MapVolumetricanalysis.Position = [1036 402 150 28];
             app.MapVolumetricanalysis.Text = 'Map volume analysis';
+            
+            % Create StreamlineCalc
+            app.StreamlineCalc = uibutton(app.Maps, 'push');
+            app.StreamlineCalc.ButtonPushedFcn = createCallbackFcn(app, @StreamlineCalcPushed, true);
+            app.StreamlineCalc.IconAlignment = 'center';
+            app.StreamlineCalc.FontName = 'SansSerif';
+            app.StreamlineCalc.FontSize = 15;
+            app.StreamlineCalc.Enable = 'off';
+            app.StreamlineCalc.Tooltip = {'calculate streamlines using current vector plot options'};
+            app.StreamlineCalc.Position = [1036 318 150 56];
+            app.StreamlineCalc.Text = '*beta* (Re)Calculate streamlines';
+            app.StreamlineCalc.WordWrap = 'on';
             
             % Create RotateLeft_2
             app.RotateLeft_2 = uibutton(app.Maps, 'push');

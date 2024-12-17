@@ -980,7 +980,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if app.isSegmentationLoaded
                         hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
                     else
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(app.segment),'FaceAlpha',0.10);
+                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.10);
                     end
                     reducepatch(hpatch,0.6);
                     set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
@@ -3292,7 +3292,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             %reset streamline figure
             fig = figure(420); clf;
             set(fig,'Name','Streamlines')
-            set(fig,'position',[2    42  475 702])
+            set(fig,'position',[2 42 475 702])
             
             t = app.TimeframeSpinner.Value;
             if t == 0   % to prevent errors when coming from other tabs
@@ -3312,7 +3312,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                 end
             else
-                currSeg = app.segment;
+                currSeg = double(app.segment);
             end
 
             currV = app.v(:,:,:,:,t);

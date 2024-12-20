@@ -9,48 +9,100 @@ disp('Loading data')
 % subfolders
 subfolders = dir(directory); subfolders = subfolders(3:end);
 
+isEnhancedDicom = 0;
 for ii = 1:4
     files = dir(fullfile(directory,subfolders(ii).name)); files = files(3:end);
     info = dicominfo(fullfile(files(end).folder,files(end).name));
-    [img, spatial, dim] = dicomreadVolume(dicomCollection(fullfile(directory,subfolders(ii).name)));
-    
-    if ii == 1   % grab some header info
-        nframes = info.CardiacNumberOfImages;       % number of reconstructed frames
-        timeres = info.TriggerTime/nframes;         % temporal resolution, in ms
-        nslices = size(squeeze(img),3)/nframes;
-        res = [size(img,1:2) nslices];              % number of pixels in row,col,slices
-        pixdim = [info.PixelSpacing(1) info.PixelSpacing(2)  info. SliceThickness];
-        % the reconstructed resolution in mm
+    tmp = dicomCollection(fullfile(directory,subfolders(ii).name));
+    % if the tmp table has more than one row, we have enhanced dicoms,
+    % which have different headers and data format to sort through
+    if ii == 1
+        if size(tmp,1) > 1
+            isEnhancedDicom = 1;
+            nslices = size(tmp,1);
+            nframes = tmp{1,'Frames'};
+            timeres = info.CardiacRRIntervalSpecified/nframes;
+            pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
+                info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
+        else
+            nframes = info.CardiacNumberOfImages;       % number of reconstructed frames
+            timeres = info.TriggerTime/nframes;         % temporal resolution, in ms
+            nslices = tmp{1,'Frames'}/nframes;
+            pixdim = [info.PixelSpacing(1) info.PixelSpacing(2) info.SliceThickness];
+        end
+        res = [tmp{1,'Rows'} tmp{1,'Columns'} nslices];
         fov = pixdim.*res/10;                       % Field of view in cm
     end
     
-    img = double(permute(reshape(img,[res(1:2) nframes res(3)]),[1 2 4 3]));
+    if isEnhancedDicom; img_out = zeros([res,nframes]); end
+    for table_row = 1:size(tmp,1)
+        [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
+        if isEnhancedDicom
+            img_out(:,:,table_row,:) = double(img);
+        else
+            img_out = double(permute(reshape(img,[res(1:2) nframes res(3)]),[1 2 4 3]));
+        end
+    end
     
-    if contains(info.ImageType,'\M\')
-        MAG = img;
+    if contains(info.ImageType,'\M\') || contains(info.ComplexImageComponent,'MAGNITUDE')
+        MAG = img_out;
         MAG = MAG/max(abs(MAG(:)));
         % flip z direction
         MAG = flip(MAG,3);
-    else            % '\P\
+    else            % '\P\ or 'PHASE'
         % velocity info
-        img = img*info.RescaleSlope + info.RescaleIntercept;
-        vInfo = info.Private_0051_1014;
+        if isEnhancedDicom
+            img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
+                info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleIntercept;
+            vInfo = info.PerFrameFunctionalGroupsSequence.Item_1.Private_0021_11fe.Item_1.Private_0021_1129;
+            dcmorient = acosd(info.PerFrameFunctionalGroupsSequence.Item_1.PlaneOrientationSequence.Item_1.ImageOrientationPatient(1:3));
+            tmpOri = 'Tra';
+            if dcmorient(1) > 60 && dcmorient(3) > 60
+                tmpOri = 'Sag';
+            elseif dcmorient(1) < 30 && dcmorient(3) > 60
+                tmpOri = 'Cor';
+            end 
+        else
+            img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
+            vInfo = info.Private_0051_1014;
+            tmpOri = info.Private_0051_100e;
+        end
         tmpVDir = strfind(vInfo,'_');
         VENC = str2double(vInfo(2:tmpVDir(1)-1))*10;              % venc, in mm/s
         vDir = vInfo(tmpVDir(end)+1:end);
-        switch vDir
-            case 'through'
-                vz = VENC*img/max(abs(img(:)));
-            case 'rl'
-                vy = VENC*img/max(abs(img(:)));
-            case 'fh'
-                vx = VENC*img/max(abs(img(:)));
+        switch tmpOri
+            case 'Tra'
+                switch vDir
+                    case 'through'
+                        vz = VENC*img_out/max(abs(img_out(:)));
+                    case 'rl'
+                        vy = VENC*img_out/max(abs(img_out(:)));
+                    case 'ap'
+                        vx = VENC*img_out/max(abs(img_out(:)));
+                end
+            case 'Cor'
+                switch vDir
+                    case 'through'
+                        vz = VENC*img_out/max(abs(img_out(:)));
+                    case 'rl'
+                        vy = VENC*img_out/max(abs(img_out(:)));
+                    case 'fh'
+                        vx = VENC*img_out/max(abs(img_out(:)));
+                end
+            case 'Sag'
+                switch vDir
+                    case 'through'
+                        vz = VENC*img_out/max(abs(img_out(:)));
+                    case 'ap'
+                        vy = VENC*img_out/max(abs(img_out(:)));
+                    case 'fh'
+                        vx = VENC*img_out/max(abs(img_out(:)));
+                end
         end
     end
 end
 
 %% manually change velocity directions depending on scan orientations
-tmpOri = info.Private_0051_100e;
 
 % velocity directions correspond to the following:
 % vx: in-plane up-down

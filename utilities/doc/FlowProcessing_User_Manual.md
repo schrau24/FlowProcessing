@@ -92,7 +92,14 @@ Clicking the `Velocity Unwrapping` button opens the [Velocity Unwrapping tab](#v
 <img src="img8.png?raw=true" width="600px">
 
 #### Divergence Free <a name="divergence-free"></a>
-Clicking the `Divergence Free` button automatically performs a [divergence-free wavelet denoising](https://onlinelibrary.wiley.com/doi/full/10.1002/mrm.25176) on the 4D flow velocity field within the current segmentation. This denoising code was adapted from open source [software](https://frankong.com/)
+Clicking the `Divergence Free` button automatically performs a [divergence-free wavelet denoising](https://onlinelibrary.wiley.com/doi/full/10.1002/mrm.25176) on the 4D flow velocity field within the current segmentation. This denoising code was adapted from open source [software](https://frankong.com/).
+
+NOTE: Matlab mex files for DFW are system (Windows, Linux, Mac) dependent. Thus upon first usage, mex files need to be compiled. This is accomplished using the following commands in the Matlab command window:
+```
+cd utilities\corrections\DFW\
+mexMake
+cd ..\..\..
+```
 
 ### Processing  <a name="processing"></a>
 #### Maps <a name="maps"></a>

@@ -1632,19 +1632,33 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
             
-            % from load data
-            [filename,directory] = uigetfile('*.rec;*.mat','Select Reconstructed Data');
+            list = {'Philips .rec','mrStruct .mat','Siemens dicom'};
+            [indx,tf] = listdlg('PromptString',{'4D flow file type',...
+                'Only one file can be selected',''},...
+                'SelectionMode','single','ListString',list);
+            filetype = list{indx};
             
-            if endsWith(filename,'.rec')
+            switch filetype
+                case 'Philips .rec'
+                    [filename,directory] = uigetfile('*.rec','Select Reconstructed Data');
                 [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                     app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC(directory, filename);
-            else % .mat mrStruct file
+                case 'mrStruct .mat'
+                    [filename,directory] = uigetfile('*.mat','Select Reconstructed Data');
                 % quick check that both files exist
                 if ~exist(fullfile(directory,'mag_struct.mat'),'file') || ~exist(fullfile(directory,'vel_struct.mat'),'file')
                     error('both mag_struct.mat and vel_struct.mat needed for loading in mrStruct files');
                 end
                 [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                     app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadMrStruct(directory);
+                case 'Siemens dicom'
+                    directory = uigetdir('Select parent Siemens dicom directory (with 4 subfolders)');
+                    % quick check that all directories exist
+                    if length(dir(directory)) ~= 6 % inclues . and ..
+                        error('directory does not contain 4 subfolders (with Siemens dicoms)');
+                    end
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadSiemensDicom(directory);
             end
             app.directory = directory;
             
@@ -2113,7 +2127,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmpBranch = flipud(app.branchList(idx,1:3));
             
             % fit and extract the spline plus normals for this centerline
-            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/10):(end-floor((size(tmpBranch,1)*0.75)/10)) end],:)');
+            % user choice points to do spline fit along centerline
+            percBranchLengthSpline = 3;     % the target distance (%) between chosen points for fit
+            percBranchLengthSpline = 1/(percBranchLengthSpline/100);
+            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/percBranchLengthSpline):(end-floor((size(tmpBranch,1)*0.75)/percBranchLengthSpline)) end],:)');
+%             curve_long = cscvn(tmpBranch(:,:)');
             tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
             
             % the final centerline

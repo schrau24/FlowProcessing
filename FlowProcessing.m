@@ -104,15 +104,16 @@ classdef FlowProcessing < matlab.apps.AppBase
         MapVolumetricanalysis           matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
-        VelocityVectorGroup             matlab.ui.container.Panel
-        VectorOptionsDropDown           matlab.ui.control.DropDown
+        VisualizationGroup             matlab.ui.container.Panel
+        VisTypeDropDown                 matlab.ui.control.DropDown
+        VisOptionsDropDown           matlab.ui.control.DropDown
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
-        VecPts_Label                    matlab.ui.control.Label
-        VecPts                          matlab.ui.control.EditField
+        VisPts_Label                    matlab.ui.control.Label
+        VisPts                          matlab.ui.control.EditField
         TimeframeSpinner                matlab.ui.control.Spinner
         TimeframeSpinnerLabel           matlab.ui.control.Label
-        VelocityVectorsPlot             matlab.ui.control.UIAxes
+        VisualizationPlot             matlab.ui.control.UIAxes
         MapGroup                        matlab.ui.container.Panel
         MapPlot                         matlab.ui.control.UIAxes
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
@@ -760,11 +761,20 @@ classdef FlowProcessing < matlab.apps.AppBase
             daspect(app.AxesZ,[1 1 1]);
         end
         
+        function updateVisualization(app)
+            cla(app.VisualizationPlot);
+            colorbar(app.VisualizationPlot,'off');
+            value = app.VisTypeDropDown.Value;
+            switch value
+                case 'Vectors'
+                    viewVelocityVectors(app);
+                case 'Streamlines'
+                    viewStreamlines(app);
+            end
+        end
+        
         function viewVelocityVectors(app)
             
-            %reset figure
-            cla(app.VelocityVectorsPlot);
-            colorbar(app.VelocityVectorsPlot,'off');
             t = app.TimeframeSpinner.Value;
             if t == 0   % to prevent errors when coming from other tabs
                 t = 1;
@@ -787,8 +797,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             currV = app.v(:,:,:,:,t);
             
-            subsample = round(app.VisOptionsApp.VectorsubsampleSlider.Value);
-            switch app.VectorOptionsDropDown.Value  % the current vector vis state
+            subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
+            switch app.VisOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
                     if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
                         fprintf('WARNING: This is a %s scan. Visualization/reorientation has only been optimized for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n',app.ori.label);
@@ -845,8 +855,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
-                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VelocityVectorsPlot,'on');
+                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         elseif isequal(app.rotAngles2,[90,0]) % rotate into axial view
                             % grab current slice
@@ -872,8 +882,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(rot90(squeeze(currMAG(sl,:,:))),[1 1 3]);
-                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VelocityVectorsPlot,'on');
+                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         elseif isequal(app.rotAngles2,[0,90]) % rotate into coronal view
                             % grab current slice
@@ -899,8 +909,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
-                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VelocityVectorsPlot,'on');
+                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         else
                             tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
@@ -931,15 +941,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                             tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
                             currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
-                            imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VelocityVectorsPlot,'on');
+                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                            hold(app.VisualizationPlot,'on');
                         end
                     end
                     
-                    imagesc(app.VelocityVectorsPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                    hold(app.VelocityVectorsPlot,'on');
+                    imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                    hold(app.VisualizationPlot,'on');
+                    
                 case 'centerline contours' % contours from centerline
-                    str = app.VecPts.Value;
+                    str = app.VisPts.Value;
                     eval(['ptRange=[' str '];']);
                     
                     % oblique slices
@@ -977,15 +988,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                     
                     % we need a 3D patch for this setting
                     if app.isSegmentationLoaded
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
+                        hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
                     else
-                        hpatch = patch(app.VelocityVectorsPlot,isosurface(app.segment),'FaceAlpha',0.10);
+                        hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.10);
                     end
                     reducepatch(hpatch,0.6);
                     set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                    camlight(app.VelocityVectorsPlot);
-                    lighting(app.VelocityVectorsPlot,'gouraud');
-                    lightangle(app.VelocityVectorsPlot,0,0);
+                    camlight(app.VisualizationPlot);
+                    lighting(app.VisualizationPlot,'gouraud');
+                    lightangle(app.VisualizationPlot,0,0);
                     
                 case 'segmentation'   % 3d vectors from the whole segmentation
                     overLaySeg = currSeg;
@@ -1010,7 +1021,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 cbarLoc = 'bottom-left';
             else
                 a = [str2double(app.VisOptionsApp.minQuiverEditField.Value) str2double(app.VisOptionsApp.maxQuiverEditField.Value)*max(vmagn(:))/100];
-                scale = [str2double(app.VisOptionsApp.minVelocityVectorEditField.Value) str2double(app.VisOptionsApp.maxVelocityVectorEditField.Value)];
+                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
                 backgroundC = [1 1 1];
                 if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
                     backgroundC = [0 0 0];
@@ -1026,12 +1037,12 @@ classdef FlowProcessing < matlab.apps.AppBase
             c = [];
             % note the flipped vx and vy here
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
-            p = patch(app.VelocityVectorsPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
-            caxis(app.VelocityVectorsPlot, scale);
-            colormap(app.VelocityVectorsPlot,cmap);
-            cbar = colorbar(app.VelocityVectorsPlot);
-            app.VelocityVectorGroup.BackgroundColor = backgroundC;
-            app.VelocityVectorGroup.ForegroundColor = axisText;
+            p = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
+            caxis(app.VisualizationPlot, scale);
+            colormap(app.VisualizationPlot,cmap);
+            cbar = colorbar(app.VisualizationPlot);
+            app.VisualizationGroup.BackgroundColor = backgroundC;
+            app.VisualizationGroup.ForegroundColor = axisText;
             app.TimeframeSpinnerLabel.FontColor = axisText;
             app.SliceSpinner_2Label.FontColor = axisText;
             set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
@@ -1054,15 +1065,170 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(cbar,'position',pos);
             
             % make it look good
-            axis(app.VelocityVectorsPlot, 'off','tight')
-            view(app.VelocityVectorsPlot,[0 0 1]);
-            daspect(app.VelocityVectorsPlot,[1 1 1])
+            axis(app.VisualizationPlot, 'off','tight')
+            view(app.VisualizationPlot,[0 0 1]);
+            daspect(app.VisualizationPlot,[1 1 1])
             
-            if ~contains(app.VectorOptionsDropDown.Value,'slice-wise')
+            if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
                 % update view angle
-                camorbit(app.VelocityVectorsPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+                camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
             end
-            hold(app.VelocityVectorsPlot,'off');
+            hold(app.VisualizationPlot,'off');
+        end
+        
+        function viewStreamlines(app)
+           
+            t = app.TimeframeSpinner.Value;
+            if t == 0   % to prevent errors when coming from other tabs
+                t = 1;
+            end
+            
+            if app.isSegmentationLoaded
+                if app.isTimeResolvedSeg
+                    currSeg = app.aorta_seg(:,:,:,t);
+                else
+                    currSeg = zeros(size(app.aorta_seg,1:3));
+                    % only use segmentations that were selected in first tab
+                    for ii = 1:size(app.aorta_seg,4)
+                        if eval(sprintf('app.mask%i.Value==1',ii))
+                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                        end
+                    end
+                end
+            else
+                currSeg = double(app.segment);
+            end
+            currV = app.v(:,:,:,:,t);
+            
+            subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
+            vx = -currSeg.*currV(:,:,:,1)/10;
+            vy = -currSeg.*currV(:,:,:,2)/10;
+            vz = -currSeg.*currV(:,:,:,3)/10;
+            vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
+            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                (1:size(currSeg,3))*app.pixdim(3));
+            
+            % determine start positions of streamlines
+            switch app.VisOptionsDropDown.Value  % the current vector vis state, slice-wise not allowed
+                case 'centerline contours'
+                    % set the subsampling to reduce number of streamlines
+                    substreams = subsample;
+                    str = app.VisPts.Value;
+                    eval(['ptRange=[' str '];']);
+                    
+                    % get oblique slices
+                    startX = []; startY = []; startZ = [];
+                    for ii = ptRange
+                        currCP = [app.branchActual(ii,2),app.branchActual(ii,1),app.branchActual(ii,3)];
+                        currNorm = app.tangent_V(ii,:); currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
+                        [B,x,y,z] = obliqueslice(currSeg,currCP,currNorm,'FillValues',0);
+                        % do a quick region grow from our centerline point
+                        tmp = cat(2,x(:),y(:),z(:)) - currCP;
+                        tmp = sqrt(sum(tmp.*tmp,2));
+                        [~, pointLinearIndexInSlice] = min(tmp);
+                        [pointColumn,pointRow] = ind2sub(size(B),pointLinearIndexInSlice(1));
+                        B = regiongrowing(B,pointColumn,pointRow);
+                        
+                        currL = find(B(:));
+                        currL = currL(1:substreams:end);
+                        % the start points in true image coordinates
+                        startX = cat(1,startX,x(currL)*app.pixdim(1));
+                        startY = cat(1,startY,y(currL)*app.pixdim(2));
+                        startZ = cat(1,startZ,z(currL)*app.pixdim(3));
+                        
+                    end
+                    
+                case 'segmentation'   % 3d streamlines from the whole segmentation
+                    % set the subsampling to reduce number of streamlines,
+                    % this is ~5x larger than subsample for computational
+                    % reason
+                    substreams = round(5*subsample);
+                    L = find(currSeg);
+                    startX = xcoor_grid(L(1:substreams:end));
+                    startY = ycoor_grid(L(1:substreams:end));
+                    startZ = zcoor_grid(L(1:substreams:end));
+            end
+            
+            % make streamlines, then color according to vmag
+            h = streamline(app.VisualizationPlot,stream3(xcoor_grid,ycoor_grid,zcoor_grid,-vy,-vx,-vz,...
+                startX,startY,startZ));
+            
+            minVel = str2double(app.VisOptionsApp.minQuiverEditField.Value);     % minimum velocity for streamline to be plotted, in cm/s
+            for ii = 1:length(h)
+                h(ii).Visible = 'off';
+                XX = h(ii).XData';
+                YY = h(ii).YData';
+                ZZ = h(ii).ZData';
+                if length(XX) > 1
+                    c = interp3(xcoor_grid,ycoor_grid,zcoor_grid,vmagn,XX,YY,ZZ);
+                    % find c > min velocity, only plot those
+                    c(c < minVel) = nan;
+                    p = patchline(app.VisualizationPlot,XX,YY,ZZ,'CData',cat(1,c,nan),'EdgeColor','flat',...
+                        'linewidth',1.25,'EdgeAlpha',0.90);
+                end
+            end
+            clear h;
+
+            if ~isvalid(app.VisOptionsApp)
+                scale = [0 round(app.VENC/10)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
+                    axisText = [1 1 1];
+                end
+                cmap = app.VisOptionsApp.ColormapDropDown.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
+            end
+            
+            caxis(app.VisualizationPlot, scale);
+            colormap(app.VisualizationPlot,cmap);
+            cbar = colorbar(app.VisualizationPlot);
+            app.VisualizationGroup.BackgroundColor = backgroundC;
+            app.VisualizationGroup.ForegroundColor = axisText;
+            set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
+            set(cbar,'FontSize',13,'color',axisText,'Location','west');
+            pos = get(cbar,'position');
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.02 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.78 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [0.99-pos(3) 0.78 pos(3) 0.2];
+            end
+            set(cbar,'position',pos);
+            
+            % make it look good
+            axis(app.VisualizationPlot, 'off','tight')
+            view(app.VisualizationPlot,[0 0 1]);
+            daspect(app.VisualizationPlot,[1 1 1])
+            
+            % we need a 3D patch for this setting
+            hpatch = patch(app.VisualizationPlot,isosurface(xcoor_grid,ycoor_grid,zcoor_grid,smooth3(currSeg)),'FaceAlpha',0.10);
+            
+            reducepatch(hpatch,0.6);
+            set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+            camlight(app.VisualizationPlot);
+            lighting(app.VisualizationPlot,'gouraud');
+            lightangle(app.VisualizationPlot,0,0);
+
+            camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+            hold(app.VisualizationPlot,'off');
         end
         
         function [outImg, outVol, idx_currSeg] = viewMap(app)
@@ -1140,7 +1306,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 
                 isSliceWise = 0;
-                if contains(app.VectorOptionsDropDown.Value,'slice-wise')
+                if contains(app.VisOptionsDropDown.Value,'slice-wise')
                     isSliceWise = 1;
                     % grab current slice, limits already correctly set in
                     % viewVelocityVectors above
@@ -1466,19 +1632,33 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
             
-            % from load data
-            [filename,directory] = uigetfile('*.rec;*.mat','Select Reconstructed Data');
+            list = {'Philips .rec','mrStruct .mat','Siemens dicom'};
+            [indx,tf] = listdlg('PromptString',{'4D flow file type',...
+                'Only one file can be selected',''},...
+                'SelectionMode','single','ListString',list);
+            filetype = list{indx};
             
-            if endsWith(filename,'.rec')
+            switch filetype
+                case 'Philips .rec'
+                    [filename,directory] = uigetfile('*.rec','Select Reconstructed Data');
                 [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                     app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC(directory, filename);
-            else % .mat mrStruct file
+                case 'mrStruct .mat'
+                    [filename,directory] = uigetfile('*.mat','Select Reconstructed Data');
                 % quick check that both files exist
                 if ~exist(fullfile(directory,'mag_struct.mat'),'file') || ~exist(fullfile(directory,'vel_struct.mat'),'file')
                     error('both mag_struct.mat and vel_struct.mat needed for loading in mrStruct files');
                 end
                 [app.directory, app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                     app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadMrStruct(directory);
+                case 'Siemens dicom'
+                    directory = uigetdir('Select parent Siemens dicom directory (with 4 subfolders)');
+                    % quick check that all directories exist
+                    if length(dir(directory)) ~= 6 % inclues . and ..
+                        error('directory does not contain 4 subfolders (with Siemens dicoms)');
+                    end
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadSiemensDicom(directory);
             end
             app.directory = directory;
             
@@ -1947,7 +2127,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmpBranch = flipud(app.branchList(idx,1:3));
             
             % fit and extract the spline plus normals for this centerline
-            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/10):(end-floor((size(tmpBranch,1)*0.75)/10)) end],:)');
+            % user choice points to do spline fit along centerline
+            percBranchLengthSpline = 3;     % the target distance (%) between chosen points for fit
+            percBranchLengthSpline = 1/(percBranchLengthSpline/100);
+            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/percBranchLengthSpline):(end-floor((size(tmpBranch,1)*0.75)/percBranchLengthSpline)) end],:)');
+%             curve_long = cscvn(tmpBranch(:,:)');
             tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
             
             % the final centerline
@@ -2054,8 +2238,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     plotWaveforms(app);
                     
                     % update maps tab, send spaced initial centerline points to maps tab
-                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
-                    app.VecPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
+                    app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    app.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
                     
                 case 2  % go into update_centerline code for manual adjustments
                     if app.isTimeResolvedSeg
@@ -2149,8 +2333,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     plotWaveforms(app);
                     
                     % update maps tab, send spaced initial centerline points to maps tab
-                    app.VectorOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
-                    app.VecPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
+                    app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+                    app.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
             end
         end
         
@@ -2782,7 +2966,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             if contains(app.MapTime.Value,'resolved')
                 viewMap(app);
             end
-            viewVelocityVectors(app);
+            updateVisualization(app);
         end
         
         % Value changed function: MapType
@@ -2851,7 +3035,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: SliceSpinner_2
         function SliceSpinner_2ValueChanged(app, ~)
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3011,14 +3195,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         function SaveAnimationButtonPushed(app, ~)
             % temporarily hide other things for plotting
             app.MapPlot.Toolbar.Visible = 'off';
-            app.VelocityVectorsPlot.Toolbar.Visible = 'off';
+            app.VisualizationPlot.Toolbar.Visible = 'off';
             app.TimeframeSpinner.Visible = 'off';
             app.TimeframeSpinnerLabel.Visible = 'off';
-            app.VectorOptionsDropDown.Visible = 'off';
+            app.VisOptionsDropDown.Visible = 'off';
             app.SliceSpinner_2.Visible = 'off';
             app.SliceSpinner_2Label.Visible = 'off';
-            app.VecPts_Label.Visible = 'off';
-            app.VecPts.Visible = 'off';
+            app.VisPts_Label.Visible = 'off';
+            app.VisPts.Visible = 'off';
             
             app.MapType.Visible = 'off';
             
@@ -3027,22 +3211,22 @@ classdef FlowProcessing < matlab.apps.AppBase
             % loop over time frames and record
             for t = 1:app.nframes
                 app.TimeframeSpinner.Value = t;
-                viewVelocityVectors(app);
+                updateVisualization(app);
                 
                 % freeze limits to avoid jittering in gif
                 if t == 1
-                    veclim_x = app.VelocityVectorsPlot.XLim;
-                    veclim_y = app.VelocityVectorsPlot.YLim;
-                    veclim_z = app.VelocityVectorsPlot.ZLim;
-                    app.VelocityVectorsPlot.XLimMode = 'manual';
-                    app.VelocityVectorsPlot.YLimMode = 'manual';
-                    app.VelocityVectorsPlot.ZLimMode = 'manual';
+                    veclim_x = app.VisualizationPlot.XLim;
+                    veclim_y = app.VisualizationPlot.YLim;
+                    veclim_z = app.VisualizationPlot.ZLim;
+                    app.VisualizationPlot.XLimMode = 'manual';
+                    app.VisualizationPlot.YLimMode = 'manual';
+                    app.VisualizationPlot.ZLimMode = 'manual';
                     maplim_x = app.MapPlot.XLim;
                     maplim_y = app.MapPlot.YLim;
                 else
-                    app.VelocityVectorsPlot.XLim = veclim_x;
-                    app.VelocityVectorsPlot.YLim = veclim_y;
-                    app.VelocityVectorsPlot.ZLim = veclim_z;
+                    app.VisualizationPlot.XLim = veclim_x;
+                    app.VisualizationPlot.YLim = veclim_y;
+                    app.VisualizationPlot.ZLim = veclim_z;
                     app.MapPlot.XLim = maplim_x;
                     app.MapPlot.YLim = maplim_y;
                 end
@@ -3072,23 +3256,23 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             
             % turn back on
-            app.VelocityVectorsPlot.XLimMode = 'auto';
-            app.VelocityVectorsPlot.YLimMode = 'auto';
-            app.VelocityVectorsPlot.ZLimMode = 'auto';
+            app.VisualizationPlot.XLimMode = 'auto';
+            app.VisualizationPlot.YLimMode = 'auto';
+            app.VisualizationPlot.ZLimMode = 'auto';
             app.TimeframeSpinner.Visible = 'on';
             app.TimeframeSpinnerLabel.Visible = 'on';
-            app.VectorOptionsDropDown.Visible = 'on';
-            if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
+            app.VisOptionsDropDown.Visible = 'on';
+            if strncmp(app.VisOptionsDropDown.Value,'slice-wise',10)
                 app.SliceSpinner_2.Visible = 'on';
                 app.SliceSpinner_2Label.Visible = 'on';
-            elseif strncmp(app.VectorOptionsDropDown.Value, 'centerline contours',19)
-                app.VecPts_Label.Visible = 'on';
-                app.VecPts.Visible = 'on';
+            elseif strncmp(app.VisOptionsDropDown.Value, 'centerline contours',19)
+                app.VisPts_Label.Visible = 'on';
+                app.VisPts.Visible = 'on';
             end
             
             app.MapType.Visible = 'on';
             app.MapPlot.Toolbar.Visible = 'on';
-            app.VelocityVectorsPlot.Toolbar.Visible = 'on';
+            app.VisualizationPlot.Toolbar.Visible = 'on';
         end
         
         % Button pushed function: MapROIanalysis
@@ -3296,7 +3480,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'coronal'
                     app.rotAngles2 = [90 0];
             end
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3311,7 +3495,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'coronal'
                     app.rotAngles2 = [0 90];
             end
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3326,7 +3510,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % this was an coronal scan, reset rotation
                     app.rotAngles2 = [0 0];
             end
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3334,7 +3518,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function ResetRotation_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [0 0];
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3342,7 +3526,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateUp_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3350,7 +3534,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateDown_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3358,7 +3542,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateRight_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3366,7 +3550,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateLeft_2ButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -3616,27 +3800,27 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
         
-        % Value changed function: VecPts
-        function VecPtsValueChanged(app, ~)
-            viewVelocityVectors(app);
+        % Value changed function: VisPts
+        function VisPtsValueChanged(app, ~)
+            updateVisualization(app);
         end
         
         % Value changed function: flipvx
         function flipvxValueChanged(app, ~)
             app.v(:,:,:,1,:) = -app.v(:,:,:,1,:);
-            viewVelocityVectors(app)
+            updateVisualization(app);
         end
         
         % Value changed function: flipvy
         function flipvyValueChanged(app, ~)
             app.v(:,:,:,2,:) = -app.v(:,:,:,2,:);
-            viewVelocityVectors(app)
+            updateVisualization(app);
         end
         
         % Value changed function: flipvz
         function flipvzValueChanged(app, ~)
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
-            viewVelocityVectors(app)
+            updateVisualization(app);
         end
         
         % Key press function: FlowProcessingUIFigure
@@ -3700,7 +3884,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             app.TimeframeSpinner.Value = value;
                             TimeframeSpinnerValueChanged(app);
                     end
-                    if strncmp(app.VectorOptionsDropDown.Value,'slice-wise',10)
+                    if strncmp(app.VisOptionsDropDown.Value,'slice-wise',10)
                         switch key
                             case 'uparrow'
                                 value = app.SliceSpinner_2.Value + 1;
@@ -3779,9 +3963,30 @@ classdef FlowProcessing < matlab.apps.AppBase
             updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
         end
         
-        % Value changed function: VectorOptionsDropDown
-        function VectorOptionsDropDownValueChanged(app, ~)
-            value = app.VectorOptionsDropDown.Value;
+        % Value changed function: VisOptionsDropDown
+        function VisTypeDropDownValueChanged(app, ~)
+            value = app.VisTypeDropDown.Value;
+            switch value
+                case 'Vectors'
+                    app.VisOptionsApp.cutoffvaluesLabel.Text = 'vector scale';
+                    app.VisOptionsApp.toXEditFieldLabel.Position = [73 180 25 22];
+                    app.VisOptionsApp.toXEditFieldLabel.Text = 'to';
+                    app.VisOptionsApp.maxQuiverEditField.Enable = 'on';
+                    app.VisOptionsApp.maxQuiverEditField.Visible = 'on';
+                case 'Streamlines'
+                    app.VisOptionsApp.cutoffvaluesLabel.Text = 'min velocity';
+                    app.VisOptionsApp.toXEditFieldLabel.Position = [73 180 40 22];
+                    app.VisOptionsApp.toXEditFieldLabel.Text = 'cm/s';
+                    app.VisOptionsApp.maxQuiverEditField.Enable = 'off';
+                    app.VisOptionsApp.maxQuiverEditField.Visible = 'off';
+            end
+            updateVisualization(app);
+            viewMap(app);
+        end
+        
+        % Value changed function: VisOptionsDropDown
+        function VisOptionsDropDownValueChanged(app, ~)
+            value = app.VisOptionsDropDown.Value;
             switch value
                 case 'slice-wise'
                     % add the magnitude slice, and re-plot the velocity vectors
@@ -3792,39 +3997,43 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.SliceSpinner_2.Enable = 'on';
                     app.SliceSpinner_2.Value = round(size(app.angio,3)/2);
                     app.SliceSpinner_2.Limits = [1 size(app.angio,3)];
-                    app.VecPts_Label.Visible = 'off';
-                    app.VecPts_Label.Enable = 'off';
-                    app.VecPts.Visible = 'off';
-                    app.VecPts.Enable = 'off';
+                    app.VisPts_Label.Visible = 'off';
+                    app.VisPts_Label.Enable = 'off';
+                    app.VisPts.Visible = 'off';
+                    app.VisPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'off';
                     app.VisOptionsApp.projectionDropDown.Enable = 'off';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'off';
+                    app.VisTypeDropDown.Value = 'Vectors';
                 case 'segmentation'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
                     app.SliceSpinner_2.Enable = 'off';
-                    app.VecPts_Label.Visible = 'off';
-                    app.VecPts_Label.Enable = 'off';
-                    app.VecPts.Visible = 'off';
-                    app.VecPts.Enable = 'off';
+                    app.VisPts_Label.Visible = 'off';
+                    app.VisPts_Label.Enable = 'off';
+                    app.VisPts.Visible = 'off';
+                    app.VisPts.Enable = 'off';
                     app.MapVolumetricanalysis.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
+                    app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
                 case 'centerline contours'
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
                     app.SliceSpinner_2.Enable = 'off';
-                    app.VecPts_Label.Visible = 'on';
-                    app.VecPts_Label.Enable = 'on';
-                    app.VecPts.Visible = 'on';
-                    app.VecPts.Enable = 'on';
+                    app.VisPts_Label.Visible = 'on';
+                    app.VisPts_Label.Enable = 'on';
+                    app.VisPts.Visible = 'on';
+                    app.VisPts.Enable = 'on';
                     app.MapVolumetricanalysis.Enable = 'on';
+
                     app.VisOptionsApp.projectionDropDown.Enable = 'on';
                     app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
+                    app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
             end
-            viewVelocityVectors(app);
+            updateVisualization(app);
             viewMap(app);
         end
         
@@ -4640,27 +4849,37 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapPlot.FontSize = 14;
             app.MapPlot.Position = [1 0 475 669];
             
-            % Create VelocityVectorGroup
-            app.VelocityVectorGroup = uipanel(app.Maps);
-            app.VelocityVectorGroup.BorderType = 'none';
-            app.VelocityVectorGroup.TitlePosition = 'centertop';
-            app.VelocityVectorGroup.Title = 'Vectors';
-            app.VelocityVectorGroup.BackgroundColor = [1 1 1];
-            app.VelocityVectorGroup.FontName = 'SansSerif';
-            app.VelocityVectorGroup.FontWeight = 'bold';
-            app.VelocityVectorGroup.FontSize = 16;
-            app.VelocityVectorGroup.Position = [1 18 475 702];
+            % Create VisualizationGroup
+            app.VisualizationGroup = uipanel(app.Maps);
+            app.VisualizationGroup.BorderType = 'none';
+            app.VisualizationGroup.TitlePosition = 'centertop';
+            app.VisualizationGroup.Title = '';
+            app.VisualizationGroup.BackgroundColor = [1 1 1];
+            app.VisualizationGroup.FontName = 'SansSerif';
+            app.VisualizationGroup.FontWeight = 'bold';
+            app.VisualizationGroup.FontSize = 16;
+            app.VisualizationGroup.Position = [1 18 475 702];
             
-            % Create VelocityVectorsPlot
-            app.VelocityVectorsPlot = uiaxes(app.VelocityVectorGroup);
-            app.VelocityVectorsPlot.YDir = 'reverse';
-            app.VelocityVectorsPlot.ZDir = 'reverse';
-            app.VelocityVectorsPlot.XColor = 'none';
-            app.VelocityVectorsPlot.XTick = [];
-            app.VelocityVectorsPlot.YColor = 'none';
-            app.VelocityVectorsPlot.YTick = [];
-            app.VelocityVectorsPlot.FontSize = 14;
-            app.VelocityVectorsPlot.Position = [1 0 475 669];
+            % Create VisTypeDropDown
+            app.VisTypeDropDown = uidropdown(app.Maps);
+            app.VisTypeDropDown.Items = {'Vectors', 'Streamlines'};
+            app.VisTypeDropDown.ValueChangedFcn = createCallbackFcn(app, @VisTypeDropDownValueChanged, true);
+            app.VisTypeDropDown.FontName = 'SansSerif';
+            app.VisTypeDropDown.FontWeight = 'bold';
+            app.VisTypeDropDown.FontSize = 16;
+            app.VisTypeDropDown.Position = [150 700 125 28];
+            app.VisTypeDropDown.Value = 'Vectors';
+            
+            % Create VisualizationPlot
+            app.VisualizationPlot = uiaxes(app.VisualizationGroup);
+            app.VisualizationPlot.YDir = 'reverse';
+            app.VisualizationPlot.ZDir = 'reverse';
+            app.VisualizationPlot.XColor = 'none';
+            app.VisualizationPlot.XTick = [];
+            app.VisualizationPlot.YColor = 'none';
+            app.VisualizationPlot.YTick = [];
+            app.VisualizationPlot.FontSize = 14;
+            app.VisualizationPlot.Position = [1 0 475 669];
             
             % Create TimeframeSpinnerLabel
             app.TimeframeSpinnerLabel = uilabel(app.Maps);
@@ -4680,25 +4899,25 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.TimeframeSpinner.Tooltip = {'shortcut ''←'' or ''→'''};
             app.TimeframeSpinner.Position = [429 700 50 22];
             
-            % Create VecPts_Label
-            app.VecPts_Label = uilabel(app.Maps);
-            app.VecPts_Label.HorizontalAlignment = 'right';
-            app.VecPts_Label.FontName = 'SansSerif';
-            app.VecPts_Label.FontSize = 11;
-            app.VecPts_Label.Enable = 'off';
-            app.VecPts_Label.Visible = 'off';
-            app.VecPts_Label.Position = [278 700 32 22];
-            app.VecPts_Label.Text = 'points';
+            % Create VisPts_Label
+            app.VisPts_Label = uilabel(app.Maps);
+            app.VisPts_Label.HorizontalAlignment = 'right';
+            app.VisPts_Label.FontName = 'SansSerif';
+            app.VisPts_Label.FontSize = 11;
+            app.VisPts_Label.Enable = 'off';
+            app.VisPts_Label.Visible = 'off';
+            app.VisPts_Label.Position = [278 700 32 22];
+            app.VisPts_Label.Text = 'points';
             
-            % Create VecPts
-            app.VecPts = uieditfield(app.Maps, 'text');
-            app.VecPts.ValueChangedFcn = createCallbackFcn(app, @VecPtsValueChanged, true);
-            app.VecPts.FontName = 'SansSerif';
-            app.VecPts.FontSize = 12;
-            app.VecPts.Enable = 'off';
-            app.VecPts.Visible = 'off';
-            app.VecPts.Tooltip = {'Centerline point labels used for vector visualization. '};
-            app.VecPts.Position = [310 700 50 22];
+            % Create VisPts
+            app.VisPts = uieditfield(app.Maps, 'text');
+            app.VisPts.ValueChangedFcn = createCallbackFcn(app, @VisPtsValueChanged, true);
+            app.VisPts.FontName = 'SansSerif';
+            app.VisPts.FontSize = 12;
+            app.VisPts.Enable = 'off';
+            app.VisPts.Visible = 'off';
+            app.VisPts.Tooltip = {'Centerline point labels used for visualization. '};
+            app.VisPts.Position = [310 700 50 22];
             
             % Create SliceSpinner_2Label
             app.SliceSpinner_2Label = uilabel(app.Maps);
@@ -4720,13 +4939,13 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SliceSpinner_2.Tooltip = {'shortcut ''↑'' or ''↓'''};
             app.SliceSpinner_2.Position = [310 700 50 22];
             
-            % Create VectorOptionsDropDown
-            app.VectorOptionsDropDown = uidropdown(app.Maps);
-            app.VectorOptionsDropDown.Items = {'segmentation', 'slice-wise'};
-            app.VectorOptionsDropDown.ValueChangedFcn = createCallbackFcn(app, @VectorOptionsDropDownValueChanged, true);
-            app.VectorOptionsDropDown.FontName = 'SansSerif';
-            app.VectorOptionsDropDown.Position = [1 700 162 22];
-            app.VectorOptionsDropDown.Value = 'segmentation';
+            % Create VisOptionsDropDown
+            app.VisOptionsDropDown = uidropdown(app.Maps);
+            app.VisOptionsDropDown.Items = {'segmentation', 'slice-wise'};
+            app.VisOptionsDropDown.ValueChangedFcn = createCallbackFcn(app, @VisOptionsDropDownValueChanged, true);
+            app.VisOptionsDropDown.FontName = 'SansSerif';
+            app.VisOptionsDropDown.Position = [1 700 140 22];
+            app.VisOptionsDropDown.Value = 'segmentation';
             
             % Create PeaksystoleEditFieldLabel
             app.PeaksystoleEditFieldLabel = uilabel(app.Maps);

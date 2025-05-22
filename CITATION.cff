@@ -5,6 +5,6 @@ authors:
   given-names: "Eric"
   orcid: "https://orcid.org/0000-0002-7922-3615"
 title: "Amsterdam UMC FlowProcessingTool"
-version: 1.0
-date-released: 2024-11-01
+version: 2.0
+date-released: 2025-05-22
 url: https://github.com/schrau24/FlowProcessing"

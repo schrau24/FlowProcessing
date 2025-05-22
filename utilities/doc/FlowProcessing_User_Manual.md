@@ -1,7 +1,7 @@
 # FlowProcessing User Manual
 
 ## Information  <a name="information"></a>
-Date: September 18, 2024\
+Date: May 22, 2025\
 Author: Eric M. Schrauben, PhD\
 e.m.schrauben@amsterdamumc.nl
 
@@ -15,6 +15,8 @@ This software builds from previous work, and the use of this tool should be asso
 2. [Getting started](#getting-started)
    1. [Installation](#installation)
    2. [Data needed](#data-needed)
+      1. [Philips par/rec](#philips-parrec)
+      2. [Siemens dicom](#siemens-dicom)   
    3. [Starting the tool](#starting-the-tool)
 3. [Loading and Preprocessing tab](#loading-preprocessing)
    1. [Load Data](#load-data)
@@ -39,7 +41,7 @@ This software builds from previous work, and the use of this tool should be asso
 
 ## Getting started  <a name="getting-started"></a>
 ### Installation  <a name="installation"></a>
-This tool is built using Matlab's appdesigner functionality. It was built using Matlab version 2021a; it is therefore recommended to use this version or **newer** for running this tool. Download and unzip the files. All functionality is built into FlowProcessing.m file and the corresponding utilities/ subfolder.
+This tool is built using Matlab's appdesigner functionality. It was built using Matlab version 2021a; it is therefore recommended to use this version or **newer** for running this tool. Download and unzip the files. All functionality is built into FlowProcessing.m file and the corresponding utilities/subfolder.
 
 Additionally, the use of this software requires the following Matlab toolboxes:
 - Signal Processing Toolbox
@@ -48,10 +50,16 @@ Additionally, the use of this software requires the following Matlab toolboxes:
 - Computer Vision Toolbox
 
 ### Data needed  <a name="data-needed"></a>
-The tool works directly on reconstructed .par / .rec files from a Philips 4D flow acquisition. It assumes these are all located within a single folder. The files needed are as follows:\
+The tool optionally works on 4D flow in different formats, listed and explained below. For other formats, please contact e.m.schrauben@amsterdamumc.nl to update functionality.
+#### Philips .par / .rec <a name="philips-parrec"></a> 
+Reconstructed .par / .rec files from a Philips 4D flow acquisition can be directly loaded in. All files shouled be located within a single folder. The files needed are as follows:\
 SUBJECTID or other identifier_1.par, SUBJECTID or other identifier_1.rec\
 SUBJECTID or other identifier_2.par, SUBJECTID or other identifier_2.rec\
 SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
+#### Siemens dicom <a name="siemens-dicom"></a> 
+Reconstructed Siemens .dcm files can be recursively loaded in (note, this option can be time-consuming). All files shouled be located within 4 folders with the following format:\
+one folder with the magnitude dicoms, and 3 folders with the separate velocity directions\
+note the naming of these folders does not matter as velocity information is gathered directly from the dicom headers
 
 ### Starting the tool  <a name="starting-the-tool"></a>
 Within Matlab, navigate to the folder containing FlowProcessing.m. Type this into your command window:\

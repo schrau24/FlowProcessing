@@ -35,7 +35,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         maxQuiverEditField              matlab.ui.control.EditField
         toXEditFieldLabel               matlab.ui.control.Label
         minQuiverEditField              matlab.ui.control.EditField
-        vectorscaleLabel                matlab.ui.control.Label
+        cutoffvaluesLabel                matlab.ui.control.Label
         maxVelocityVisEditField      matlab.ui.control.EditField
         velocityVistoEditFieldLabel  matlab.ui.control.Label
         minVelocityVisEditField      matlab.ui.control.EditField
@@ -311,19 +311,19 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxVelocityVisEditField.Position = [99 224 37 22];
             app.maxVelocityVisEditField.Value = 'max';
             
-            % Create vectorscaleLabel
-            app.vectorscaleLabel = uilabel(app.VisPlotPanel);
-            app.vectorscaleLabel.HorizontalAlignment = 'right';
-            app.vectorscaleLabel.FontName = 'SansSerif';
-            app.vectorscaleLabel.Position = [52 201 70 22];
-            app.vectorscaleLabel.Text = 'vector scale';
+            % Create cutoffvaluesLabel
+            app.cutoffvaluesLabel = uilabel(app.VisPlotPanel);
+            app.cutoffvaluesLabel.HorizontalAlignment = 'left';
+            app.cutoffvaluesLabel.FontName = 'SansSerif';
+            app.cutoffvaluesLabel.Position = [52 201 90 22];
+            app.cutoffvaluesLabel.Text = 'vector scale';
             
             % Create minQuiverEditField
             app.minQuiverEditField = uieditfield(app.VisPlotPanel, 'text');
             app.minQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @minQuiverEditFieldValueChanged, true);
             app.minQuiverEditField.HorizontalAlignment = 'right';
             app.minQuiverEditField.FontName = 'SansSerif';
-            app.minQuiverEditField.Position = [43 180 30 22];
+            app.minQuiverEditField.Position = [43 180 37 22];
             app.minQuiverEditField.Value = '2';
             
             % Create toXEditFieldLabel

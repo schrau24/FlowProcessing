@@ -1153,7 +1153,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             h = streamline(app.VisualizationPlot,stream3(xcoor_grid,ycoor_grid,zcoor_grid,-vy,-vx,-vz,...
                 startX,startY,startZ));
             
-            minVel = 1;     % minimum velocity for streamline to be plotted, in cm/s
+            minVel = str2double(app.VisOptionsApp.minQuiverEditField.Value);     % minimum velocity for streamline to be plotted, in cm/s
             for ii = 1:length(h)
                 h(ii).Visible = 'off';
                 XX = h(ii).XData';
@@ -3965,6 +3965,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         
         % Value changed function: VisOptionsDropDown
         function VisTypeDropDownValueChanged(app, ~)
+            value = app.VisTypeDropDown.Value;
+            switch value
+                case 'Vectors'
+                    app.VisOptionsApp.cutoffvaluesLabel.Text = 'vector scale';
+                    app.VisOptionsApp.toXEditFieldLabel.Position = [73 180 25 22];
+                    app.VisOptionsApp.toXEditFieldLabel.Text = 'to';
+                    app.VisOptionsApp.maxQuiverEditField.Enable = 'on';
+                    app.VisOptionsApp.maxQuiverEditField.Visible = 'on';
+                case 'Streamlines'
+                    app.VisOptionsApp.cutoffvaluesLabel.Text = 'min velocity';
+                    app.VisOptionsApp.toXEditFieldLabel.Position = [73 180 40 22];
+                    app.VisOptionsApp.toXEditFieldLabel.Text = 'cm/s';
+                    app.VisOptionsApp.maxQuiverEditField.Enable = 'off';
+                    app.VisOptionsApp.maxQuiverEditField.Visible = 'off';
+            end
             updateVisualization(app);
             viewMap(app);
         end

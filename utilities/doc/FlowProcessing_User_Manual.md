@@ -70,7 +70,7 @@ Within Matlab, navigate to the folder containing FlowProcessing.m. Type this int
 <img src="img2.png?raw=true" width="450px">
 
 Click `Load 4D Flow Data` \
-You will be prompted to find one of the reconstructed .rec files in order to locate the correct data folder.
+You will be prompted: first to select the file type to load, and second to select either the file (Philips - one of the reconstructed .rec files) or folder (Siemens dicom).
 
 After loading completion, the tool 4D flow acquisition image information is displayed, as well as axial, coronal, and sagittal maximum intensity projections using a calculated angiographic image. An automated thresh-holding of the angiogram is used to display a 3D isosurface within the field of view:
 
@@ -127,14 +127,16 @@ Velocity unwrapping can be performed in three ways:
 - Manual unwrap: if `Unwrap manually` checkbox is on, clicking in the corresponding velocity direction will manually unwrap the selected pixel
 
 ## Maps Tab  <a name="maps-tab"></a>
-This tab is used for visualization purposes, offering both vectors and calculated maps.
+This tab is used for visualization purposes, offering both vectors/streamlines and calculated maps.
 
-The left panel displays 3D velocity vectors in one of 3 options:
-- 'segmentation': vectors are displayed over the whole 3D isosurface
-- 'slice-wise': vectors within a single slice are overlaid on the magnitude image
-- 'centerline contours': vectors from the centerline contours are displayed. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option
+The left panel allows display of either velocity vectors or streamlines in one of 3 options:
+- 'segmentation': vectors/streamlines are displayed over the whole 3D isosurface. note for streamlines the segmentation is automatically subsampled at 5x to reduce computational burden
+- 'slice-wise': vectors within a single slice are overlaid on the magnitude image (not available for streamlines)
+- 'centerline contours': vectors/streamlines from the chosen centerline contours are displayed. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option
 
 <img src="vecs.png?raw=true" width="600px">
+
+<img src="img11.png?raw=true" width="400px">
 
 The right panel allows for visualization of several maps derived for the 4D flow data:
 - [wall shear stress](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4329118/): needs to be calculated using the `(Re)Calculate Map' button, result is WSS over whole 3D isosurface

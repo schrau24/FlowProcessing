@@ -53,6 +53,7 @@ switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         if strcmp('AP',phasedir)
             ori.vxlabel = 'R-L';
             ori.vylabel = 'A-P';
+            tmp = vx; vx = vy; vy = tmp; clear tmp;
         else    % phasedir == 'RL'
             ori.vxlabel = 'A-P';
             ori.vylabel = 'R-L';

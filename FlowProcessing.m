@@ -2127,11 +2127,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmpBranch = flipud(app.branchList(idx,1:3));
             
             % fit and extract the spline plus normals for this centerline
-            % user choice points to do spline fit along centerline
-            percBranchLengthSpline = 3;     % the target distance (%) between chosen points for fit
-            percBranchLengthSpline = 1/(percBranchLengthSpline/100);
-            curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/percBranchLengthSpline):(end-floor((size(tmpBranch,1)*0.75)/percBranchLengthSpline)) end],:)');
-%             curve_long = cscvn(tmpBranch(:,:)');
+            % user choice points to do spline fit along centerline, only if
+            % branch is long enough
+            if size(tmpBranch,1) > 25
+                percBranchLengthSpline = 3;     % the target distance (%) between chosen points for fit
+                percBranchLengthSpline = 1/(percBranchLengthSpline/100);
+                curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/percBranchLengthSpline):(end-floor((size(tmpBranch,1)*0.75)/percBranchLengthSpline)) end],:)');
+            else
+                curve_long = cscvn(tmpBranch(:,:)');
+            end
             tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
             
             % the final centerline

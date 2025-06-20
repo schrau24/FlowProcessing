@@ -12,6 +12,9 @@ subfolders = dir(directory); subfolders = subfolders(3:end);
 isEnhancedDicom = 0;
 for ii = 1:4
     files = dir(fullfile(directory,subfolders(ii).name)); files = files(3:end);
+    if files(1).isdir && length(files) == 1
+        files = dir(fullfile(files(1).folder,files(1).name)); files = files(3:end);
+    end
     info = dicominfo(fullfile(files(end).folder,files(end).name));
     tmp = dicomCollection(fullfile(directory,subfolders(ii).name));
     % if the tmp table has more than one row, we have enhanced dicoms,
@@ -54,22 +57,47 @@ for ii = 1:4
         if isEnhancedDicom
             img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
                 info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleIntercept;
-            vInfo = info.PerFrameFunctionalGroupsSequence.Item_1.Private_0021_11fe.Item_1.Private_0021_1129;
-            dcmorient = acosd(info.PerFrameFunctionalGroupsSequence.Item_1.PlaneOrientationSequence.Item_1.ImageOrientationPatient(1:3));
-            tmpOri = 'Tra';
-            if dcmorient(1) > 60 && dcmorient(3) > 60
-                tmpOri = 'Sag';
-            elseif dcmorient(1) < 30 && dcmorient(3) > 60
+            dirs = {'rl','ap','fh'};    % convention for HFS scans
+            dcmorient = info.PerFrameFunctionalGroupsSequence.Item_1.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
+            rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
+            colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
+            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+                tmpOri = 'Tra';
+            elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
                 tmpOri = 'Cor';
-            end 
+            elseif strcmp(rowDir,'ap') && strcmp(colDir,'fh')
+                tmpOri = 'Sag';
+            else
+                warning('unknown image orientation, assuming transversal');
+                tmpOri = 'Tra';
+            end
+
+            % the venc is determined differently for different scanner
+            % types
+            % https://dicom.nema.org/dicom/supps/sup49_30.pdf
+            VENC = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingMaximumValue * 10;    % in mm/s
+            tmpVDir = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingDirection;
+            switch tmpOri
+                case 'Tra'
+                    dirs = {'rl','ap','through'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Cor'
+                    dirs = {'rl','through','fh'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Sag'
+                    dirs = {'ap','fh','through'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+            end
+            
         else
             img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
             vInfo = info.Private_0051_1014;
             tmpOri = info.Private_0051_100e;
+            tmpVDir = strfind(vInfo,'_');
+            VENC = str2double(vInfo(2:tmpVDir(1)-1))*10;              % venc, in mm/s
+            vDir = vInfo(tmpVDir(end)+1:end);
         end
-        tmpVDir = strfind(vInfo,'_');
-        VENC = str2double(vInfo(2:tmpVDir(1)-1))*10;              % venc, in mm/s
-        vDir = vInfo(tmpVDir(end)+1:end);
+
         switch tmpOri
             case 'Tra'
                 switch vDir
@@ -114,6 +142,7 @@ switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         ori.vxlabel = 'R-L';
         ori.vylabel = 'A-P';
         ori.vzlabel = 'F-H';
+        vz = -vz;
     case 'Sag'
         ori.label = 'sagittal';
         vx = -vx;
@@ -124,6 +153,7 @@ switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
     case 'Cor'
         ori.label = 'coronal';
         vx = -vx;
+        vz = -vz;
         ori.vxlabel = 'F-H';
         ori.vylabel = 'R-L';
         ori.vzlabel = 'A-P';

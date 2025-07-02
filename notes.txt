@@ -1,5 +1,3 @@
 To do:
 - save graphics/memory visualization with pre-calculated and save variables?
-- Dicom reading + saving
-- volumetric streamline option
 - segmentation vectors with magnitude background

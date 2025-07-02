@@ -47,7 +47,13 @@ for ii = 1:4
         end
     end
     
-    if contains(info.ImageType,'\M\') || contains(info.ComplexImageComponent,'MAGNITUDE')
+    isMag = 0;
+    if isEnhancedDicom
+        isMag = contains(info.ComplexImageComponent,'MAGNITUDE');
+    else
+        isMag = contains(info.ImageType,'\M\');
+    end
+    if isMag
         MAG = img_out;
         MAG = MAG/max(abs(MAG(:)));
         % flip z direction
@@ -85,7 +91,7 @@ for ii = 1:4
                     dirs = {'rl','through','fh'};
                     vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Sag'
-                    dirs = {'ap','fh','through'};
+                    dirs = {'through','ap','fh'};
                     vDir = dirs{find(abs(tmpVDir)>0.6)};
             end
             

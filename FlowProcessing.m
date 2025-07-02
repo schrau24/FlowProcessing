@@ -266,7 +266,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             axis(app.View3D,'off');
             
             % if rotation angles are non-zero, rotate now
-            if sum(app.rotAngles) > 0
+            if sum(abs(app.rotAngles)) > 0
                 if (app.isSegmentationLoaded)
                     rotate(app.patchMask1,[1 0 0], app.rotAngles(1))
                     rotate(app.patchMask1,[0 1 0], app.rotAngles(2))
@@ -379,12 +379,12 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % grab parameter from drop-down, and set colorbar description
             switch app.ParameterDropDown.Value
-                case 'Total Flow'
+                case 'total flow'
                     cdata = app.flowPerHeartCycle_vol(index);
-                    axisText = 'Flow (mL/cycle)';
-                case 'Peak Flow'
+                    axisText = 'flow (mL/cycle)';
+                case 'peak flow'
                     cdata = max(app.flowPulsatile_vol(index,:),[],2);
-                    axisText = 'Peak flow (mL/s)';
+                    axisText = 'peak flow (mL/s)';
                 case 'mean velocity'
                     cdata = mean(app.flowPulsatile_vol(index,:)./app.area_val,2);
                     axisText = 'mean velocity (cm/s)';
@@ -455,8 +455,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             index = sub2ind(size(app.aorta_seg),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
             
-            if contains(app.ParameterDropDown.Value,'Flow')
-                plotString = 'Flow (mL/s)';
+            if contains(app.ParameterDropDown.Value,'flow')
+                plotString = 'flow (mL/s)';
             else
                 waveforms = waveforms./app.area_val;
                 plotString = 'Velocity (cm/s)';
@@ -1659,9 +1659,17 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                         app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadSiemensDicom(directory);
+                case 'GE dicom'
+                    directory = uigetdir('Select parent GE dicom directory (with 4 subfolders)');
+                    % quick check that all directories exist
+                    if length(dir(directory)) ~= 6 % inclues . and ..
+                        error('directory does not contain 4 subfolders (with GE dicoms)');
+                    end
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadGEDicom(directory);
             end
             app.directory = directory;
-            
+
             % re-focus the figure
             figure(app.FlowProcessingUIFigure);
             
@@ -2131,8 +2139,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             % branch is long enough
             if size(tmpBranch,1) > 25
                 percBranchLengthSpline = 3;     % the target distance (%) between chosen points for fit
-                percBranchLengthSpline = 1/(percBranchLengthSpline/100);
-                curve_long = cscvn(tmpBranch([1:floor(size(tmpBranch,1)/percBranchLengthSpline):(end-floor((size(tmpBranch,1)*0.75)/percBranchLengthSpline)) end],:)');
+                ptSkip = round(size(tmpBranch,1)*percBranchLengthSpline/100);
+                curve_long = cscvn(tmpBranch(1:ptSkip:end,:)');
             else
                 curve_long = cscvn(tmpBranch(:,:)');
             end
@@ -4272,6 +4280,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create toXEditField
             app.toXEditField = uieditfield(app.CropPanel, 'text');
+            app.toXEditField.Editable = 'off';
             app.toXEditField.HorizontalAlignment = 'right';
             app.toXEditField.FontName = 'SansSerif';
             app.toXEditField.Position = [157 67 32 22];
@@ -4287,6 +4296,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create toYEditField
             app.toYEditField = uieditfield(app.CropPanel, 'text');
+            app.toYEditField.Editable = 'off';
             app.toYEditField.HorizontalAlignment = 'right';
             app.toYEditField.FontName = 'SansSerif';
             app.toYEditField.Position = [156 36 32 22];
@@ -4317,6 +4327,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create toZEditField
             app.toZEditField = uieditfield(app.CropPanel, 'text');
+            app.toZEditField.Editable = 'off';
             app.toZEditField.HorizontalAlignment = 'right';
             app.toZEditField.FontName = 'SansSerif';
             app.toZEditField.Position = [156 6 32 22];
@@ -4957,7 +4968,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PeaksystoleEditFieldLabel.FontName = 'SansSerif';
             app.PeaksystoleEditFieldLabel.Enable = 'off';
             app.PeaksystoleEditFieldLabel.Position = [1056 698 74 22];
-            app.PeaksystoleEditFieldLabel.Text = 'Peak systole';
+            app.PeaksystoleEditFieldLabel.Text = 'peak systole';
             
             % Create PeaksystoleEditField
             app.PeaksystoleEditField = uieditfield(app.Maps, 'text');
@@ -5197,7 +5208,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % Create WaveformsDisplay
             app.WaveformsDisplay = uiaxes(app.FlowandPulseWaveVelocityTab);
             xlabel(app.WaveformsDisplay, 'Cardiac time (ms)')
-            ylabel(app.WaveformsDisplay, 'Flow (mL/s)')
+            ylabel(app.WaveformsDisplay, 'flow (mL/s)')
             app.WaveformsDisplay.FontName = 'SansSerif';
             app.WaveformsDisplay.FontSize = 14;
             app.WaveformsDisplay.Position = [470 269 711 232];
@@ -5258,14 +5269,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % Create ParameterDropDown
             app.ParameterDropDown = uidropdown(app.SegmentationAndCenterline);
-            app.ParameterDropDown.Items = {'Total Flow', 'Peak Flow', 'mean velocity', 'peak velocity'};
+            app.ParameterDropDown.Items = {'total flow', 'peak flow', 'mean velocity', 'peak velocity'};
             app.ParameterDropDown.ValueChangedFcn = createCallbackFcn(app, @ParameterDropDownValueChanged, true);
             app.ParameterDropDown.Enable = 'off';
             app.ParameterDropDown.Visible = 'off';
             app.ParameterDropDown.FontName = 'SansSerif';
             app.ParameterDropDown.FontSize = 14;
             app.ParameterDropDown.Position = [185 37 162 22];
-            app.ParameterDropDown.Value = 'Total Flow';
+            app.ParameterDropDown.Value = 'total flow';
             
             % Create BranchNumberTitle
             app.BranchNumberTitle = uilabel(app.FlowandPulseWaveVelocityTab);

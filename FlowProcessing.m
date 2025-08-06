@@ -44,6 +44,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         CropButton_3                    matlab.ui.control.Button
         CropButton_2                    matlab.ui.control.Button
         CropButton                      matlab.ui.control.Button
+        CropInfoTable                   matlab.ui.control.Table
         ZrangeEditField                 matlab.ui.control.EditField
         ZrangeEditFieldLabel            matlab.ui.control.Label
         toZEditField                    matlab.ui.control.EditField
@@ -664,17 +665,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
         
-        function updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop)
-            
-            % update for ROI drawing
-            app.XrangeEditField.Value = num2str(m_xstart);
-            app.toXEditField.Value = num2str(m_xstop);
-            
-            app.YrangeEditField.Value = num2str(m_ystart);
-            app.toYEditField.Value = num2str(m_ystop);
-            
-            app.ZrangeEditField.Value = num2str(m_zstart);
-            app.toZEditField.Value = num2str(m_zstop);
+        function updateMIPs(app)
             
             % colormap for multimask
             c = prism(size(app.aorta_seg,4));
@@ -1685,10 +1676,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                 cellstr(num2str(app.timeres)),cellstr(num2str(app.nframes)), cellstr(num2str(app.VENC/10)));
             
             app.DataDirectoryEditField.Value = app.directory;
-            m_xstart = 1; m_ystart = 1; m_zstart = 1;
-            m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
-            
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            % crop info
+            app.CropInfoTable.Data = cat(1,cellstr([num2str(1) ' to ' num2str(app.res(1))]),...
+                cellstr([num2str(1) ' to ' num2str(app.res(2))]),...
+                cellstr([num2str(1) ' to ' num2str(app.res(3))]));
+
+            updateMIPs(app);
             
             clc;
             disp('View 3D Vasculature')
@@ -1846,7 +1839,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: flipseglr
@@ -1856,7 +1849,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: flipsegud
@@ -1866,7 +1859,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: flipsegio
@@ -1876,7 +1869,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask1
@@ -1885,7 +1878,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask2
@@ -1894,7 +1887,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask3
@@ -1903,7 +1896,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask4
@@ -1912,7 +1905,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask5
@@ -1921,7 +1914,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask6
@@ -1930,7 +1923,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask7
@@ -1939,7 +1932,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask8
@@ -1948,7 +1941,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask9
@@ -1957,7 +1950,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: mask10
@@ -1966,7 +1959,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
             
         end
         
@@ -1977,7 +1970,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
             if ~app.isRawDataCropped
-                updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+                updateMIPs(app);
             end
         end
         
@@ -2693,10 +2686,12 @@ classdef FlowProcessing < matlab.apps.AppBase
             img = app.AxesX.Children(length(app.AxesX.Children),1).CData;
             maskSz = cropImage(app,img,img2);
             
-            m_xstart = str2double(app.XrangeEditField.Value);
-            m_xstop = str2double(app.toXEditField.Value);
             m_ystart = maskSz(2);m_ystop = maskSz(2)+maskSz(4);
             m_zstart = maskSz(1);m_zstop = maskSz(1)+maskSz(3);
+
+            % crop info
+            app.CropInfoTable.Data{2,1} = [num2str(m_ystart) ' to ' num2str(m_ystop)];
+            app.CropInfoTable.Data{3,1} = [num2str(m_zstart) ' to ' num2str(m_zstop)];
             
             tempMask = zeros(size(img));tempMask(m_ystart:m_ystop,m_zstart:m_zstop) = 1;
             app.mask = app.mask.*repmat(permute(tempMask,[3 1 2]),[size(app.mask,1) 1 1]);
@@ -2710,7 +2705,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.aorta_seg = app.segment;
             end
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
             View3DSegmentation(app);
         end
         
@@ -2729,9 +2724,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             maskSz = cropImage(app,img,img2);
             
             m_xstart = maskSz(2);m_xstop = maskSz(2)+maskSz(4);
-            m_ystart = str2double(app.YrangeEditField.Value);
-            m_ystop = str2double(app.toYEditField.Value);
             m_zstart = maskSz(1);m_zstop = maskSz(1)+maskSz(3);
+            
+            % crop info
+            app.CropInfoTable.Data{1,1} = [num2str(m_xstart) ' to ' num2str(m_xstop)];
+            app.CropInfoTable.Data{3,1} = [num2str(m_zstart) ' to ' num2str(m_zstop)];
             
             tempMask = zeros(size(img));tempMask(m_xstart:m_xstop,m_zstart:m_zstop) = 1;
             app.mask = app.mask.*repmat(permute(tempMask,[1 3 2]),[1 size(app.mask,2) 1]);
@@ -2745,7 +2742,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.aorta_seg = app.segment;
             end
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
             View3DSegmentation(app);
         end
         
@@ -2765,8 +2762,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             m_xstart = maskSz(2);m_xstop = maskSz(2)+maskSz(4);
             m_ystart = maskSz(1);m_ystop = maskSz(1)+maskSz(3);
-            m_zstart = str2double(app.ZrangeEditField.Value);
-            m_zstop = str2double(app.toZEditField.Value);
+
+            % crop info
+            app.CropInfoTable.Data{1,1} = [num2str(m_xstart) ' to ' num2str(m_xstop)];
+            app.CropInfoTable.Data{2,1} = [num2str(m_ystart) ' to ' num2str(m_ystop)];
             
             tempMask = zeros(size(img));tempMask(m_xstart:m_xstop,m_ystart:m_ystop) = 1;
             app.mask = app.mask.*repmat(tempMask,[1 1 size(app.mask,3)]);
@@ -2780,7 +2779,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.aorta_seg = app.segment;
             end
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
             View3DSegmentation(app);
         end
         
@@ -3293,6 +3292,10 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: SaveRotatedAnimation
         function SaveRotatedAnimationButtonPushed(app, ~)
+            if strcmp(app.VisOptionsDropDown.Value,'slice-wise')
+                errordlg('rotated animation not available for slice-wise vectors')
+                return;
+            end
             app.rotAngles2 = [0 0 0]; % reset the rotations and inform
             disp('only native orientation allowed for animated rotations');
             
@@ -4091,7 +4094,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
         
         % Value changed function: VisOptionsDropDown
@@ -4228,7 +4231,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
             
-            updateMIPs(app, m_xstart, m_xstop, m_ystart, m_ystop, m_zstart, m_zstop);
+            updateMIPs(app);
         end
     end
     
@@ -4373,99 +4376,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.AxesZ.YTick = [];
             app.AxesZ.Position = [412 95 200 200];
             
-            % Create XrangeEditFieldLabel
-            app.XrangeEditFieldLabel = uilabel(app.CropPanel);
-            app.XrangeEditFieldLabel.HorizontalAlignment = 'right';
-            app.XrangeEditFieldLabel.FontName = 'SansSerif';
-            app.XrangeEditFieldLabel.FontSize = 14;
-            app.XrangeEditFieldLabel.Position = [45 67 55 22];
-            app.XrangeEditFieldLabel.Text = 'X-range';
-            
-            % Create XrangeEditField
-            app.XrangeEditField = uieditfield(app.CropPanel, 'text');
-            app.XrangeEditField.Editable = 'off';
-            app.XrangeEditField.HorizontalAlignment = 'right';
-            app.XrangeEditField.FontName = 'SansSerif';
-            app.XrangeEditField.Position = [105 67 30 22];
-            app.XrangeEditField.Value = '1';
-            
-            % Create toXEditFieldLabel
-            app.toXEditFieldLabel = uilabel(app.CropPanel);
-            app.toXEditFieldLabel.HorizontalAlignment = 'right';
-            app.toXEditFieldLabel.FontName = 'SansSerif';
-            app.toXEditFieldLabel.FontSize = 14;
-            app.toXEditFieldLabel.Position = [128 67 25 22];
-            app.toXEditFieldLabel.Text = 'to';
-            
-            % Create toXEditField
-            app.toXEditField = uieditfield(app.CropPanel, 'text');
-            app.toXEditField.Editable = 'off';
-            app.toXEditField.HorizontalAlignment = 'right';
-            app.toXEditField.FontName = 'SansSerif';
-            app.toXEditField.Position = [157 67 32 22];
-            app.toXEditField.Value = 'res';
-            
-            % Create toYEditFieldLabel
-            app.toYEditFieldLabel = uilabel(app.CropPanel);
-            app.toYEditFieldLabel.HorizontalAlignment = 'right';
-            app.toYEditFieldLabel.FontName = 'SansSerif';
-            app.toYEditFieldLabel.FontSize = 14;
-            app.toYEditFieldLabel.Position = [127 36 25 22];
-            app.toYEditFieldLabel.Text = 'to';
-            
-            % Create toYEditField
-            app.toYEditField = uieditfield(app.CropPanel, 'text');
-            app.toYEditField.Editable = 'off';
-            app.toYEditField.HorizontalAlignment = 'right';
-            app.toYEditField.FontName = 'SansSerif';
-            app.toYEditField.Position = [156 36 32 22];
-            app.toYEditField.Value = 'res';
-            
-            % Create YrangeEditFieldLabel
-            app.YrangeEditFieldLabel = uilabel(app.CropPanel);
-            app.YrangeEditFieldLabel.HorizontalAlignment = 'right';
-            app.YrangeEditFieldLabel.FontName = 'SansSerif';
-            app.YrangeEditFieldLabel.FontSize = 14;
-            app.YrangeEditFieldLabel.Position = [45 36 54 22];
-            app.YrangeEditFieldLabel.Text = 'Y-range';
-            
-            % Create YrangeEditField
-            app.YrangeEditField = uieditfield(app.CropPanel, 'text');
-            app.YrangeEditField.HorizontalAlignment = 'right';
-            app.YrangeEditField.FontName = 'SansSerif';
-            app.YrangeEditField.Position = [104 36 30 22];
-            app.YrangeEditField.Value = '1';
-            
-            % Create toZEditFieldLabel
-            app.toZEditFieldLabel = uilabel(app.CropPanel);
-            app.toZEditFieldLabel.HorizontalAlignment = 'right';
-            app.toZEditFieldLabel.FontName = 'SansSerif';
-            app.toZEditFieldLabel.FontSize = 14;
-            app.toZEditFieldLabel.Position = [127 6 25 22];
-            app.toZEditFieldLabel.Text = 'to';
-            
-            % Create toZEditField
-            app.toZEditField = uieditfield(app.CropPanel, 'text');
-            app.toZEditField.Editable = 'off';
-            app.toZEditField.HorizontalAlignment = 'right';
-            app.toZEditField.FontName = 'SansSerif';
-            app.toZEditField.Position = [156 6 32 22];
-            app.toZEditField.Value = 'res';
-            
-            % Create ZrangeEditFieldLabel
-            app.ZrangeEditFieldLabel = uilabel(app.CropPanel);
-            app.ZrangeEditFieldLabel.HorizontalAlignment = 'right';
-            app.ZrangeEditFieldLabel.FontName = 'SansSerif';
-            app.ZrangeEditFieldLabel.FontSize = 14;
-            app.ZrangeEditFieldLabel.Position = [44 6 55 22];
-            app.ZrangeEditFieldLabel.Text = 'Z-range';
-            
-            % Create ZrangeEditField
-            app.ZrangeEditField = uieditfield(app.CropPanel, 'text');
-            app.ZrangeEditField.HorizontalAlignment = 'right';
-            app.ZrangeEditField.FontName = 'SansSerif';
-            app.ZrangeEditField.Position = [104 6 30 22];
-            app.ZrangeEditField.Value = '1';
+            % Create CropInfoTable
+            app.CropInfoTable = uitable(app.CropPanel);
+            app.CropInfoTable.ColumnName = {'cropped values'};
+            app.CropInfoTable.RowName = {'x';'y';'z'};
+            app.CropInfoTable.ColumnSortable = false;
+            app.CropInfoTable.ColumnEditable = false;
+            app.CropInfoTable.FontName = 'SansSerif';
+            app.CropInfoTable.FontSize = 12;
+            app.CropInfoTable.Position = [45 6 160 100];
             
             % Create CropButton
             app.CropButton = uibutton(app.CropPanel, 'push');

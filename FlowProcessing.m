@@ -100,20 +100,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         CalculateMap                    matlab.ui.control.Button
         VisOptions                      matlab.ui.control.Button
         SaveAnimation                   matlab.ui.control.Button
+        SaveRotatedAnimation            matlab.ui.control.Button
         MapROIanalysis                  matlab.ui.control.Button
         MapVolumetricanalysis           matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
-        VisualizationGroup             matlab.ui.container.Panel
+        VisualizationGroup              matlab.ui.container.Panel
         VisTypeDropDown                 matlab.ui.control.DropDown
-        VisOptionsDropDown           matlab.ui.control.DropDown
+        VisOptionsDropDown              matlab.ui.control.DropDown
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
         VisPts_Label                    matlab.ui.control.Label
         VisPts                          matlab.ui.control.EditField
         TimeframeSpinner                matlab.ui.control.Spinner
         TimeframeSpinnerLabel           matlab.ui.control.Label
-        VisualizationPlot             matlab.ui.control.UIAxes
+        VisualizationPlot               matlab.ui.control.UIAxes
         MapGroup                        matlab.ui.container.Panel
         MapPlot                         matlab.ui.control.UIAxes
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
@@ -1054,13 +1055,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'mid-left'
                     pos = [0.01 0.41 pos(3) 0.2];
                 case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
+                    pos = [0.01 0.75 pos(3) 0.2];
                 case 'bottom-right'
                     pos = [0.99-pos(3) 0.02 pos(3) 0.2];
                 case 'mid-right'
                     pos = [0.99-pos(3) 0.41 pos(3) 0.2];
                 case 'upper-right'
-                    pos = [0.99-pos(3) 0.78 pos(3) 0.2];
+                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
             end
             set(cbar,'position',pos);
             
@@ -1072,6 +1073,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
                 % update view angle
                 camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+                camroll(app.VisualizationPlot,app.rotAngles2(3));
             end
             hold(app.VisualizationPlot,'off');
         end
@@ -1203,13 +1205,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'mid-left'
                     pos = [0.01 0.41 pos(3) 0.2];
                 case 'upper-left'
-                    pos = [0.01 0.78 pos(3) 0.2];
+                    pos = [0.01 0.75 pos(3) 0.2];
                 case 'bottom-right'
                     pos = [0.99-pos(3) 0.02 pos(3) 0.2];
                 case 'mid-right'
                     pos = [0.99-pos(3) 0.41 pos(3) 0.2];
                 case 'upper-right'
-                    pos = [0.99-pos(3) 0.78 pos(3) 0.2];
+                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
             end
             set(cbar,'position',pos);
             
@@ -1272,7 +1274,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     currV = currV_tmp; clear currV_tmp;
                 else    % sagittal scan
-                    if isequal(app.rotAngles2,[0,0]) || isequal(app.rotAngles2,[90,0]) || isequal(app.rotAngles2,[0,90]) % no, axial or coronal rotation
+                    if isequal(app.rotAngles2,[0,0,0]) || isequal(app.rotAngles2,[90,0,0]) || isequal(app.rotAngles2,[0,90,0]) % no, axial or coronal rotation
                         if contains(app.MapTime.Value,'resolved')
                             currV = app.v(:,:,:,:,t)/10;
                         else
@@ -1466,7 +1468,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             outImg = max(outImg,[],3);
                         end
                     else    % sagittal scan
-                        if isequal(app.rotAngles2,[0,0])
+                        if isequal(app.rotAngles2,[0 0 0])
                             if isSliceWise
                                 outImg = outImg(:,:,sl);
                             elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
@@ -1474,7 +1476,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             else
                                 outImg = squeeze(max(outImg,[],3));
                             end
-                        elseif isequal(app.rotAngles2,[90,0])
+                        elseif isequal(app.rotAngles2,[90 0 0])
                             if isSliceWise
                                 outImg = rot90(squeeze(outImg(sl,:,:)));
                             elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
@@ -1482,7 +1484,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             else
                                 outImg = rot90(squeeze(max(outImg,[],1)));
                             end
-                        elseif isequal(app.rotAngles2,[0,90])
+                        elseif isequal(app.rotAngles2,[0 90 0])
                             if isSliceWise
                                 outImg = squeeze(outImg(:,end-sl+1,:));
                             elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
@@ -1538,6 +1540,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 if isWSS
                     % update view angle
                     camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+                    camroll(app.MapPlot,app.rotAngles2(3),app.rotAngles2(1))
                 end
                 idx_currSeg = find(currSeg);
             end
@@ -1717,7 +1720,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % set intial parameters
             app.rotAngles = [0 0];
-            app.rotAngles2 = [0 0];
+            app.rotAngles2 = [0 0 0];
             app.isRawDataCropped = 0;
             
             % enable intepolate button
@@ -2034,6 +2037,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
             viewVelocityVectors(app);
             app.SaveAnimation.Enable = 'on';
+            app.SaveRotatedAnimation.Enable = 'on';
             app.VisOptions.Enable = 'on';
             app.MapROIanalysis.Enable = 'on';
             app.MapVolumetricanalysis.Enable = 'on';
@@ -3286,6 +3290,101 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapPlot.Toolbar.Visible = 'on';
             app.VisualizationPlot.Toolbar.Visible = 'on';
         end
+
+        % Button pushed function: SaveRotatedAnimation
+        function SaveRotatedAnimationButtonPushed(app, ~)
+            app.rotAngles2 = [0 0 0]; % reset the rotations and inform
+            disp('only native orientation allowed for animated rotations');
+            
+            % temporarily hide other things for plotting
+            app.MapPlot.Toolbar.Visible = 'off';
+            app.VisualizationPlot.Toolbar.Visible = 'off';
+            app.TimeframeSpinner.Visible = 'off';
+            app.TimeframeSpinnerLabel.Visible = 'off';
+            app.VisOptionsDropDown.Visible = 'off';
+            app.SliceSpinner_2.Visible = 'off';
+            app.SliceSpinner_2Label.Visible = 'off';
+            app.VisPts_Label.Visible = 'off';
+            app.VisPts.Visible = 'off';
+            app.MapType.Visible = 'off';
+
+            [file,path] = uiputfile('*.gif','Selection file name and location');
+            filename = fullfile(path,file);
+            % we default to 180 frames and deal over rotations and time
+            % frames
+            % loop over time frames and record
+            ct_time = 1;
+            ct_rotation = 0;
+            for t = 1:180
+                app.TimeframeSpinner.Value = ct_time;
+                updateVisualization(app);
+                
+                camorbit(app.VisualizationPlot,app.rotAngles2(2)+4*ct_rotation,app.rotAngles2(1),[1 1 0])
+                axis(app.VisualizationPlot,'vis3d')
+                % freeze limits to avoid jittering in gif
+                if t == 1
+                    veclim_x = app.VisualizationPlot.XLim;
+                    veclim_y = app.VisualizationPlot.YLim;
+                    veclim_z = app.VisualizationPlot.ZLim;
+                    app.VisualizationPlot.XLimMode = 'manual';
+                    app.VisualizationPlot.YLimMode = 'manual';
+                    app.VisualizationPlot.ZLimMode = 'manual';
+                    maplim_x = app.MapPlot.XLim;
+                    maplim_y = app.MapPlot.YLim;
+                else
+                    app.VisualizationPlot.XLim = veclim_x;
+                    app.VisualizationPlot.YLim = veclim_y;
+                    app.VisualizationPlot.ZLim = veclim_z;
+                    app.MapPlot.XLim = maplim_x;
+                    app.MapPlot.YLim = maplim_y;
+                end
+                pause(0.01);
+                
+                % only save the vectors/streamlines plot
+                ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
+                % Turn screenshot into image
+                im = frame2im(ff);
+                % add time label
+                im = insertText(im,[100 1],sprintf('t = %2.2f s', (ct_time-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
+                
+                % Turn image into indexed image (the gif format needs this)
+                [imind,cm] = rgb2ind(im(1:673,:,:),256);
+                
+                delay = 2*app.timeres/1000;
+                if t == 1
+                    imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
+                else
+                    imwrite(imind,cm, filename,'gif','WriteMode','append','DelayTime',delay);
+                end
+                if mod(t,2) == 1 % odd update ct_rotation
+                    ct_rotation = ct_rotation + 1;
+                else
+                    ct_time = ct_time + 1;
+                    if ct_time > app.nframes  
+                        ct_time = 1;
+                    end
+                end
+            end
+            
+            % turn back on
+            app.VisualizationPlot.XLimMode = 'auto';
+            app.VisualizationPlot.YLimMode = 'auto';
+            app.VisualizationPlot.ZLimMode = 'auto';
+            app.TimeframeSpinner.Visible = 'on';
+            app.TimeframeSpinnerLabel.Visible = 'on';
+            app.VisOptionsDropDown.Visible = 'on';
+            if strncmp(app.VisOptionsDropDown.Value,'slice-wise',10)
+                app.SliceSpinner_2.Visible = 'on';
+                app.SliceSpinner_2Label.Visible = 'on';
+            elseif strncmp(app.VisOptionsDropDown.Value, 'centerline contours',19)
+                app.VisPts_Label.Visible = 'on';
+                app.VisPts.Visible = 'on';
+            end
+            
+            app.MapType.Visible = 'on';
+            app.MapPlot.Toolbar.Visible = 'on';
+            app.VisualizationPlot.Toolbar.Visible = 'on';
+        end
         
         % Button pushed function: MapROIanalysis
         function MapROIanalysisPushed(app, ~)
@@ -3486,11 +3585,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             switch app.ori.label
                 case 'axial'
                     % this was an axial scan, reset rotation
-                    app.rotAngles2 = [0 0];
+                    app.rotAngles2 = [0 0 0];
                 case 'sagittal'
-                    app.rotAngles2 = [90 0];
+                    app.rotAngles2 = [90 0 0];
                 case 'coronal'
-                    app.rotAngles2 = [90 0];
+                    app.rotAngles2 = [90 0 0];
             end
             updateVisualization(app);
             viewMap(app);
@@ -3500,12 +3599,12 @@ classdef FlowProcessing < matlab.apps.AppBase
         function SagittalButtonPushed(app, ~)
             switch app.ori.label
                 case 'axial'
-                    app.rotAngles2 = [0 90];
+                    app.rotAngles2 = [0 90 0];
                 case 'sagittal'
                     % this was an sagital scan, reset rotation
-                    app.rotAngles2 = [0 0];
+                    app.rotAngles2 = [0 0 0];
                 case 'coronal'
-                    app.rotAngles2 = [0 90];
+                    app.rotAngles2 = [0 90 0];
             end
             updateVisualization(app);
             viewMap(app);
@@ -3515,12 +3614,12 @@ classdef FlowProcessing < matlab.apps.AppBase
         function CoronalButtonPushed(app, ~)
             switch app.ori.label
                 case 'axial'
-                    app.rotAngles2 = [90 0];
+                    app.rotAngles2 = [90 0 0];
                 case 'sagittal'
-                    app.rotAngles2 = [0 90];
+                    app.rotAngles2 = [0 90 0];
                 case 'coronal'
                     % this was an coronal scan, reset rotation
-                    app.rotAngles2 = [0 0];
+                    app.rotAngles2 = [0 0 0];
             end
             updateVisualization(app);
             viewMap(app);
@@ -3529,7 +3628,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: ResetRotation_2
         function ResetRotation_2ButtonPushed(app, ~)
             % update rotate angles
-            app.rotAngles2 = [0 0];
+            app.rotAngles2 = [0 0 0];
             updateVisualization(app);
             viewMap(app);
         end
@@ -3537,7 +3636,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: RotateUp_2
         function RotateUp_2ButtonPushed(app, ~)
             % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2)];
+            app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2) app.rotAngles2(3)];
             updateVisualization(app);
             viewMap(app);
         end
@@ -3545,7 +3644,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: RotateDown_2
         function RotateDown_2ButtonPushed(app, ~)
             % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2)];
+            app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2) app.rotAngles2(3)];
             updateVisualization(app);
             viewMap(app);
         end
@@ -3553,7 +3652,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: RotateRight_2
         function RotateRight_2ButtonPushed(app, ~)
             % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10];
+            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10 app.rotAngles2(3)];
             updateVisualization(app);
             viewMap(app);
         end
@@ -3561,11 +3660,27 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: RotateLeft_2
         function RotateLeft_2ButtonPushed(app, ~)
             % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10];
+            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10 app.rotAngles2(3)];
             updateVisualization(app);
             viewMap(app);
         end
         
+        % Button pushed function: RotateIn_2
+        function RotateIn_2ButtonPushed(app, ~)
+            % update rotate angles
+            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2) app.rotAngles2(3)+10];
+            updateVisualization(app);
+            viewMap(app);
+        end
+
+        % Button pushed function: RotateOut_2
+        function RotateOut_2ButtonPushed(app, ~)
+            % update rotate angles
+            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2) app.rotAngles2(3)-10];
+            updateVisualization(app);
+            viewMap(app);
+        end
+
         % Button pushed function: VelocityUnwrapping
         function VelocityUnwrappingButtonPushed(app, ~)
             % if raw data is not yet cropped, do it now!
@@ -3879,6 +3994,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                             RotateRight_2ButtonPushed(app);
                         case 'a'
                             RotateLeft_2ButtonPushed(app);
+                        case 'q'
+                            RotateIn_2ButtonPushed(app);
+                        case 'e'
+                            RotateOut_2ButtonPushed(app);
                         case 'r'
                             ResetRotation_2ButtonPushed(app);
                         case 'rightarrow'
@@ -5010,6 +5129,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SaveAnimation.Tooltip = {'save animation of plots over time'};
             app.SaveAnimation.Position = [1036 528 150 28];
             app.SaveAnimation.Text = 'Save animation';
+
+            % Create SaveRotatedAnimation
+            app.SaveRotatedAnimation = uibutton(app.Maps, 'push');
+            app.SaveRotatedAnimation.ButtonPushedFcn = createCallbackFcn(app, @SaveRotatedAnimationButtonPushed, true);
+            app.SaveRotatedAnimation.IconAlignment = 'center';
+            app.SaveRotatedAnimation.FontName = 'SansSerif';
+            app.SaveRotatedAnimation.FontSize = 13;
+            app.SaveRotatedAnimation.Enable = 'off';
+            app.SaveRotatedAnimation.Tooltip = {'save animation of plots over time'};
+            app.SaveRotatedAnimation.Position = [1036 486 150 28];
+            app.SaveRotatedAnimation.Text = 'Save rotated animation';
             
             % Create MapROIanalysis
             app.MapROIanalysis = uibutton(app.Maps, 'push');
@@ -5019,7 +5149,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapROIanalysis.FontSize = 15;
             app.MapROIanalysis.Enable = 'off';
             app.MapROIanalysis.Tooltip = {'draw ROI in map and save results'};
-            app.MapROIanalysis.Position = [1036 444 150 28];
+            app.MapROIanalysis.Position = [1036 402 150 28];
             app.MapROIanalysis.Text = 'Map ROI analysis';
             
             % Create MapVolumetricanalysis
@@ -5030,7 +5160,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapVolumetricanalysis.FontSize = 15;
             app.MapVolumetricanalysis.Enable = 'off';
             app.MapVolumetricanalysis.Tooltip = {'draw ROI in map and save results'};
-            app.MapVolumetricanalysis.Position = [1036 402 150 28];
+            app.MapVolumetricanalysis.Position = [1036 360 150 28];
             app.MapVolumetricanalysis.Text = 'Map volume analysis';
             
             % Create RotateLeft_2

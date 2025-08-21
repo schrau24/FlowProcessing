@@ -793,14 +793,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             switch app.VisOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
                     if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
-                        fprintf('WARNING: This is a %s scan. Visualization/reorientation has only been optimized for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n',app.ori.label);
                         
                         % do the rotation
                         tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                        currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         for f = 1:3
                             tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
-                            currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         end
                         currV = currV_tmp; clear currV_tmp;
                         
@@ -817,10 +818,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
                         vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
                         [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                            -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                            -5);   % cheat here and put the vel vectors at a negative location to overlay better
                         
                         tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
-                        currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        currMAG = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         img = repmat(currMAG(:,:,sl),[1 1 3]);
                     else % sagittal scan
                         if isequal(app.rotAngles2,[0,0]) % no additional rotation
@@ -841,7 +843,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
                             vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
                             [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
                             if ~isequal(app.pixdim(1),app.pixdim(2))
                                 fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
                             end
@@ -868,7 +870,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
                             vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
                             [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(3), ...
-                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
                             if ~isequal(app.pixdim(1),app.pixdim(2))
                                 fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
                             end
@@ -895,7 +897,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
                             vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
                             [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(3),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
                             if ~isequal(app.pixdim(1),app.pixdim(2))
                                 fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
                             end
@@ -906,10 +908,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                             clear currV_1 currV_2 currV_3
                         else
                             tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                            currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             for f = 1:3
                                 tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
-                                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                                tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             end
                             currV = currV_tmp; clear currV_tmp;
                             
@@ -926,12 +930,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                             vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
                             vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
                             [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -10);   % cheat here and put the vel vectors at a negative location to overlay better
+                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
                             if ~isequal(app.pixdim(1),app.pixdim(2))
                                 fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
                             end
                             tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
-                            currMAG = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            currMAG = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
                             imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
                             hold(app.VisualizationPlot,'on');
@@ -978,32 +983,42 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % we keep all L points now
                     L = 1:length(L);
                     
-                    % we need a 3D patch for this setting
-                    if app.isSegmentationLoaded
-                        hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
-                    else
-                        hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.10);
+                    if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+                        % we need a 3D patch for this setting
+                        if app.isSegmentationLoaded
+                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
+                        else
+                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.10);
+                        end
+                        reducepatch(hpatch,0.6);
+                        set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                        camlight(app.VisualizationPlot);
+                        lighting(app.VisualizationPlot,'gouraud');
+                        lightangle(app.VisualizationPlot,0,0);
                     end
-                    reducepatch(hpatch,0.6);
-                    set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                    camlight(app.VisualizationPlot);
-                    lighting(app.VisualizationPlot,'gouraud');
-                    lightangle(app.VisualizationPlot,0,0);
                     
                 case 'segmentation'   % 3d vectors from the whole segmentation
                     overLaySeg = currSeg;
-                    if ~app.isSegmentationLoaded
-                        overLaySeg = app.segment;
-                    end
                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(overLaySeg,2))*app.pixdim(1),(1:subsample:size(overLaySeg,1))*app.pixdim(2), ...
                         (1:subsample:size(overLaySeg,3))*app.pixdim(3));
                     vx = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,1)/10;
                     vy = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,2)/10;
                     vz = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,3)/10;
                     L = find(overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end));
+                    if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+                        [xx,yy,zz] = meshgrid((1:size(overLaySeg,2))*app.pixdim(1),(1:size(overLaySeg,1))*app.pixdim(2), ...
+                            (1:size(overLaySeg,3))*app.pixdim(3));
+                        % we need a 3D patch for this setting
+                        hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(overLaySeg)),'FaceAlpha',0.10);
+                        reducepatch(hpatch,0.6);
+                        set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                        camlight(app.VisualizationPlot);
+                        lighting(app.VisualizationPlot,'gouraud');
+                        lightangle(app.VisualizationPlot,0,0);
+                    end
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
-            
+
             if ~isvalid(app.VisOptionsApp)
                 a = [2 10*max(vmagn(:))/100];
                 scale = [0 round(app.VENC/10)];
@@ -1246,10 +1261,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
                 
                 if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
-                    fprintf('WARNING: This is a %s scan. Visualization/reorientation has only been optimized for sagittal scans. Please contact Eric Schrauben/Bobby Runderkamp. \n',app.ori.label);
                     
                     tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                    currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                    tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                    currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                     
                     % grab current velocity
                     if contains(app.MapTime.Value,'resolved')
@@ -1260,7 +1275,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     for tt = 1:size(currV,5)
                         for f = 1:3
                             tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
-                            currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                            currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         end
                     end
                     currV = currV_tmp; clear currV_tmp;
@@ -1273,7 +1289,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
                     else
                         tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                        currSeg = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                        currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         
                         if contains(app.MapTime.Value,'resolved')
                             currV = app.v(:,:,:,:,t)/10;
@@ -1283,7 +1300,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         for tt = 1:size(currV,5)
                             for f = 1:3
                                 tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
-                                currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                                tmp  = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
+                                currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             end
                         end
                         currV = currV_tmp; clear currV_tmp;

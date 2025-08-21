@@ -19,7 +19,7 @@ Additionally, the use of this software requires the following Matlab toolboxes:
 4D flow data from different vendors and of different types are possible to load into the tool. See the corresponding section in the [FlowProcessing User Manual](utilities/doc/FlowProcessing_User_Manual.md)
 
 **Getting Started:**
-Within Matlab, navigate to the folder containing FlowProcessing.mlapp. Type this into your command window:
+Within Matlab, navigate to the folder containing FlowProcessing.m. Type this into your command window:
 `FlowProcessing`
 
 **User manual:**

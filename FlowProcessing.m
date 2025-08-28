@@ -1338,6 +1338,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                             verts = app.V_matrix{t2};
                         end
                         WSS_magnitude = sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2);
+                        outVol = WSS_magnitude;
+                        outImg = [];
                         scaletmp = [0 4];
                         cBarString = 'WSS (Pa)';
                         
@@ -1546,12 +1548,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                 axis(app.MapPlot, 'off','tight')
                 view(app.MapPlot, [0 0 1]);
                 daspect(app.MapPlot,[1 1 1])
+                idx_currSeg = find(currSeg);
                 if isWSS
                     % update view angle
                     camorbit(app.MapPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
-                    camroll(app.MapPlot,app.rotAngles2(3),app.rotAngles2(1))
+                    camroll(app.MapPlot,app.rotAngles2(3))
+                    idx_currSeg = 1:length(WSS_magnitude);
                 end
-                idx_currSeg = find(currSeg);
+                
             end
         end
         
@@ -3016,6 +3020,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.maxMapEditField.Value = '4';
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'wss (Pa)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
+
+                    app.MapROIanalysis.Enable = 'off';
                     
                     if ~app.isWSScalculated
                         msgbox('WSS not yet calculated, push Calculate Map');
@@ -3028,6 +3034,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     app.VisOptionsApp.projectionDropDown.Value = 'max';
+
+                    app.MapROIanalysis.Enable = 'on';
                     
                 case 'mean velocity'
                     app.VisOptionsApp.minMapEditField.Value = '0';
@@ -3035,24 +3043,32 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'velocity (cm/s)';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
                     app.VisOptionsApp.projectionDropDown.Value = 'mean';
+
+                    app.MapROIanalysis.Enable = 'on';
                     
                 case 'kinetic energy'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'KE (mJ)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '10';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 0;
+
+                    app.MapROIanalysis.Enable = 'on';
                     
                 case 'energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
                     app.VisOptionsApp.minMapEditField.Value = '-0.1';
                     app.VisOptionsApp.maxMapEditField.Value = '3';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
+
+                    app.MapROIanalysis.Enable = 'on';
                     
                 case 'vorticity'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'vorticity (rad)';
                     app.VisOptionsApp.minMapEditField.Value = '0';
                     app.VisOptionsApp.maxMapEditField.Value = '300';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
+
+                    app.MapROIanalysis.Enable = 'on';
                     
             end
             if ~contains(app.MapType.Value,'None')
@@ -3512,6 +3528,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             clc; close(figure(701));
             close(figure(701));
             app.MapPlot.Toolbar.Visible = 'off';
+
+            isPeakWSS = 0;
+            if contains(app.MapType.Value,'wall shear stress') && length(app.WSS_matrix) == 1 % only peak time frame calculated
+                isPeakWSS = 1;
+            end
             
             t = app.TimeframeSpinner.Value;
             % first save image with current ROI and time frame
@@ -3524,13 +3545,18 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % loop through all frames using the 3D volume as the ROI, report summary statistics
             if contains(app.MapTime.Value,'resolved')
-                for t = 1:app.nframes
-                    app.TimeframeSpinner.Value = t;
+                if isPeakWSS
                     [~, outVol, idx_currSeg] = viewMap(app);
-                    if t == 1 % now we know the length of idx_currSeg to do preallocation
-                        map_var = zeros(length(idx_currSeg),app.nframes);
+                    map_var = outVol;
+                else
+                    for t = 1:app.nframes
+                        app.TimeframeSpinner.Value = t;
+                        [~, outVol, idx_currSeg] = viewMap(app);
+                        if t == 1 % now we know the length of idx_currSeg to do preallocation
+                            map_var = zeros(length(idx_currSeg),app.nframes);
+                        end
+                        map_var(:,t) = outVol(idx_currSeg);
                     end
-                    map_var(:,t) = outVol(idx_currSeg);
                 end
             else    % outVol has all time frames
                 [~, outVol, idx_currSeg] = viewMap(app);
@@ -3544,6 +3570,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             map_var_peak = max(mean(map_var,1)); % 1 number. peak vorticity along cardiac dimension
             
             switch app.MapType.Value
+                case 'wall shear stress'
+                    paramString = 'wall shear stress (Pa)';
+                    saveString = 'wss';
                 case 'peak velocity'
                     paramString = 'peak velocity (cm/s)';
                     saveString = 'peak_velocity';
@@ -3567,15 +3596,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(fig,'Name','Volumetric analysis')
             set(fig,'position',[2    42   958   684])
             subplot(121);
-            image(im); axis off;
-            subplot(122);
-            plot(card_time,mean(map_var,1),'*-k','linewidth',2)
-            hold on;
-            plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
-            xlabel('cardiac time (ms)'); ylabel(paramString); box off;
-            set(gca,'fontsize',16)
-            legend('Volume average', 'Volume max')
-            hold off;
+            image(im); axis off equal;
+            if ~isPeakWSS
+                subplot(122);
+                plot(card_time,mean(map_var,1),'*-k','linewidth',2)
+                hold on;
+                plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
+                xlabel('cardiac time (ms)'); ylabel(paramString); box off;
+                set(gca,'fontsize',16)
+                legend('Volume average', 'Volume max')
+                hold off;
+            end
             set(fig,'color', 'w')
             drawnow;
             
@@ -3586,12 +3617,18 @@ classdef FlowProcessing < matlab.apps.AppBase
             saveName =  fullfile(saveFolder,'mapVol_results');
             
             % save variable
-            tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
-            tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max"];
-            writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
-            tbl = array2table(cat(2,map_var_integral,map_var_peak));
-            tbl.Properties.VariableNames = ["integral over time", "peak over time"];
-            writetable(tbl,[saveName '.xlsx'],'Sheet',savePrefix,'WriteMode','inplace','Range','D1');
+            if isPeakWSS
+                tbl = array2table(cat(2,card_time(app.time_peak),mean(map_var,1),max(map_var,[],1)));
+                tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max"];
+                writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
+            else
+                tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
+                tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max"];
+                writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
+                tbl = array2table(cat(2,map_var_integral,map_var_peak));
+                tbl.Properties.VariableNames = ["integral over time", "peak over time"];
+                writetable(tbl,[saveName '.xlsx'],'Sheet',savePrefix,'WriteMode','inplace','Range','D1');
+            end
             
             % grab and save image
             imgData = frame2im(getframe(fig));
@@ -3599,6 +3636,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             
             % inform of the saving
             msgbox(['results saved to ' saveName '.xlsx'], 'Saving complete','replace')
+
+            app.TimeframeSpinner.Value = saveFrame;
+            viewMap(app);
         end
         
         % Button pushed function: Axial

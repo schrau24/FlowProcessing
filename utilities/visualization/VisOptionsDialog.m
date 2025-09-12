@@ -5,6 +5,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         VisOptionsDialogUIFigure        matlab.ui.Figure
         MapPlotPanel                    matlab.ui.container.Panel
         mask_erosion_checkbox           matlab.ui.control.CheckBox
+        smoothMap_checkbox              matlab.ui.control.CheckBox
         projectionDropDown_Label        matlab.ui.control.Label
         projectionDropDown              matlab.ui.control.DropDown
         backgroundDropDown_2            matlab.ui.control.DropDown
@@ -23,6 +24,8 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         VisPlotPanel                    matlab.ui.container.Panel
         SubsampleSlider                 matlab.ui.control.Slider
         SubsampleLabel                  matlab.ui.control.Label
+        VisPts_Label                    matlab.ui.control.Label
+        VisPts                          matlab.ui.control.EditField
         backgroundDropDown              matlab.ui.control.DropDown
         backgroundDropDownLabel         matlab.ui.control.Label
         TextcolorDropDown               matlab.ui.control.DropDown
@@ -106,6 +109,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: view_3Dpatch_checkboxChanged
         function view_3Dpatch_checkboxChanged(app, event)
+            updateVisualization(app.CallingApp);
+        end
+
+        % Value changed function: VisPts
+        function VisPtsValueChanged(app, ~)
             updateVisualization(app.CallingApp);
         end
         
@@ -233,6 +241,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function mask_erosion_checkboxChanged(app, event)
             viewMap(app.CallingApp);
         end
+
+        % Value changed function: mask_erosion_checkboxChanged
+        function smoothMap_checkboxChanged(app, event)
+            viewMap(app.CallingApp);
+        end      
         
         % Value changed function: projectionDropDownValueChanged
         function projectionDropDownValueChanged(app, event)
@@ -372,13 +385,33 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.view_3Dpatch_checkbox.Text = 'view 3D patch';
             app.view_3Dpatch_checkbox.FontName = 'SansSerif';
             app.view_3Dpatch_checkbox.Position = [46 98+162 146 22];
+
+            % Create VisPts_Label
+            app.VisPts_Label = uilabel(app.VisPlotPanel);
+            app.VisPts_Label.HorizontalAlignment = 'right';
+            app.VisPts_Label.FontName = 'SansSerif';
+            app.VisPts_Label.FontSize = 10;
+            app.VisPts_Label.Enable = 'off';
+            app.VisPts_Label.Visible = 'off';
+            app.VisPts_Label.Position = [3 58+162 70 22];
+            app.VisPts_Label.Text = 'contour points';
+            
+            % Create VisPts
+            app.VisPts = uieditfield(app.VisPlotPanel, 'text');
+            app.VisPts.ValueChangedFcn = createCallbackFcn(app, @VisPtsValueChanged, true);
+            app.VisPts.FontName = 'SansSerif';
+            app.VisPts.FontSize = 12;
+            app.VisPts.Enable = 'off';
+            app.VisPts.Visible = 'off';
+            app.VisPts.Tooltip = {'Centerline point labels used for visualization. '};
+            app.VisPts.Position = [73 58+162 70 22];
             
             % Create velocityVisEditFieldLabel_2
             app.velocityVisEditFieldLabel_2 = uilabel(app.VisPlotPanel);
             app.velocityVisEditFieldLabel_2.HorizontalAlignment = 'right';
             app.velocityVisEditFieldLabel_2.FontName = 'SansSerif';
             app.velocityVisEditFieldLabel_2.FontWeight = 'bold';
-            app.velocityVisEditFieldLabel_2.Position = [62 52 54 22];
+            app.velocityVisEditFieldLabel_2.Position = [73 52 54 22];
             app.velocityVisEditFieldLabel_2.Text = 'colorbar';
             
             % Create LocationDropDownLabel
@@ -549,6 +582,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.projectionDropDown.FontName = 'SansSerif';
             app.projectionDropDown.Position = [74 140+162 110 22];
             app.projectionDropDown.Value = 'max';
+
+            % Create smoothMap_checkbox
+            app.smoothMap_checkbox = uicheckbox(app.MapPlotPanel);
+            app.smoothMap_checkbox.ValueChangedFcn = createCallbackFcn(app, @smoothMap_checkboxChanged, true);
+            app.smoothMap_checkbox.Tooltip = {'2x bicubic interpolation for a smooth map'};
+            app.smoothMap_checkbox.Text = 'smooth map';
+            app.smoothMap_checkbox.FontName = 'SansSerif';
+            app.smoothMap_checkbox.Position = [46 98+162 146 22];
             
             % Create backgroundDropDown_2Label
             app.backgroundDropDown_2Label = uilabel(app.MapPlotPanel);

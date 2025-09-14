@@ -3483,7 +3483,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 xlabel('cardiac time (ms)'); ylabel(paramString); box off;
                 set(gca,'fontsize',16)
                 legend('ROI average', 'ROI max')
-                hold off;
                 set(fig,'color', 'w')
                 drawnow;
                 
@@ -3595,17 +3594,34 @@ classdef FlowProcessing < matlab.apps.AppBase
             fig = figure(701); clf;
             set(fig,'Name','Volumetric analysis')
             set(fig,'position',[2    42   958   684])
-            subplot(121);
-            image(im); axis off equal;
+% commented out to be temporary replaced by Niki's testing
+%             subplot(121);
+%             image(im); axis off equal;
+%             if ~isPeakWSS
+%                 subplot(122);
+%                 plot(card_time,mean(map_var,1),'*-k','linewidth',2)
+%                 hold on;
+%                 plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
+%                 xlabel('cardiac time (ms)'); ylabel(paramString); box off;
+%                 set(gca,'fontsize',16)
+%                 legend('Volume average', 'Volume max')
+%                 hold off;
+
+%*********** The following code is some Testing by Niki
+            %subplot(121);
             if ~isPeakWSS
-                subplot(122);
+                subplot(121);
                 plot(card_time,mean(map_var,1),'*-k','linewidth',2)
-                hold on;
+                xlabel('cardiac time (ms)'); ylabel('mean KE (\muJ)'); box off;
+                set(gca,'fontsize',16)
+                legend('Volume average')
+                subplot(122);
                 plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
                 xlabel('cardiac time (ms)'); ylabel(paramString); box off;
                 set(gca,'fontsize',16)
-                legend('Volume average', 'Volume max')
-                hold off;
+                legend('Volume max')
+
+%************ End of testing
             end
             set(fig,'color', 'w')
             drawnow;

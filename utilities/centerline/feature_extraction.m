@@ -3,9 +3,9 @@ function [CL,branchMat, branchList, branchTextList] = feature_extraction( ...
 
 
 % Thinning operation
-% Y = Skeleton3D(segment);
+Y = Skeleton3D(segment);
 % historical Skeleton3D replaced by Matlab bwskel function, works faster
-Y = double(bwskel(logical(segment),'MinBranchLength',3)); % prune branches 3 voxels or less
+%Y = double(bwskel(logical(segment),'MinBranchLength',3)); % prune branches 3 voxels or less
 
 disp('Finished thinning operation')
 

@@ -1400,6 +1400,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         clear cx cy cz curlx curly curlz;
                         outVol = squeeze(vorticity);
                 end
+                outVol(currSeg==0) = nan;
 
                 if ~isvalid(app.VisOptionsApp)
                     scale = scaletmp;
@@ -1444,7 +1445,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if isSliceWise
                         outImg = outImg(:,:,sl); smthMask = currSeg(:,:,sl);
                     elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                        outImg = nanmean(outImg,3); smthMask = nanmean(currSeg,3);
+                        outImg = nanmean(outImg,3); smthMask = max(currSeg,[],3,'omitnan');
                     else          % app.VisOptions.MapProjection.Value = 'max'
                         outImg = max(outImg,[],3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
                     end

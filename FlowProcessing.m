@@ -198,6 +198,11 @@ classdef FlowProcessing < matlab.apps.AppBase
         contours;                   % the output contours calculated over the centerline, may be time-resolved
         tangent_V;                  % the output tangent vectors calculated over the centerline, for visualization
 
+        h1;                         % handle for first unwrap imagesc
+        h2;                         % handle for second unwrap imagesc
+        h3;                         % handle for third unwrap imagesc
+        cbar;                       % handle for unwrap colorbar
+
         hpatch1;                    % initial 3D patch for 3D vis
         patchMask1;                 % segmentation 3D patch for 3D vis
         patchMask2;                 % segmentation 3D patch for 3D vis
@@ -1523,34 +1528,50 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             PCA_masked = app.v(:,:,:,:,t).*repmat(permute(currSeg,[1 2 3 5 4]),[1 1 1 3 1])/10;
 
-            % determine scaling for visualization
-            scaling = round(max(abs(PCA_masked(:))));
-            cmap_scaling = dopplermap(1000,1);
 
-            imagesc(app.Unwrap_1,PCA_masked(:,:,s,1),'tag', 'alldata');
-            axis(app.Unwrap_1,'equal','off');
-            colormap(app.Unwrap_1,cmap_scaling);
-            caxis(app.Unwrap_1, [-scaling scaling]);
-            title(app.Unwrap_1,app.ori.vxlabel);
+            if isempty(app.h1) || ~isvalid(app.h1)
+                scaling = round(max(abs(PCA_masked(:))));
+                cmap_scaling = dopplermap(1000,1);
 
-            imagesc(app.Unwrap_2,PCA_masked(:,:,s,2),'tag', 'alldata');
-            axis(app.Unwrap_2,'equal','off')
-            colormap(app.Unwrap_2,cmap_scaling);
-            caxis(app.Unwrap_2, [-scaling scaling]);
-            title(app.Unwrap_2,app.ori.vylabel);
+                % Apply to all axes once
+                colormap(app.Unwrap_1, cmap_scaling);
+                colormap(app.Unwrap_2, cmap_scaling);
+                colormap(app.Unwrap_3, cmap_scaling);
 
-            imagesc(app.Unwrap_3,PCA_masked(:,:,s,3),'tag', 'alldata');
-            axis(app.Unwrap_3,'equal','off')
-            colormap(app.Unwrap_3,cmap_scaling);
-            caxis(app.Unwrap_3, [-scaling scaling]);
-            title(app.Unwrap_3,app.ori.vzlabel);
+                % Create images
+                app.h1 = imagesc(app.Unwrap_1, PCA_masked(:,:,s,1));
+                axis(app.Unwrap_1, 'equal', 'off');
+                title(app.Unwrap_1, app.ori.vxlabel);
+                app.h2 = imagesc(app.Unwrap_2, PCA_masked(:,:,s,2));
+                axis(app.Unwrap_2, 'equal', 'off');
+                title(app.Unwrap_2, app.ori.vylabel);
+                app.h3 = imagesc(app.Unwrap_3, PCA_masked(:,:,s,3));
+                axis(app.Unwrap_3, 'equal', 'off');
+                title(app.Unwrap_3, app.ori.vzlabel);
 
-            cbar = colorbar(app.Unwrap_1);
-            set(get(cbar,'xlabel'),'string','velocity (cm/s)','fontsize',12,'Color','black');
-            set(cbar,'FontSize',14,'color','black','Location','west');
-            % change cbar size to fit in corner
-            pos = get(cbar,'position');
-            set(cbar,'position',[0.01 0.01 pos(3) 0.2]);
+                clim(app.Unwrap_1, [-scaling scaling]);
+                clim(app.Unwrap_2, [-scaling scaling]);
+                clim(app.Unwrap_3, [-scaling scaling]);
+
+                % Colorbar once
+                app.cbar = colorbar(app.Unwrap_1, 'Location', 'west');
+                xlabel(app.cbar, 'velocity (cm/s)', 'FontSize', 12, 'Color', 'black');
+                set(app.cbar, 'FontSize', 12, 'Color', 'black');
+                pos = get(app.cbar,'Position');
+                set(app.cbar, 'Position', [0.01 0.01 pos(3) 0.2]);
+            else
+                % Update existing images only
+                set(app.h1, 'CData', PCA_masked(:,:,s,1));
+                set(app.h2, 'CData', PCA_masked(:,:,s,2));
+                set(app.h3, 'CData', PCA_masked(:,:,s,3));
+
+                % Update color limits if scaling changed
+                scaling = round(max(abs(PCA_masked(:))));
+                clim(app.Unwrap_1, [-scaling scaling]);
+                clim(app.Unwrap_2, [-scaling scaling]);
+                clim(app.Unwrap_3, [-scaling scaling]);
+            end
+
 
         end
     end
@@ -1731,6 +1752,12 @@ classdef FlowProcessing < matlab.apps.AppBase
                 else    % only one frame
                     app.aorta_seg = zeros(size(app.angio));
                     app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
+                end
+                % lastly check nifti info in case of needed permutations
+                % (slicer export issue)
+                info_tmp = niftiinfo(fullfile(tmp2(1).folder,tmp2(1).name));
+                if any(info_tmp.Transform.T([2 3 5]) ~= 0)
+                    app.aorta_seg = permute(app.aorta_seg,[2 1 3]);
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
                 app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
@@ -3897,7 +3924,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Window button down function: FlowProcessingUIFigure
         function FlowProcessingUIFigureWindowButtonDown(app, event)
             if (app.TabGroup.SelectedTab == app.VelocityUnwrappingTab) && ...
-                    ~isempty(event.Source.CurrentObject) && isequal(event.Source.CurrentObject.Tag,'alldata') && ...
+                    ~isempty(event.Source.CurrentObject) && isequal(event.Source.CurrentObject.Type,'image') && ...
                     (app.Unwrap_manual_1.Value || app.Unwrap_manual_2.Value || app.Unwrap_manual_3.Value)
 
                 imSize = size(app.angio,[1 2]);

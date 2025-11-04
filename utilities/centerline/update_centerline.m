@@ -8,8 +8,8 @@ while ~choice
     % branch is long enough
     tmpBranch = branchActual_orig;
     percBranchLengthSpline = app.SplineSpacingSlider.Value;     % the target distance (%) between chosen points for fit
-    ptSkip = round(size(tmpBranch,1)*percBranchLengthSpline/100);
-    curve_long = cscvn(cat(2,tmpBranch(1:ptSkip:end,:)',tmpBranch(end,:)'));
+    ptSkip = round(linspace(1,size(tmpBranch,1),round(size(tmpBranch,1)*percBranchLengthSpline/100)));
+    curve_long = cscvn(tmpBranch(ptSkip,:)');
     tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
 
     % the final centerline
@@ -32,8 +32,8 @@ while ~choice
 
     tmpBranch = branchActual_orig;
     percBranchLengthSpline = app.SplineSpacingSlider.Value;     % the target distance (%) between chosen points for fit
-    ptSkip = round(size(tmpBranch,1)*percBranchLengthSpline/100);
-    curve_long = cscvn(cat(2,tmpBranch(1:ptSkip:end,:)',tmpBranch(end,:)'));
+    ptSkip = round(linspace(1,size(tmpBranch,1),round(size(tmpBranch,1)*percBranchLengthSpline/100)));
+    curve_long = cscvn(tmpBranch(ptSkip,:)');
     tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
 
     % the final centerline

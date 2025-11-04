@@ -1022,6 +1022,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
+            
+            % check to do smoothing of velocity field
+            if mean(vmagn(find(vmagn))) < (app.VENC/10)/10
+                vmagn = imgaussfilt3(vmagn,std(vmagn(:))/10);
+            end
 
             if ~isvalid(app.VisOptionsApp)
                 a = [2 10*max(vmagn(:))/100];
@@ -1612,7 +1617,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
 
-            list = {'Philips .rec','mrStruct .mat','Siemens dicom'};
+            list = {'Philips .rec','Philips dicom', 'mrStruct .mat','Siemens dicom'};
             [indx,tf] = listdlg('PromptString',{'4D flow file type',...
                 'Only one file can be selected',''},...
                 'SelectionMode','single','ListString',list);
@@ -1623,6 +1628,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [filename,directory] = uigetfile('*.rec','Select Reconstructed Data');
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                         app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPARREC(directory, filename);
+                case 'Philips dicom'
+                    directory = uigetdir('Select parent Philips dicom directory (with 4 subfolders)');
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadPhilipsDicom(directory);
                 case 'mrStruct .mat'
                     [filename,directory] = uigetfile('*.mat','Select Reconstructed Data');
                     % quick check that both files exist
@@ -1634,7 +1643,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'Siemens dicom'
                     directory = uigetdir('Select parent Siemens dicom directory (with 4 subfolders)');
                     % quick check that all directories exist
-                    if length(dir(directory)) ~= 6 % inclues . and ..
+                    if length(dir(directory)) ~= 6 % includes . and ..
                         error('directory does not contain 4 subfolders (with Siemens dicoms)');
                     end
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
@@ -1749,6 +1758,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     app.isTimeResolvedSeg = 1;
                     app.SegTimeframeSpinner.Enable = 'on';
+                    app.SegTimeframeSpinner.Limits = [0 app.nframes];
                 else    % only one frame
                     app.aorta_seg = zeros(size(app.angio));
                     app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
@@ -2126,8 +2136,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             % branch is long enough
             if size(tmpBranch,1) > 25
                 percBranchLengthSpline = 10;     % the target distance (%) between chosen points for fit
-                ptSkip = round(size(tmpBranch,1)*percBranchLengthSpline/100);
-                curve_long = cscvn(tmpBranch(1:ptSkip:end,:)');
+                ptSkip = round(linspace(1,size(tmpBranch,1),round(size(tmpBranch,1)*percBranchLengthSpline/100)));
+                curve_long = cscvn(tmpBranch(ptSkip,:)');
             else
                 curve_long = cscvn(tmpBranch(:,:)');
             end
@@ -3262,7 +3272,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Turn screenshot into image
                 im = frame2im(ff);
                 % add time label
-                im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
+%                 im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
 
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);

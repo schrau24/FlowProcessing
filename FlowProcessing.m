@@ -1780,7 +1780,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
                 app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
-                app.aorta_seg = permute(app.aorta_seg,[2 1 3]); % .nii need permutation along x/y
+                info_tmp = niftiinfo(fullfile(app.segDirectory,tmp));
+                if any(info_tmp.Transform.T([2 3 5]) ~= 0)
+                    app.aorta_seg = permute(app.aorta_seg,[2 1 3]);
+                end
             else    % the files are still dicoms but not with a dicom ending?
                 files = dir([app.segDirectory '/*IM*']);
                 % reset the aorta segmentation

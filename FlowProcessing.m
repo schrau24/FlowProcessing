@@ -69,6 +69,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         DataDirectoryEditField          matlab.ui.control.EditField
         DataDirectoryEditFieldLabel     matlab.ui.control.Label
         LoadDataButton                  matlab.ui.control.Button
+        ViewDataButton                  matlab.ui.control.Button
         VelocityUnwrappingTab           matlab.ui.container.Tab
         Unwrap_manual_3                 matlab.ui.control.CheckBox
         Unwrap_manual_2                 matlab.ui.control.CheckBox
@@ -990,9 +991,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if app.VisOptionsApp.view_3Dpatch_checkbox.Value
                         % we need a 3D patch for this setting
                         if app.isSegmentationLoaded
-                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.10);
+                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.05);
                         else
-                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.10);
+                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.05);
                         end
                         reducepatch(hpatch,0.6);
                         set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
@@ -1013,7 +1014,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         [xx,yy,zz] = meshgrid((1:size(overLaySeg,2))*app.pixdim(1),(1:size(overLaySeg,1))*app.pixdim(2), ...
                             (1:size(overLaySeg,3))*app.pixdim(3));
                         % we need a 3D patch for this setting
-                        hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(overLaySeg)),'FaceAlpha',0.10);
+                        hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(overLaySeg)),'FaceAlpha',0.15);
                         reducepatch(hpatch,0.6);
                         set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
                         camlight(app.VisualizationPlot);
@@ -1714,7 +1715,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             % enable intepolate button
             app.InterpolateData.Enable = 'on';
 
+			app.ViewDataButton.Enable = 'on';
             app.ManualsegmentationupdateButton.Visible = 'on';
+        end
+
+        % Button pushed function: ViewDataButtonPushed
+        function ViewDataButtonPushed(app, ~)
+            % collect data to view in View4D
+            View4D(cat(1,cat(2,(app.MAG*app.VENC*2)-app.VENC,squeeze(app.v(:,:,:,1,:))),...
+                cat(2,squeeze(app.v(:,:,:,2,:)),squeeze(app.v(:,:,:,3,:)))),[],'axisnames',{'','',''});
         end
 
         % Button pushed function: CleardataandrestartanalysisButton
@@ -3272,7 +3281,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Turn screenshot into image
                 im = frame2im(ff);
                 % add time label
-%                 im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
+                im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
 
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);
@@ -4314,6 +4323,16 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.LoadDataButton.Tooltip = {'load 4D flow reconstructed data (parrec or mrStruct)'};
             app.LoadDataButton.Position = [210 180 198 28];
             app.LoadDataButton.Text = 'Load 4D flow Data';
+
+            % Create ViewDataButton
+            app.ViewDataButton = uibutton(app.LoadDataPanel, 'push');
+            app.ViewDataButton.ButtonPushedFcn = createCallbackFcn(app, @ViewDataButtonPushed, true);
+            app.ViewDataButton.FontName = 'SansSerif';
+            app.ViewDataButton.FontSize = 16;
+            app.ViewDataButton.Tooltip = {'view loaded 4D flow (mag, velocity) reconstructed data'};
+            app.ViewDataButton.Position = [430 180 120 28];
+            app.ViewDataButton.Enable = 'off';
+            app.ViewDataButton.Text = 'View Data';
 
             % Create DataDirectoryEditFieldLabel
             app.DataDirectoryEditFieldLabel = uilabel(app.LoadDataPanel);

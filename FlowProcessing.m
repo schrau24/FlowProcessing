@@ -163,6 +163,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         WaveformsDisplay                matlab.ui.control.UIAxes
         ResetWorkSpace                  matlab.ui.container.Tab
         CleardataandrestartanalysisButton  matlab.ui.control.Button
+        PressureGradient                matlab.ui.container.Tab
+        PressureGradientButton          matlab.ui.control.Button
+        PressureGradientDisplay         matlab.ui.control.UIAxes
+        PressureGradientDisplay_B       matlab.ui.control.UIAxes
     end
 
     properties (Access = private)
@@ -1342,6 +1346,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         KE = currSeg.*0.5*rho*vox_vol.*vel;
                         outVol = squeeze(1e6*squeeze(KE));    % in uJ
 
+
                     case 'energy loss'
                         scaletmp = [-0.001 4];
                         cBarString = 'EL (mW)';
@@ -1351,7 +1356,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
                         v1 = squeeze(vx); v2 = squeeze(vy); v3 = squeeze(vz);
                         % calculate gradients
-                        [v11, v12, v13] = gradient(v1);
+                        [v11, v12, v13] = gradient(v1); 
                         [v21, v22, v23] = gradient(v2);
                         [v31, v32, v33] = gradient(v3);
 
@@ -3001,7 +3006,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 case 'energy loss'
                     app.VisOptionsApp.MapEditFieldLabel.Text = 'EL (mW)';
-                    app.VisOptionsApp.minMapEditField.Value = '-0.1';
+                    app.VisOptionsApp.minMapEditField.Value = '0.0001'; % edited by Niki: -0.1 -> 0.0001
                     app.VisOptionsApp.maxMapEditField.Value = '3';
                     app.VisOptionsApp.mask_erosion_checkbox.Value = 1;
 
@@ -4247,6 +4252,148 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             updateMIPs(app);
+        end
+
+        % Button pushed function: InterpolateData
+        function PressureGradientButtonButtonPushed(app, ~)
+            
+            %% ToDo: clean code by grouping them in one run function (and then plot stuff, write to file stuff etc.)
+            %[t, dP] = run_pressure_calculations(app.aorta_seg, app.v, app.nframes);
+
+            AllSegments = app.aorta_seg;
+            RVSeg = squeeze(AllSegments(:,:,:,2));  % 009: 1 ; 016: 1 ; 024: 1 ; 043: 2 ; 052: 1 ; 053: 1 ; 054: 1 ; 058: 2 ; 059: 1 ; 064: 1 ; 065: 1 ; 086: 1 ; 103: 1 ; 105: 1 ; 106: 2 ; 111: 2 ; 112: 3 ; 121: 2 ; 123: 1
+            RASeg = squeeze(AllSegments(:,:,:,4));  % 009: 5 ; 016: 5 ; 024: 5 ; 043: 4 ; 052: 5 ; 053: 4 ; 054: 5 ; 058: 5 ; 059: 5 ; 064: 5 ; 065: 4 ; 086: 5 ; 103: 5 ; 105: 4 ; 106: 5 ; 111: 4 ; 112: 5 ; 121: 4 ; 123: 5
+            PTSeg = squeeze(AllSegments(:,:,:,3));  % 009: 2 ; 016: 2 ; 024: 4 ; 043: 3 ; 052: 4 ; 053: 3 ; 054: 2 ; 058: 3 ; 059: 2 ; 064: 2 ; 065: 3 ; 086: 2 ; 103: 3 ; 105: 3 ; 106: 3 ; 111: 3 ; 112: 4 ; 121: 3 ; 123: 2
+
+            [TricuspidalisPlane, TP_normal, TP_centroid, TP_time_peak] = get_inlet_outlet_plane(RVSeg, RASeg, app.v, app.nframes);
+            [PulmonaryvalvePlane, PV_normal, PV_centroid, PV_time_peak] = get_inlet_outlet_plane(RVSeg, PTSeg, app.v, app.nframes);
+   
+            %% vwerp testing
+            rho_f = 1.06*1000. ; % density of blood [kg/m^3]
+            mu_f = 0.004; % dynamic viscosity of blood [Pa*s]
+            
+            v_vwerp = v_to_vwerp_struct(app.v, app.timeres, app.pixdim); %v is in mm/s, 
+            % v_werp's v is in m/s ((app.v is in mm/s!!!! currV is in cm/s))           
+
+            %% the following code is using the vwerp module (not publicly available)
+            opts.resample=1;           
+            pa2mmhg = 0.00750061683;
+
+            [apex_plane, apex_normal] = get_apex_plane(RVSeg, TP_normal, TP_centroid, PV_centroid);
+            [t, dP, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+                rho_f, mu_f, RVSeg, TricuspidalisPlane, apex_plane, TP_normal, -apex_normal, [], opts);
+
+            %% code from mid-atrium to mid-ventricle (trans-tricuspid)
+            RA_centroid = regionprops3(RASeg, "Centroid");
+            RA_centroid = int32(RA_centroid.Centroid);
+            RA_centroid = [RA_centroid(2), RA_centroid(1), RA_centroid(3)];
+
+            RA_plane = get_binary_plane_from_coords(RA_centroid, TP_normal, RASeg);
+
+            RARVSeg = RASeg + RVSeg;
+
+%             [t_RARV, dP_RARV, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+%                 rho_f, mu_f, RARVSeg, RA_plane, RV_plane, TP_normal, -TP_normal, [], opts);
+            [t_RARV, dP_RARV, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+                rho_f, mu_f, RARVSeg, RA_plane, apex_plane, TP_normal, -TP_normal, [], opts);          
+
+            dP_RARV = dP_RARV*pa2mmhg;
+            cla(app.PressureGradientDisplay_B)
+            hold(app.PressureGradientDisplay_B,'on');
+            grid(app.PressureGradientDisplay_B,'on');
+            plot(app.PressureGradientDisplay_B, t_RARV, dP_RARV,'b--*');
+
+            %% end from mid-atrium to mid-ventricle (trans-tricuspid)
+
+            dP = dP*pa2mmhg;
+            Time = t';
+            Pressure_TV_to_Apex = dP';
+%             OutputTable = table(Time, Pressure);
+%             writetable(OutputTable, 'pressure_output_TV_to_Apex.txt');
+
+            cla(app.PressureGradientDisplay)
+            hold(app.PressureGradientDisplay,'on');
+            grid(app.PressureGradientDisplay,'on');
+            figure;
+            plot(t, dP,'b--*')
+            plot(app.PressureGradientDisplay, t, dP,'b--*');
+            
+            %xline(Time(TP_time_peak),'-',{'Asystolic', 'peak flow'})
+            hold on
+            xlabel('time [s]')
+            ylabel('Relative pressure drop [mmHg]')
+            grid on
+            title('Estimated relative pressure drops, vWERP');
+
+            [apex_plane, apex_normal] = get_apex_plane(RVSeg, PV_normal, TP_centroid, PV_centroid);
+            [t, dP, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+                rho_f, mu_f, RVSeg, apex_plane, PulmonaryvalvePlane, -apex_normal, PV_normal, [], opts);
+
+            dP = dP*pa2mmhg;
+            Pressure_Apex_to_PV = dP';
+            OutputTable = table(Time, Pressure_TV_to_Apex, Pressure_Apex_to_PV);
+            writetable(OutputTable, 'pressure_output_RV.txt');
+
+            %% code from mid-ventricle to mid-MPA (trans-pulmonalis)
+            PT_centroid = regionprops3(PTSeg, "Centroid");
+            PT_centroid = int32(PT_centroid.Centroid);
+            PT_centroid = [PT_centroid(2), PT_centroid(1), PT_centroid(3)];
+
+            PT_plane = get_binary_plane_from_coords(PT_centroid, PV_normal, PTSeg);
+            RVPTSeg = PTSeg + RVSeg;
+
+
+%             [t_RVPT, dP_RVPT, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+%                 rho_f, mu_f, RVPTSeg, RV_plane, PT_plane, PV_normal, -PV_normal, [], opts);
+            [t_RVPT, dP_RVPT, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+                rho_f, mu_f, RVPTSeg, apex_plane, PT_plane, -PV_normal, PV_normal, [], opts);
+
+%             [t_RVPT, dP_RVPT, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
+%                 rho_f, mu_f, RARVPTSeg, RA_plane, PT_plane, TP_normal, PV_normal, [], opts);
+
+
+            dP_RVPT = dP_RVPT*pa2mmhg;
+            plot(app.PressureGradientDisplay_B, t_RVPT, dP_RVPT,'r:o');
+            title(app.PressureGradientDisplay_B,'Estimated relative pressure drops, vWERP');
+            legend(app.PressureGradientDisplay_B,'trans tricuspid valve', 'trans pulmonalis valve');
+
+            %% end code from mid-ventricle to mid-MPA (trans-pulmonalis)
+
+            %figure;
+            plot(t, dP,'r:o')
+            plot(app.PressureGradientDisplay, t, dP,'r:o');
+            title(app.PressureGradientDisplay,'Estimated relative pressure drops, vWERP');
+            legend(app.PressureGradientDisplay,'TV to Apex','Apex to PV');
+            %xline(Time(PV_time_peak),'-',{'Systolic', 'peak flow'})
+            hold on
+            xlabel('time [s]')
+            ylabel('Relative pressure drop [mmHg]')
+            grid on
+            title('Estimated relative pressure drops, vWERP');
+            legend('TV to Apex', 'Apex to PV');
+            saveas(gcf, 'DeltaPressure_RV.png');
+            hold off;
+            close(figure);
+            
+
+            figure;
+            plot(t_RARV, dP_RARV,'b--*')
+            hold on
+            plot(t_RVPT, dP_RVPT,'r:o')
+            title('Estimated relative pressure drops, vWERP');
+            legend('trans tricuspid valve', 'trans pulmonalis valve');
+            hold on
+            grid on
+            xlabel('time [s]')
+            ylabel('Relative pressure drop [mmHg]')
+            saveas(gcf, 'DeltaPressure_trans_valve.png');
+            close(figure);
+            
+            dP_RARV = dP_RARV';
+            dP_RVPT = dP_RVPT';
+            OutputTable = table(Time, dP_RARV, dP_RVPT);
+            writetable(OutputTable, 'pressure_output_trans_valve.txt');
+
         end
     end
 
@@ -5653,6 +5800,35 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.CleardataandrestartanalysisButton.FontName = 'SansSerif';
             app.CleardataandrestartanalysisButton.Position = [101 550 178 22];
             app.CleardataandrestartanalysisButton.Text = 'Clear data and restart analysis';
+
+            % Create PressureGradient
+            app.PressureGradient = uitab(app.TabGroup);
+            app.PressureGradient.Title = 'Pressure Gradient';
+            app.PressureGradient.BackgroundColor = [1 1 1];
+
+            % Create PressureGradientButton
+            app.PressureGradientButton = uibutton(app.PressureGradient, 'push');
+            app.PressureGradientButton.ButtonPushedFcn = createCallbackFcn(app, @PressureGradientButtonButtonPushed, true);
+            app.PressureGradientButton.FontName = 'SansSerif';
+            app.PressureGradientButton.Position = [101 550 178 22];
+            app.PressureGradientButton.Text = 'Run Pressure Gradient Calculations';
+
+            % Create PressureGradientDisplay
+            app.PressureGradientDisplay = uiaxes(app.PressureGradient);
+            xlabel(app.PressureGradientDisplay, 'Cardiac time (ms)')
+            ylabel(app.PressureGradientDisplay, 'Relative Pressure (mmHg)')
+            app.PressureGradientDisplay.FontName = 'SansSerif';
+            app.PressureGradientDisplay.FontSize = 14;
+            app.PressureGradientDisplay.Position = [400 380 500 325];
+
+            % Create PressureGradientDisplay_B
+            app.PressureGradientDisplay_B = uiaxes(app.PressureGradient);
+            xlabel(app.PressureGradientDisplay_B, 'Cardiac time (ms)')
+            ylabel(app.PressureGradientDisplay_B, 'Relative Pressure (mmHg)')
+            app.PressureGradientDisplay_B.FontName = 'SansSerif';
+            app.PressureGradientDisplay_B.FontSize = 14;
+            app.PressureGradientDisplay_B.Position = [400 25 500 325];
+
 
             % Show the figure after all components are created
             app.FlowProcessingUIFigure.Visible = 'on';

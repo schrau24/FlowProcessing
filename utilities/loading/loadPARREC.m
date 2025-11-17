@@ -34,12 +34,13 @@ clear mag1 mag2 mag3
 vx = double(vx); vy = double(vy); vz = double(vz);
 
 nframes = h3.nphases;                                       % number of reconstructed frames
-timeres = max(h3.tbl(:,h3.tblcols.ttime))/nframes;      % temporal resolution, in ms
+timeres = max(h3.tbl(:,h3.tblcols.ttime))/nframes;          % temporal resolution, in ms
 fov = h3.fov;                                               % Field of view in cm
-res = round([h3.nrows h3.ncols h3.nslices]);        % number of pixels in row,col,slices
+res = round([h3.nrows h3.ncols h3.nslices]);                % number of pixels in row,col,slices
 VENC = max(h3.pevelocity)*10;                               % venc, in mm/s
 pixdim = h3.pixdim;                                         % the reconstructed resolution
 phasedir = h3.prepdir;
+angulations = h3.tbl(1,17:19);                              % the rotated axis, ap, fh, rl
 
 %% manually change velocity directions depending on scan orientations
 
@@ -50,6 +51,7 @@ phasedir = h3.prepdir;
 switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
     case 1
         ori.label = 'axial';
+        angulations = [angulations(3) angulations(1) angulations(2)]; % rl, ap, fh
         if strcmp('AP',phasedir)
             ori.vxlabel = 'R-L';
             ori.vylabel = 'A-P';
@@ -57,10 +59,12 @@ switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         else    % phasedir == 'RL'
             ori.vxlabel = 'A-P';
             ori.vylabel = 'R-L';
+            angulations = [angulations(2) angulations(1) angulations(3)]; % ap, rl, fh
         end
         ori.vzlabel = 'F-H';
     case 2
         ori.label = 'sagittal';
+        angulations = [angulations(2) angulations(1) angulations(3)]; % fh, ap, rl
         if strcmp('AP',phasedir)
             ori.vxlabel = 'F-H';
             ori.vylabel = 'A-P';
@@ -68,12 +72,14 @@ switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
             ori.vxlabel = 'A-P';
             ori.vylabel = 'F-H';
             tmp = vx; vx = vy; vy = tmp; clear tmp;
+            angulations = [angulations(2) angulations(1) angulations(3)]; % ap, fh, rl
         end
         ori.vzlabel = 'R-L';
         vx = -vx;
         vz = -vz;
     case 3
         ori.label = 'coronal';
+        angulations = [angulations(2) angulations(3) angulations(1)]; % fh, rl, ap
         vx = -vx;
         if strcmp('RL',phasedir)
             ori.vxlabel = 'F-H';
@@ -81,9 +87,11 @@ switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         else    % phasedir == 'FH'
             ori.vxlabel = 'R-L';
             ori.vylabel = 'F-H';
+            angulations = [angulations(2) angulations(1) angulations(3)]; % rl, fh, ap
         end
         ori.vzlabel = 'A-P';
 end
+ori.angulations = angulations;
 
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);

@@ -366,7 +366,8 @@ while( 1 )
     for i = start:size(pars,1)
         % if (getPar (line, pars{i,1}, pars{i,2}, pars{i,3}))
         if (strfind(upper(line), upper(pars{i,1})) > 0)  % paul made this case-insensitive
-            value = line(strfind(line, ':')+1:end);
+            idxCol = strfind(line, ':');
+            value = line(idxCol(1)+1:end);
             if (pars{i,3} == 1)
                 value = str2num(value); %#ok<ST2NM>
             else

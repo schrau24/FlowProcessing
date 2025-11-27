@@ -81,7 +81,6 @@ function [in_or_out_plane, normal_vector_plane, centroid, time_peak] = get_inlet
     Ycoord = BoundBox(1) + 0.5;
     Zcoord = BoundBox(3) + 0.5;
 
-
     %% ToDo: clean up the following if statements -> add a function for these operations (and same in get_apex_plane.m)
     if Xcoord ~= 1
         Xcoord = Xcoord -1;

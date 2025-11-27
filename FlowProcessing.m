@@ -4256,30 +4256,27 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: InterpolateData
         function PressureGradientButtonButtonPushed(app, ~)
-            
-            %% ToDo: clean code by grouping them in one run function (and then plot stuff, write to file stuff etc.)
-            %[t, dP] = run_pressure_calculations(app.aorta_seg, app.v, app.nframes);
-
+            % Step 1, grab the tricuspid and pulmonary planes using the overlap of segmentations
+            % and get apex plane
             AllSegments = app.aorta_seg;
-            RVSeg = squeeze(AllSegments(:,:,:,2));  % 009: 1 ; 016: 1 ; 024: 1 ; 043: 2 ; 052: 1 ; 053: 1 ; 054: 1 ; 058: 2 ; 059: 1 ; 064: 1 ; 065: 1 ; 086: 1 ; 103: 1 ; 105: 1 ; 106: 2 ; 111: 2 ; 112: 3 ; 121: 2 ; 123: 1
-            RASeg = squeeze(AllSegments(:,:,:,4));  % 009: 5 ; 016: 5 ; 024: 5 ; 043: 4 ; 052: 5 ; 053: 4 ; 054: 5 ; 058: 5 ; 059: 5 ; 064: 5 ; 065: 4 ; 086: 5 ; 103: 5 ; 105: 4 ; 106: 5 ; 111: 4 ; 112: 5 ; 121: 4 ; 123: 5
-            PTSeg = squeeze(AllSegments(:,:,:,3));  % 009: 2 ; 016: 2 ; 024: 4 ; 043: 3 ; 052: 4 ; 053: 3 ; 054: 2 ; 058: 3 ; 059: 2 ; 064: 2 ; 065: 3 ; 086: 2 ; 103: 3 ; 105: 3 ; 106: 3 ; 111: 3 ; 112: 4 ; 121: 3 ; 123: 2
+            RVSeg = squeeze(AllSegments(:,:,:,1));  % 009: 1 ; 016: 1 ; 024: 1 ; 043: 2 ; 052: 1 ; 053: 1 ; 054: 1 ; 058: 2 ; 059: 1 ; 064: 1 ; 065: 1 ; 086: 1 ; 103: 1 ; 105: 1 ; 106: 2 ; 111: 2 ; 112: 3 ; 121: 2 ; 123: 1
+            RASeg = squeeze(AllSegments(:,:,:,5));  % 009: 5 ; 016: 5 ; 024: 5 ; 043: 4 ; 052: 5 ; 053: 4 ; 054: 5 ; 058: 5 ; 059: 5 ; 064: 5 ; 065: 4 ; 086: 5 ; 103: 5 ; 105: 4 ; 106: 5 ; 111: 4 ; 112: 5 ; 121: 4 ; 123: 5
+            PTSeg = squeeze(AllSegments(:,:,:,2));  % 009: 2 ; 016: 2 ; 024: 4 ; 043: 3 ; 052: 4 ; 053: 3 ; 054: 2 ; 058: 3 ; 059: 2 ; 064: 2 ; 065: 3 ; 086: 2 ; 103: 3 ; 105: 3 ; 106: 3 ; 111: 3 ; 112: 4 ; 121: 3 ; 123: 2
 
             [TricuspidalisPlane, TP_normal, TP_centroid, TP_time_peak] = get_inlet_outlet_plane(RVSeg, RASeg, app.v, app.nframes);
             [PulmonaryvalvePlane, PV_normal, PV_centroid, PV_time_peak] = get_inlet_outlet_plane(RVSeg, PTSeg, app.v, app.nframes);
-   
-            %% vwerp testing
-            rho_f = 1.06*1000. ; % density of blood [kg/m^3]
-            mu_f = 0.004; % dynamic viscosity of blood [Pa*s]
-            
+            [apex_plane, apex_normal, apex_centroid] = get_apex_plane(RVSeg, TP_normal, TP_centroid, PV_centroid);
+
+            % Step 2, convert to vwerp struct, assume some constants
+            rho_f = 1.06*1000. ;    % density of blood [kg/m^3]
+            mu_f = 0.004;           % dynamic viscosity of blood [Pa*s]
             v_vwerp = v_to_vwerp_struct(app.v, app.timeres, app.pixdim); %v is in mm/s, 
-            % v_werp's v is in m/s ((app.v is in mm/s!!!! currV is in cm/s))           
 
             %% the following code is using the vwerp module (not publicly available)
             opts.resample=1;           
             pa2mmhg = 0.00750061683;
 
-            [apex_plane, apex_normal] = get_apex_plane(RVSeg, TP_normal, TP_centroid, PV_centroid);
+            
             [t, dP, ~, ~, ~, ~, ~, ~] = get_vwerp_pressure_estimate(v_vwerp,...
                 rho_f, mu_f, RVSeg, TricuspidalisPlane, apex_plane, TP_normal, -apex_normal, [], opts);
 

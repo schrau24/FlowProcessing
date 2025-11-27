@@ -1,4 +1,4 @@
-function [apex_plane, apex_normal] = get_apex_plane(ventricle_segment, boundary_normal, TP_centroid, PV_centroid)
+function [apex_plane, apex_normal, centroid_coords_apex] = get_apex_plane(ventricle_segment, boundary_normal, TP_centroid, PV_centroid)
     %% GET_APEX_PLANE - 
     % ToDo
     % 

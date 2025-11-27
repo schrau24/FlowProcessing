@@ -1411,7 +1411,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                         clear cx cy cz curlx curly curlz;
                         outVol = squeeze(vorticity);
                 end
+                if ~isWSS
                 outVol(currSeg==0) = nan;
+                end
 
                 if ~isvalid(app.VisOptionsApp)
                     scale = scaletmp;
@@ -3607,12 +3609,12 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % save variable
             if isPeakWSS
-                tbl = array2table(cat(2,card_time(app.time_peak),mean(map_var,1),max(map_var,[],1)));
-                tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max"];
-                writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
+                tbl = array2table(cat(2,mean(map_var,1),max(map_var,[],1)));
+                tbl.Properties.VariableNames = ["Vol_average","Vol_max"];
+                writetable(tbl,[saveName '.xlsx'],'Sheet','volumetric_WSS_peakSystole','WriteMode','overwritesheet');
             else
-                tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
-                tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max"];
+                tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)',sum(map_var,1)'*app.timeres/1000));
+                tbl.Properties.VariableNames = ["cardiac time(ms)","Vol_average","Vol_max","Vol_AUC"];
                 writetable(tbl,[saveName '.xlsx'],'Sheet',saveString,'WriteMode','overwritesheet');
                 tbl = array2table(cat(2,map_var_integral,map_var_peak));
                 tbl.Properties.VariableNames = ["integral over time", "peak over time"];
@@ -3923,24 +3925,30 @@ classdef FlowProcessing < matlab.apps.AppBase
         function Unwrap_automaticButtonPushed(app, ~)
             sl = app.SliceSpinner.Value;
             tf = app.TimeframeSpinner_3.Value;
-            tmpV = squeeze(app.v(:,:,sl,:,tf-1:tf)).* ...
-                app.aorta_seg(:,:,sl);
+
+            if app.isTimeResolvedSeg
+                currSeg = app.aorta_seg(:,:,:,t);
+            else
+                currSeg = zeros(size(app.aorta_seg,1:3));
+                % only use segmentations that were selected in first tab
+                for ii = 1:size(app.aorta_seg,4)
+                    if eval(sprintf('app.mask%i.Value==1',ii))
+                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
+                    end
+                end
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
+            end
+            tmpV = app.v(:,:,:,:,tf-1:tf).*repmat(currSeg, [1 1 1 3 2]);
+            tmpV = squeeze(tmpV(:,:,sl,:,:));
             venc = app.VENC;
-            vOut = unaliasSlice(tmpV,venc); clear tmpV;
+            vOut = unaliasSlice(tmpV,venc);
+
             % assign values back to app.v
-            idx = find(app.aorta_seg(:,:,sl));
-            tmpV = squeeze(app.v(:,:,sl,1,tf)); vOut1 = vOut(:,:,1);
-            tmpV(idx) = vOut1(idx);
-            app.v(:,:,sl,1,tf) = tmpV;
-            tmpV = squeeze(app.v(:,:,sl,2,tf)); vOut1 = vOut(:,:,2);
-            tmpV(idx) = vOut1(idx);
-            app.v(:,:,sl,2,tf) = tmpV;
-            tmpV = squeeze(app.v(:,:,sl,3,tf)); vOut1 = vOut(:,:,3);
-            tmpV(idx) = vOut1(idx);
-            app.v(:,:,sl,3,tf) = tmpV;
+            app.v(:,:,sl,:,tf) = permute(vOut,[1 2 4 3 5]);
 
             plotVelocities(app);
-
         end
 
         % Window button down function: FlowProcessingUIFigure

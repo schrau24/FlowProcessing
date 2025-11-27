@@ -21,25 +21,31 @@ vx2_array = velocity_x2(Lx);
 vy2_array = velocity_y2(Ly);
 vz2_array = velocity_z2(Lz);
 
-for ix = 1:size(vx2_array)
+if ~isempty(vx2_array)
+    for ix = 1:length(vx2_array)
     if vx2_array(ix,1) < 0
         vx2_array(ix,1) = vx2_array(ix,1) + 2*VENC;
     elseif vx2_array(ix,1) > 0
         vx2_array(ix,1) = vx2_array(ix,1) - 2*VENC;
     end
 end
-for iy = 1:size(vy2_array)
+end
+if ~isempty(vy2_array)
+    for iy = 1:length(vy2_array)
     if vy2_array(iy,1) < 0
         vy2_array(iy,1) = vy2_array(iy,1) + 2*VENC;
     elseif vy2_array(iy,1) > 0
         vy2_array(iy,1) = vy2_array(iy,1) - 2*VENC;
     end
 end
-for iz = 1:size(vz2_array)
+end
+if ~isempty(vz2_array)
+    for iz = 1:length(vz2_array)
     if vz2_array(iz,1) < 0
         vz2_array(iz,1) = vz2_array(iz,1) + 2*VENC;
     elseif vz2_array(iz,1) > 0
         vz2_array(iz,1) = vz2_array(iz,1) - 2*VENC;
+        end
     end
 end
 velocity_x2(Lx) = vx2_array;

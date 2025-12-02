@@ -84,12 +84,12 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         
         % Value changed function: minVelocityVisEditField
         function minVelocityVisEditFieldValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            app.CallingApp.VisualizationPlot.CLim = [str2double(app.minVelocityVisEditField.Value) str2double(app.maxVelocityVisEditField.Value)];
         end
         
         % Value changed function: maxVelocityVisEditField
         function maxVelocityVisEditFieldValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            app.CallingApp.VisualizationPlot.CLim = [str2double(app.minVelocityVisEditField.Value) str2double(app.maxVelocityVisEditField.Value)];
         end
         
         % Value changed function: minQuiverEditField
@@ -119,122 +119,111 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         
         % Value changed function: LocationDropDown
         function LocationDropDownValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            currCbar = app.CallingApp.VisualizationPlot.Colorbar;
+            cbarLoc = app.LocationDropDown.Value;
+            pos = get(currCbar,'position');
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.02 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.75 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
+            end
+            set(currCbar,'position',pos);
         end
         
         % Value changed function: ColormapDropDown
         function ColormapDropDownValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            cmap = app.ColormapDropDown.Value;
+            if contains(app.ColormapDropDown.Value,'inverse')
+                eval(['cmap=' erase(app.ColormapDropDown.Value,'inverse ') '(256);']);
+                cmap = flip(cmap,1);
+            else
+                eval(['cmap=' app.ColormapDropDown.Value '(256);']);
+            end
+            colormap(app.CallingApp.VisualizationPlot,cmap);
         end
         
         % Value changed function: TextcolorDropDown
         function TextcolorDropDownValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            axisText = [0 0 0];
+            if strcmp(app.TextcolorDropDown.Value,'white')
+                axisText = [1 1 1];
+            end
+            app.CallingApp.VisualizationGroup.ForegroundColor = axisText;
+            currCbar = app.CallingApp.VisualizationPlot.Colorbar;
+            currCbar.Color = axisText;
         end
-        
+
         % Value changed function: backgroundDropDown
         function backgroundDropDownValueChanged(app, event)
-            updateVisualization(app.CallingApp);
+            backgroundC = [1 1 1];
+            if strcmp(app.backgroundDropDown.Value,'black')
+                backgroundC = [0 0 0];
+            end
+            app.CallingApp.VisualizationGroup.BackgroundColor = backgroundC;
         end
-        
+
         % Value changed function: minMapEditField
         function minMapEditFieldValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
-            end
-            viewMap(app.CallingApp);
+            app.CallingApp.MapPlot.CLim = [str2double(app.minMapEditField.Value) str2double(app.maxMapEditField.Value)];
         end
         
         % Value changed function: maxMapEditField
         function maxMapEditFieldValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
-            end
-            viewMap(app.CallingApp);
+            app.CallingApp.MapPlot.CLim = [str2double(app.minMapEditField.Value) str2double(app.maxMapEditField.Value)];
         end
         
         % Value changed function: LocationDropDown_2
         function LocationDropDown_2ValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
+            currCbar = app.CallingApp.MapPlot.Colorbar;
+            cbarLoc = app.LocationDropDown_2.Value;
+            pos = get(currCbar,'position');
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.02 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.75 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
             end
-            viewMap(app.CallingApp);
+            set(currCbar,'position',pos);
         end
         
         % Value changed function: ColormapDropDown_2
         function ColormapDropDown_2ValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
+            cmap = app.ColormapDropDown_2.Value;
+            if contains(app.ColormapDropDown_2.Value,'inverse')
+                eval(['cmap=' erase(app.ColormapDropDown_2.Value,'inverse ') '(256);']);
+                cmap = flip(cmap,1);
+            else
+                eval(['cmap=' app.ColormapDropDown_2.Value '(256);']);
             end
-            viewMap(app.CallingApp);
+            colormap(app.CallingApp.MapPlot,cmap);
         end
         
         % Value changed function: TextcolorDropDown_2
         function TextcolorDropDown_2ValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
+            axisText = [0 0 0];
+            if strcmp(app.TextcolorDropDown_2.Value,'white')
+                axisText = [1 1 1];
             end
-            viewMap(app.CallingApp);
+            app.CallingApp.MapGroup.ForegroundColor = axisText;
+            currCbar = app.CallingApp.MapPlot.Colorbar;
+            currCbar.Color = axisText;
         end
         
         % Value changed function: mask_erosion_checkboxChanged
@@ -259,22 +248,12 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         
         % Value changed function: backgroundDropDown_2
         function backgroundDropDown_2ValueChanged(app, event)
-            switch app.CallingApp.MapType.Value
-                case 'None'
-                case 'wall shear stress'
-                    app.MapEditFieldLabel.Text = 'wss (Pa)';
-                case 'peak velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'mean velocity'
-                    app.MapEditFieldLabel.Text = 'velocity (cm/s)';
-                case 'kinetic energy'
-                    app.MapEditFieldLabel.Text = 'KE (μJ)';
-                case 'energy loss'
-                    app.MapEditFieldLabel.Text = 'EL (mW)';
-                case 'vorticity'
-                    app.MapEditFieldLabel.Text = 'vorticity (rad)';
+            backgroundC = [1 1 1];
+            if strcmp(app.backgroundDropDown_2.Value,'black')
+                backgroundC = [0 0 0];
             end
-            viewMap(app.CallingApp);
+            app.CallingApp.MapGroup.BackgroundColor = backgroundC;
+
         end
     end
     

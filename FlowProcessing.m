@@ -1127,7 +1127,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 (1:size(currSeg,3))*app.pixdim(3));
 
             % determine start positions of streamlines
-            switch app.VisOptionsDropDown.Value  % the current vector vis state, slice-wise not allowed
+            switch app.VisOptionsDropDown.Value  % the current vis state, slice-wise not allowed
                 case 'centerline contours'
                     % set the subsampling to reduce number of streamlines
                     substreams = subsample;
@@ -1159,7 +1159,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'segmentation'   % 3d streamlines from the whole segmentation
                     % set the subsampling to reduce number of streamlines,
                     % this is ~5x larger than subsample for computational
-                    % reason
+                    % reasons
                     substreams = round(5*subsample);
                     L = find(currSeg);
                     startX = xcoor_grid(L(1:substreams:end));
@@ -1182,7 +1182,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % find c > min velocity, only plot those
                     c(c < minVel) = nan;
                     p = patchline(app.VisualizationPlot,XX,YY,ZZ,'CData',cat(1,c,nan),'EdgeColor','flat',...
-                        'linewidth',1.25,'EdgeAlpha',0.90);
+                        'linewidth',1,'EdgeAlpha',0.70);
                 end
             end
             clear h;
@@ -1535,7 +1535,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
 
             PCA_masked = app.v(:,:,:,:,t).*repmat(permute(currSeg,[1 2 3 5 4]),[1 1 1 3 1])/10;
-
 
             if isempty(app.h1) || ~isvalid(app.h1)
                 scaling = round(max(abs(PCA_masked(:))));

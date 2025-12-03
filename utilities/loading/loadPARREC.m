@@ -124,6 +124,7 @@ if delayedReconFlag
                 angulations = [angulations(2) angulations(1) angulations(3)]; % ap, fh, rl
             end
             tmp = vx; vx = vz; vz = tmp; clear tmp;
+            vx = -vx;
             ori.vzlabel = 'R-L';
         case 3
             ori.label = 'coronal';

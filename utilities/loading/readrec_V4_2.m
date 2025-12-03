@@ -90,7 +90,7 @@ else
     else
         error('Yo dude, %s does not seem to be a PAR or REC file', filename);
     end
-    
+
     % load in the PAR file
     header = parseHeader(filename_par, quiet);
     if header.nrows == 0
@@ -121,6 +121,13 @@ types =    unique(A(:,typeind));
 dynamics = unique(A(:,3));
 echoes =   unique(A(:,2));
 phases =   unique(A(:,4));
+
+% if 'sequence' param has both 2 and 4, this is a Philips parrec export, we
+% don't want seq==4 (PCMRA)
+idxToSkip = [];
+if sum(unique(A(:,6)) == [2; 4]) == 2
+    idxToSkip = find(A(:,6) == 4);
+end
 
 if (header.par_version > 4)
     bdir = unique(A(:,43));
@@ -168,45 +175,47 @@ isNonSquare = sz(1) ~= sz(2);
 % when file is sorted (as is usual) ii = idx+1
 % indexes go from 0 to n-1, n = # of images in file
 for idx = 0:s-1
-    % use index column to find info for next data block to read
-    ii = find(A(:,7)==idx);
-    
-    %  Determine the rescale slope, intercept and other scaling factors.
-    %     intercept = A(ii,iri) / A(ii,irs); % ri is usually 0 for magn data
-    %     slope = 1.0 / A(ii,iss);
-    
-    % for Qflow
-    slope = A(ii,irs);
-    intercept = A(ii,iri);
-    
-    if noscale
-        d = fread (fp, [header.nrows, header.ncols], 'uint16');
-    else
-        d = fread (fp, [header.nrows, header.ncols], 'int16') * slope + intercept;
-    end
-    if isNonSquare
-        d = d';
-    end
-    
-    if (size(d) == header.sizes(2:-1:1))
-        if (header.par_version == 4.2)
-            % v 4.2 - diffusion & ASL type dimension
-            data(:,:, A(ii,1), echoes==A(ii,2), dynamics==A(ii,3),...
-                types==A(ii,typeind), phases==A(ii,4), ...
-                bdir==A(ii,43), ASL_type==A(ii,49)) = d;
-        elseif (header.par_version >= 4)
-            % v 4.1 - no ASL type dimension
-            data(:,:, A(ii,1), find(echoes==A(ii,2)), find(dynamics==A(ii,3)),...
-                find(types==A(ii,typeind)), find(phases==A(ii,4)), ...
-                find(bdir==A(ii,43))) = d; %#ok<FNDSB>
+    if isempty(intersect(idxToSkip,idx))
+        % use index column to find info for next data block to read
+        ii = find(A(:,7)==idx);
+
+        %  Determine the rescale slope, intercept and other scaling factors.
+        %     intercept = A(ii,iri) / A(ii,irs); % ri is usually 0 for magn data
+        %     slope = 1.0 / A(ii,iss);
+
+        % for Qflow
+        slope = A(ii,irs);
+        intercept = A(ii,iri);
+
+        if noscale
+            d = fread (fp, [header.nrows, header.ncols], 'uint16');
         else
-            % v3 - no ASL, diffusion shows up as dynamic
-            data(:,:, A(ii,1), find(echoes==A(ii,2)), find(dynamics==A(ii,3)),...
-                find(types==A(ii,typeind)), find(phases==A(ii,4))) = d; %#ok<FNDSB>
+            d = fread (fp, [header.nrows, header.ncols], 'int16') * slope + intercept;
         end
-    else
-        if ~quiet
-            error ('data size error');
+        if isNonSquare
+            d = d';
+        end
+
+        if (size(d) == header.sizes(2:-1:1))
+            if (header.par_version == 4.2)
+                % v 4.2 - diffusion & ASL type dimension
+                data(:,:, A(ii,1), echoes==A(ii,2), dynamics==A(ii,3),...
+                    types==A(ii,typeind), phases==A(ii,4), ...
+                    bdir==A(ii,43), ASL_type==A(ii,49)) = d;
+            elseif (header.par_version >= 4)
+                % v 4.1 - no ASL type dimension
+                data(:,:, A(ii,1), find(echoes==A(ii,2)), find(dynamics==A(ii,3)),...
+                    find(types==A(ii,typeind)), find(phases==A(ii,4)), ...
+                    find(bdir==A(ii,43))) = d; %#ok<FNDSB>
+            else
+                % v3 - no ASL, diffusion shows up as dynamic
+                data(:,:, A(ii,1), find(echoes==A(ii,2)), find(dynamics==A(ii,3)),...
+                    find(types==A(ii,typeind)), find(phases==A(ii,4))) = d; %#ok<FNDSB>
+            end
+        else
+            if ~quiet
+                error ('data size error');
+            end
         end
     end
     if ~quiet
@@ -362,7 +371,7 @@ while( 1 )
     if (regexpi(line, '^#\s*sl\s+ec'))
         break
     end
-    
+
     for i = start:size(pars,1)
         % if (getPar (line, pars{i,1}, pars{i,2}, pars{i,3}))
         if (strfind(upper(line), upper(pars{i,1})) > 0)  % paul made this case-insensitive
@@ -378,7 +387,7 @@ while( 1 )
             break;
         end
     end
-    
+
 end
 
 fgetl(fp); % skip blank line following heading
@@ -417,11 +426,11 @@ end
 if (header.par_version >= 4 )
     header.nrows = A(1,10);
     header.ncols = A(1,11);
-    
-             header.pixdim = [A(1,29) A(1,30) A(1,23)+A(1,24)];
+
+    header.pixdim = [A(1,29) A(1,30) A(1,23)+A(1,24)];
     % for PROUD, overwrite to true extent (FOV) / matrix size
-%     header.pixdim = [header.fov(2)/header.ncols header.fov(1)/header.nrows header.fov(3)/header.nslices];
-    
+    %     header.pixdim = [header.fov(2)/header.ncols header.fov(1)/header.nrows header.fov(3)/header.nslices];
+
 end
 
 %% additional header fields

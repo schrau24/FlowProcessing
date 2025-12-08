@@ -45,18 +45,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         CropButton_2                    matlab.ui.control.Button
         CropButton                      matlab.ui.control.Button
         CropInfoTable                   matlab.ui.control.Table
-        ZrangeEditField                 matlab.ui.control.EditField
-        ZrangeEditFieldLabel            matlab.ui.control.Label
-        toZEditField                    matlab.ui.control.EditField
-        toZEditFieldLabel               matlab.ui.control.Label
-        YrangeEditField                 matlab.ui.control.EditField
-        YrangeEditFieldLabel            matlab.ui.control.Label
-        toYEditField                    matlab.ui.control.EditField
-        toYEditFieldLabel               matlab.ui.control.Label
-        toXEditField                    matlab.ui.control.EditField
-        toXEditFieldLabel               matlab.ui.control.Label
-        XrangeEditField                 matlab.ui.control.EditField
-        XrangeEditFieldLabel            matlab.ui.control.Label
         AxesZ                           matlab.ui.control.UIAxes
         AxesY                           matlab.ui.control.UIAxes
         AxesX                           matlab.ui.control.UIAxes
@@ -162,8 +150,10 @@ classdef FlowProcessing < matlab.apps.AppBase
         View3D_2                        matlab.ui.control.UIAxes
         PWVCalcDisplay                  matlab.ui.control.UIAxes
         WaveformsDisplay                matlab.ui.control.UIAxes
-        ResetWorkSpace                  matlab.ui.container.Tab
-        CleardataandrestartanalysisButton  matlab.ui.control.Button
+        ManageWorkspace                 matlab.ui.container.Tab
+        ClearAppAndRestartButton        matlab.ui.control.Button
+        RestoreAppStateButton           matlab.ui.control.Button
+        SaveAppStateButton              matlab.ui.control.Button
     end
 
     properties (Access = private)
@@ -924,9 +914,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                             % grab current slice
                             sl = app.SliceSpinner_2.Value;
-                            if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                            end
+                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
                             if sl > size(currV,3)
                                 sl = round(size(currV,3)/2);
                             end
@@ -1727,8 +1715,251 @@ classdef FlowProcessing < matlab.apps.AppBase
                 cat(2,squeeze(app.v(:,:,:,2,:)),squeeze(app.v(:,:,:,3,:)))),[],'axisnames',{'','',''});
         end
 
-        % Button pushed function: CleardataandrestartanalysisButton
-        function CleardataandrestartanalysisButtonPushed(app, ~)
+        % Button pushed function: SaveAppStateButton
+        function SaveAppStateButtonPushed(app, ~)
+            % get output name
+            [file,path] = uiputfile([app.directory '\*.mat'],'Select app state file name and location');
+            filename = fullfile(path,file);
+
+            state = struct();
+            props = properties(app);
+            for i = 1:length(props)
+                name = props{i};
+                comp = app.(name);  % May be a component or a property, so far...
+                c = string(class(comp));
+                if c == "matlab.ui.control.NumericEditField" ...
+                        || c == "matlab.ui.control.EditField" ...
+                        || c == "matlab.ui.control.CheckBox"
+                    state.(name)= comp.Value;
+                elseif c == "matlab.ui.control.DropDown"
+                    % These are weird, had to be specially handled to save a string
+                    % instead of an index into the list:
+                    v = comp.Value;
+                    if  ~isempty(v)
+                        id = find(strcmp(comp.Items,v));
+                        state.(name)= comp.Items{id};
+                    end
+                elseif c == "matlab.ui.container.CheckBoxTree"
+                    for ii = 1:size(comp.CheckedNodes,1)
+                        tag(ii) = string(app.(name).CheckedNodes(ii).Tag);
+                    end
+                    if exist('tag','var')
+                        state.(name) = tag;
+                    end
+                elseif c == "matlab.ui.control.ListBox"
+                    state.(name) = comp.Items;
+                elseif c == "matlab.ui.control.Table"
+                    state.(name) = comp.Data;
+                end
+            end
+            % we also load the privateValuesList and loop through that
+            allValues = struct(); visOptions = struct();
+            privateValuesList;  % loads appPrivateValues
+            for i = 1:length(appPrivateValues)
+                name = appPrivateValues(i);
+                if contains(name,'VisOptionsApp')
+                    % we loop through and save the VisOptionsApp state
+                    tempApp = app.VisOptionsApp;
+                    propsVisOptions = properties(tempApp);
+                    for ii = 1:length(propsVisOptions)
+                        nameVisOptions = propsVisOptions{ii};
+                        comp = tempApp.(nameVisOptions);  % May be a component or a property, so far...
+                        c = string(class(comp));
+                        if c == "matlab.ui.control.NumericEditField" ...
+                                || c == "matlab.ui.control.EditField" ...
+                                || c == "matlab.ui.control.CheckBox"
+                            visOptions.(nameVisOptions)= comp.Value;
+                        elseif c == "matlab.ui.control.DropDown"
+                            % These are weird, had to be specially handled to save a string
+                            % instead of an index into the list:
+                            v = comp.Value;
+                            if  ~isempty(v)
+                                id = find(strcmp(comp.Items,v));
+                                visOptions.(nameVisOptions)= comp.Items{id};
+                            end
+                        elseif c == "matlab.ui.container.CheckBoxTree"
+                            for ii = 1:size(comp.CheckedNodes,1)
+                                tag(ii) = string(tempApp.(nameVisOptions).CheckedNodes(ii).Tag);
+                            end
+                            if exist('tag','var')
+                                visOptions.(nameVisOptions) = tag;
+                            end
+                        elseif c == "matlab.ui.control.ListBox"
+                            visOptions.(nameVisOptions) = comp.Items;
+                        elseif c == "matlab.ui.control.Table"
+                            visOptions.(nameVisOptions) = comp.Data;
+                        end
+                    end
+                else
+                    allValues.(name) = app.(name);
+                end
+            end
+            save(filename,'state','allValues','visOptions');
+            % inform of the saving
+            msgbox(['App state saved to ' filename], 'Saving complete','replace')
+        end
+
+        % Button pushed function: RestoreAppStateButton
+        function RestoreAppStateButtonPushed(app, ~)
+            if ~isempty(app.directory)
+                [file,path] = uigetfile([app.directory '\*.mat'],'Selection app state file name');
+            else
+                [file,path] = uigetfile('*.mat','Selection app state file name');
+            end
+            filename = fullfile(path,file);
+
+            load(filename, 'state','allValues','visOptions')
+            fields = fieldnames(state);
+            for i = 1:length(fields)
+                name = fields{i};
+                try   % or could use isprop(app, name) to test presence
+                    comp = app.(name);
+                    if class(comp) == "matlab.ui.container.CheckBoxTree"
+                        tags = state.(name);
+                        for ii = 1:size(tags,2)
+                            checkedNodes(ii) = findall(0,'tag',tags(ii));
+                        end
+                        app.(name).CheckedNodes = checkedNodes;
+                    elseif class(comp) == "matlab.ui.control.ListBox"
+                        comp.Items = state.(name);
+                    elseif class(comp) == "matlab.ui.control.Table"
+                        comp.Data = state.(name);
+                    else
+                        comp.Value = state.(name);
+                    end
+                catch err
+                    disp(['Did not use saved field', name, ': ', err.identifier])
+                end
+            end
+            % we also load the privateValuesList and loop through that
+            privateValuesList;  % loads appPrivateValues
+            for i = 1:length(appPrivateValues)
+                name = appPrivateValues(i);
+                if contains(name,'VisOptionsApp')
+                    app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
+                    % we loop through and save the VisOptionsApp state
+                    fields = fieldnames(visOptions);
+                    for ii = 1:length(fields)
+                        visOptionsName = fields{ii};
+                        try   % or could use isprop(app, name) to test presence
+                            comp = app.VisOptionsApp.(visOptionsName);
+                            if class(comp) == "matlab.ui.container.CheckBoxTree"
+                                tags = visOptions.(visOptionsName);
+                                for ii = 1:size(tags,2)
+                                    checkedNodes(ii) = findall(0,'tag',tags(ii));
+                                end
+                                app.VisOptionsApp(visOptionsName).CheckedNodes = checkedNodes;
+                            elseif class(comp) == "matlab.ui.control.ListBox"
+                                comp.Items = visOptions.(visOptionsName);
+                            elseif class(comp) == "matlab.ui.control.Table"
+                                comp.Data = visOptions.(visOptionsName);
+                            else
+                                comp.Value = visOptions.(visOptionsName);
+                            end
+                        catch err
+                            disp(['Did not use saved field', name, ': ', err.identifier])
+                        end
+                    end
+                else
+                    app.(name) = allValues.(name);
+                end
+            end
+
+            % try to run some basic functions
+            app.InterpolateData.Enable = 'on';
+			app.ViewDataButton.Enable = 'on';
+            app.ManualsegmentationupdateButton.Visible = 'on';
+            try
+                View3DSegmentation(app);
+            catch err
+                disp(['could not restore View3DSegmentation: ', err.identifier])
+            end
+            try
+                updateMIPs(app);
+            catch err
+                disp(['could not restore  updateMIPs: ', err.identifier])
+            end
+            try
+                app.TimeframeSpinner_3.Limits = [1,app.nframes];
+                app.SliceSpinner.Limits = [1 size(app.angio,3)];
+                app.PeaksystoleEditField.Value = num2str(app.time_peak);
+                app.TimeframeSpinner_3.Value = app.time_peak;
+
+                % if we have been on this page before and already have a slice,
+                app.SliceSpinner.Value = round(size(app.angio,3)/2);
+                app.h1 = [];
+                plotVelocities(app);
+            catch err
+                disp(['could not restore  plotVelocities: ', err.identifier])
+            end
+            try
+                app.TimeframeSpinnerLabel.Enable = 'on';
+                app.TimeframeSpinner.Enable = 'on';
+                app.TimeframeSpinner.Limits = [1,app.nframes];
+                app.CalculateMap.Enable = 'on';
+                app.TimeframeSpinner.Value = app.time_peak;
+
+                app.SaveAnimation.Enable = 'on';
+                app.SaveRotatedAnimation.Enable = 'on';
+                app.VisOptions.Enable = 'on';
+                app.MapROIanalysis.Enable = 'on';
+                app.MapVolumetricanalysis.Enable = 'on';
+                value = app.VisOptionsDropDown.Value;
+                switch value
+                    case 'slice-wise'
+                        % add the magnitude slice, and re-plot the velocity vectors
+                        % only in that slice
+                        app.SliceSpinner_2Label.Visible = 'on';
+                        app.SliceSpinner_2Label.Enable = 'on';
+                        app.SliceSpinner_2.Visible = 'on';
+                        app.SliceSpinner_2.Enable = 'on';
+                        app.SliceSpinner_2.Value = round(size(app.angio,3)/2);
+                        app.SliceSpinner_2.Limits = [1 size(app.angio,3)];
+
+                        app.MapVolumetricanalysis.Enable = 'off';
+
+                        app.VisOptionsApp.projectionDropDown.Enable = 'off';
+                        app.VisOptionsApp.projectionDropDown_Label.Enable = 'off';
+                        app.VisTypeDropDown.Value = 'Vectors';
+                    case 'segmentation'
+                        app.SliceSpinner_2Label.Visible = 'off';
+                        app.SliceSpinner_2Label.Enable = 'off';
+                        app.SliceSpinner_2.Visible = 'off';
+                        app.SliceSpinner_2.Enable = 'off';
+
+                        app.MapVolumetricanalysis.Enable = 'on';
+
+                        app.VisOptionsApp.projectionDropDown.Enable = 'on';
+                        app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
+                        app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
+                    case 'centerline contours'
+                        app.SliceSpinner_2Label.Visible = 'off';
+                        app.SliceSpinner_2Label.Enable = 'off';
+                        app.SliceSpinner_2.Visible = 'off';
+                        app.SliceSpinner_2.Enable = 'off';
+
+                        app.MapVolumetricanalysis.Enable = 'on';
+
+                        app.VisOptionsApp.projectionDropDown.Enable = 'on';
+                        app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
+
+                        app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
+                end
+                app.TimeframeSpinner.Value = app.time_peak;
+                updateVisualization(app);
+                viewMap(app);
+            catch err
+                disp(['could not restore  updateVisualization: ', err.identifier])
+            end
+            try
+                plotWaveforms(app);
+            catch err
+                disp(['could not restore  plotWaveforms: ', err.identifier])
+            end
+        end
+
+        % Button pushed function: ClearAppAndRestartButton
+        function ClearAppAndRestartButtonPushed(app, ~)
             if ~isempty(app.VisOptionsApp)
                 delete(app.VisOptionsApp.VisOptionsDialogUIFigure);
             end
@@ -2036,7 +2267,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
 
             app.PeaksystoleEditField.Value = num2str(app.time_peak);
-            app.TimeframeSpinner.Value = app.time_peak;
             app.TimeframeSpinner.Value = app.time_peak;
 
             % view vectors
@@ -3249,7 +3479,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.MapType.Visible = 'off';
 
-            [file,path] = uiputfile('*.gif','Selection file name and location');
+            [file,path] = uiputfile([app.directory '\*.gif'],'Selection file name and location');
             filename = fullfile(path,file);
             % loop over time frames and record
             for t = 1:app.nframes
@@ -3337,7 +3567,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SliceSpinner_2Label.Visible = 'off';
             app.MapType.Visible = 'off';
 
-            [file,path] = uiputfile('*.gif','Selection file name and location');
+            [file,path] = uiputfile([app.directory '\*.gif'],'Selection file name and location');
             filename = fullfile(path,file);
             % we default to 180 frames and deal over rotations and time
             % frames
@@ -5693,15 +5923,32 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.findBestFit_checkbox.Position = [840 218 94 22];
 
             % Create ResetWorkSpace
-            app.ResetWorkSpace = uitab(app.TabGroup);
-            app.ResetWorkSpace.Title = 'Reset Workspace';
+            app.ManageWorkspace = uitab(app.TabGroup);
+            app.ManageWorkspace.Title = 'Manage Workspace';
 
             % Create CleardataandrestartanalysisButton
-            app.CleardataandrestartanalysisButton = uibutton(app.ResetWorkSpace, 'push');
-            app.CleardataandrestartanalysisButton.ButtonPushedFcn = createCallbackFcn(app, @CleardataandrestartanalysisButtonPushed, true);
-            app.CleardataandrestartanalysisButton.FontName = 'SansSerif';
-            app.CleardataandrestartanalysisButton.Position = [101 550 178 22];
-            app.CleardataandrestartanalysisButton.Text = 'Clear data and restart analysis';
+            app.ClearAppAndRestartButton = uibutton(app.ManageWorkspace, 'push');
+            app.ClearAppAndRestartButton.ButtonPushedFcn = createCallbackFcn(app, @ClearAppAndRestartButtonPushed, true);
+            app.ClearAppAndRestartButton.FontName = 'SansSerif';
+            app.ClearAppAndRestartButton.Position = [101 550 178 22];
+            app.ClearAppAndRestartButton.Text = 'Clear app and restart';
+            app.ClearAppAndRestartButton.Tooltip = 'Clear all data and restart analysis';
+
+            % Create RestoreAppStateButton
+            app.RestoreAppStateButton = uibutton(app.ManageWorkspace, 'push');
+            app.RestoreAppStateButton.ButtonPushedFcn = createCallbackFcn(app, @RestoreAppStateButtonPushed, true);
+            app.RestoreAppStateButton.FontName = 'SansSerif';
+            app.RestoreAppStateButton.Position = [101 588 178 22];
+            app.RestoreAppStateButton.Text = 'Restore app state';
+            app.RestoreAppStateButton.Tooltip = 'Restore app to a previously saved state';
+
+            % Create SaveAppStateButton
+            app.SaveAppStateButton = uibutton(app.ManageWorkspace, 'push');
+            app.SaveAppStateButton.ButtonPushedFcn = createCallbackFcn(app, @SaveAppStateButtonPushed, true);
+            app.SaveAppStateButton.FontName = 'SansSerif';
+            app.SaveAppStateButton.Position = [101 626 178 22];
+            app.SaveAppStateButton.Text = 'Save app state';
+            app.SaveAppStateButton.Tooltip = 'Save app state and all data for later loading';
 
             % Show the figure after all components are created
             app.FlowProcessingUIFigure.Visible = 'on';

@@ -16,7 +16,8 @@ This software builds from previous work, and the use of this tool should be asso
    1. [Installation](#installation)
    2. [Data needed](#data-needed)
       1. [Philips par/rec](#philips-parrec)
-      2. [Siemens dicom](#siemens-dicom)   
+      2. [Siemens dicom](#siemens-dicom)
+      3. [mrStruct](#mrstruct) 
    3. [Starting the tool](#starting-the-tool)
 3. [Loading and Preprocessing tab](#loading-preprocessing)
    1. [Load Data](#load-data)
@@ -38,6 +39,10 @@ This software builds from previous work, and the use of this tool should be asso
       1. [Flow results](#flow-results)
       2. [PWV calculation](#pwv-calculation)
       3. [Save results](#save)
+7. [Manage Workspace tab](#manage-workspace-tab)
+      1. [Save data/settings](#save-tool)
+      2. [Restore data/settings](#restore-tool)
+      3. [Reset tool](#reset-tool)
 
 ## Getting started  <a name="getting-started"></a>
 ### Installation  <a name="installation"></a>
@@ -52,14 +57,21 @@ Additionally, the use of this software requires the following Matlab toolboxes:
 ### Data needed  <a name="data-needed"></a>
 The tool optionally works on 4D flow in different formats, listed and explained below. For other formats, please contact e.m.schrauben@amsterdamumc.nl to update functionality.
 #### Philips .par / .rec <a name="philips-parrec"></a> 
-Reconstructed .par / .rec files from a Philips 4D flow acquisition can be directly loaded in. All files shouled be located within a single folder. The files needed are as follows:\
+Reconstructed .par / .rec files from a Philips 4D flow acquisition can be directly loaded in. All files shouled be located within a single folder. The typical fileordering would be as follows as follows:\
 SUBJECTID or other identifier_1.par, SUBJECTID or other identifier_1.rec\
 SUBJECTID or other identifier_2.par, SUBJECTID or other identifier_2.rec\
 SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
+
+Note: some delayed reconstructed Philips .par / .rec data does not fit this data structure. The tool will try to parse the different .par files and load them accordingly.
+
 #### Siemens dicom <a name="siemens-dicom"></a> 
 Reconstructed Siemens .dcm files can be recursively loaded in (note, this option can be time-consuming). All files shouled be located within 4 folders with the following format:\
 one folder with the magnitude dicoms, and 3 folders with the separate velocity directions\
 note the naming of these folders does not matter as velocity information is gathered directly from the dicom headers
+
+#### Pre-processed mrStruct files <a name="mrstruct"></a> 
+Pre-processed mrStruct files, which are exported from the Northwestern Matlab based tool, consist of a mag_struct.mat and vel_struct.mat, which load directly into this tool.\
+Note this data does not contain orientation information.
 
 ### Starting the tool  <a name="starting-the-tool"></a>
 Within Matlab, navigate to the folder containing FlowProcessing.m. Type this into your command window:\
@@ -190,3 +202,15 @@ Resulting flow and pulse wave velocity can be saved via the `Save` button. This 
 Below is an example screenshot:
 
 <img src="img10.png?raw=true" width="600px">
+
+## Manage Workspace tab <a name="manage-workspace-tab"></a>
+This tab allows the user to save or restore the data/settings, or to reset the entire workspace
+
+### Save data/settings <a name="save-tool"></a>
+To save the entire app/tool data/settings into a Matlab struct, press the `Save app state` button.
+
+### Restore data/settings <a name="restore-tool"></a>
+Restore the app/tool data/settings by pressing the `Restore app state` button. This will prompt selection of a pre-saved .mat file.
+
+### Reset tool <a name="reset-tool"></a>
+The `Clear app and restart` button resets all settings and clears the workspace. It is recommended to do this before starting any new analysis.

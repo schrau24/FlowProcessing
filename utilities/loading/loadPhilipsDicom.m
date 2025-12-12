@@ -9,6 +9,16 @@ disp('Loading data')
 % subfolders
 subfolders = dir(directory); subfolders = subfolders(3:end);
 
+% if only 2 subfolders, we check if they are 'Mag' and 'Phase', then update
+% subfolder names appropriately
+if length(subfolders) == 2
+    if strcmp(subfolders(1).name,'Mag') && strcmp(subfolders(2).name,'Phase')
+        subsubfolders = dir(fullfile(directory,subfolders(2).name)); subsubfolders = subsubfolders(3:end);
+        subfolders(2).name = fullfile('Phase',subsubfolders(1).name);
+        subfolders(3).name = fullfile('Phase',subsubfolders(2).name);
+        subfolders(4).name = fullfile('Phase',subsubfolders(3).name);
+    end
+end
 isEnhancedDicom = 0; vCount = 0;
 for ii = 1:4
     files = dir(fullfile(directory,subfolders(ii).name)); files = files(3:end);
@@ -17,6 +27,8 @@ for ii = 1:4
     end
     info = dicominfo(fullfile(files(end).folder,files(end).name));
     tmp = dicomCollection(fullfile(directory,subfolders(ii).name));
+    % need to sort to keep in order!
+    tmp{1,'Filenames'}{1} = sort(tmp{1,'Filenames'}{1});
     % if the tmp table has more than one row, we have enhanced dicoms,
     % which have different headers and data format to sort through
     if ii == 1

@@ -192,7 +192,8 @@ switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
     case 'Cor'
         ori.label = 'coronal';
         vx = -vx;
-%         vz = -vz;
+        vy = -vy;
+        vz = -vz;
         ori.vxlabel = 'F-H';
         ori.vylabel = 'R-L';
         ori.vzlabel = 'A-P';

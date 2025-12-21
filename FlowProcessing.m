@@ -1011,7 +1011,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
-            
+
             % check to do smoothing of velocity field
             if mean(vmagn(find(vmagn))) < (app.VENC/10)/10
                 vmagn = imgaussfilt3(vmagn,std(vmagn(:))/10);
@@ -1155,26 +1155,81 @@ classdef FlowProcessing < matlab.apps.AppBase
                     startZ = zcoor_grid(L(1:substreams:end));
             end
 
-            % make streamlines, then color according to vmag
-            h = streamline(app.VisualizationPlot,stream3(xcoor_grid,ycoor_grid,zcoor_grid,-vy,-vx,-vz,...
-                startX,startY,startZ));
+            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+                [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                    (1:size(currSeg,3))*app.pixdim(3));
+                % we need a 3D patch for this setting
+                hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(currSeg)),'FaceAlpha',0.15);
+                reducepatch(hpatch,0.6);
+                set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                camlight(app.VisualizationPlot);
+                lighting(app.VisualizationPlot,'gouraud');
+                lightangle(app.VisualizationPlot,0,0);
+            end
 
-            minVel = str2double(app.VisOptionsApp.minQuiverEditField.Value);     % minimum velocity for streamline to be plotted, in cm/s
-            for ii = 1:length(h)
-                h(ii).Visible = 'off';
-                XX = h(ii).XData';
-                YY = h(ii).YData';
-                ZZ = h(ii).ZData';
-                if length(XX) > 1
-                    c = interp3(xcoor_grid,ycoor_grid,zcoor_grid,vmagn,XX,YY,ZZ);
-                    % find c > min velocity, only plot those
-                    c(c < minVel) = nan;
-                    p = patchline(app.VisualizationPlot,XX,YY,ZZ,'CData',cat(1,c,nan),'EdgeColor','flat',...
-                        'linewidth',1,'EdgeAlpha',0.70);
+            S = stream3(xcoor_grid,ycoor_grid,zcoor_grid,...
+                -vy,-vx,-vz,startX,startY,startZ);
+
+            % bins for alpha values and corresponding patches
+            edges = [0 0.3 0.6 1.0] * max(vmagn(:));
+            alphas = [0.2 0.5 0.9];
+            nbins = numel(alphas);
+            Xb = cell(nbins,1);
+            Yb = cell(nbins,1);
+            Zb = cell(nbins,1);
+            Cb = cell(nbins,1);
+
+            P = [2 1 3];
+            F = griddedInterpolant(permute(xcoor_grid,P),permute(ycoor_grid,P),...
+                permute(zcoor_grid,P),permute(vmagn,P),'linear','none');
+            minVel = str2double(app.VisOptionsApp.minQuiverEditField.Value);
+
+            for ii = 1:numel(S)
+                pts = S{ii};
+                n = size(pts,1);
+                if n < 2
+                    continue
+                end
+
+                XX = pts(:,1);
+                YY = pts(:,2);
+                ZZ = pts(:,3);
+
+                c = F(XX,YY,ZZ);
+                c(c < minVel) = NaN;
+
+                % Bin indices per point
+                bin = discretize(c, edges);
+
+                for k = 1:nbins
+                    idx = find(bin == k);
+                    if isempty(idx)
+                        continue
+                    end
+
+                    % Extract contiguous segments
+                    d = diff(idx);
+                    segStart = [1; find(d > 1)+1];
+                    segEnd   = [segStart(2:end)-1; numel(idx)];
+
+                    for s = 1:numel(segStart)
+                        ii0 = idx(segStart(s):segEnd(s));
+                        Xb{k} = [Xb{k}; XX(ii0); NaN];
+                        Yb{k} = [Yb{k}; YY(ii0); NaN];
+                        Zb{k} = [Zb{k}; ZZ(ii0); NaN];
+                        Cb{k} = [Cb{k}; c(ii0); NaN];
+                    end
                 end
             end
-            clear h;
 
+            for k = 1:nbins
+                patch(app.VisualizationPlot,...
+                    'XData', Xb{k}, 'YData', Yb{k}, 'ZData', Zb{k}, ...
+                    'CData', Cb{k}, 'EdgeColor','interp', 'FaceColor','none', ...
+                    'LineWidth',1, ...
+                    'EdgeAlpha', alphas(k));
+            end
+            toc
             if ~isvalid(app.VisOptionsApp)
                 scale = [0 round(app.VENC/10)];
                 backgroundC = [1 1 1];
@@ -1222,17 +1277,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % make it look good
             axis(app.VisualizationPlot, 'off','tight')
             view(app.VisualizationPlot,[0 0 1]);
-            daspect(app.VisualizationPlot,[1 1 1])
-
-            % we need a 3D patch for this setting
-            hpatch = patch(app.VisualizationPlot,isosurface(xcoor_grid,ycoor_grid,zcoor_grid,smooth3(currSeg)),'FaceAlpha',0.10);
-
-            reducepatch(hpatch,0.6);
-            set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-            camlight(app.VisualizationPlot);
-            lighting(app.VisualizationPlot,'gouraud');
-            lightangle(app.VisualizationPlot,0,0);
-
+            daspect(app.VisualizationPlot,[1 1 1]);
             camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
             hold(app.VisualizationPlot,'off');
         end
@@ -1400,7 +1445,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         outVol = squeeze(vorticity);
                 end
                 if ~isWSS
-                outVol(currSeg==0) = nan;
+                    outVol(currSeg==0) = nan;
                 end
 
                 if ~isvalid(app.VisOptionsApp)
@@ -1704,7 +1749,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % enable intepolate button
             app.InterpolateData.Enable = 'on';
 
-			app.ViewDataButton.Enable = 'on';
+            app.ViewDataButton.Enable = 'on';
             app.ManualsegmentationupdateButton.Visible = 'on';
         end
 
@@ -1867,7 +1912,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % try to run some basic functions
             app.InterpolateData.Enable = 'on';
-			app.ViewDataButton.Enable = 'on';
+            app.ViewDataButton.Enable = 'on';
             app.ManualsegmentationupdateButton.Visible = 'on';
             try
                 View3DSegmentation(app);

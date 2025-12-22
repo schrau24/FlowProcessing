@@ -211,6 +211,11 @@ classdef FlowProcessing < matlab.apps.AppBase
         usedBranches;               % a list that is built up to determine which branches to perform flow measurements on
         FullBranchDistance;         % the full distance vector (in mm)
 
+        vectorPatch;                % the patch used and updated for vectors
+        streamPatch;                % the patch used and updated for streamlines
+        sliceImg;                   % handle for background slice in 'slicewise'
+        vis3Dsurface;               % the patch used for visualization plot
+
         R2;                         % the r-squared value of the fit for cross-correlation or wavelet PWV measurement
         time_peak;                  % the determined peak systolic phase
         WSS_matrix;                 % calculated WSS matrix
@@ -749,13 +754,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
 
         function updateVisualization(app)
-            cla(app.VisualizationPlot);
             colorbar(app.VisualizationPlot,'off');
+            delete(findall(app.VisualizationPlot,'Type','light'))
             value = app.VisTypeDropDown.Value;
             switch value
                 case 'Vectors'
+                    set(app.streamPatch,'Visible','off');
+                    set(app.vectorPatch,'Visible','on');
                     viewVelocityVectors(app);
                 case 'Streamlines'
+                    if ~isempty(app.sliceImg)
+                        delete(app.sliceImg)
+                        app.sliceImg = [];
+                    end
+                    set(app.vectorPatch,'Visible','off');
+                    set(app.streamPatch,'Visible','on');
                     viewStreamlines(app);
             end
         end
@@ -844,8 +857,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
-                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         elseif isequal(app.rotAngles2,[90,0]) % rotate into axial view
                             % grab current slice
@@ -871,8 +882,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(rot90(squeeze(currMAG(sl,:,:))),[1 1 3]);
-                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         elseif isequal(app.rotAngles2,[0,90]) % rotate into coronal view
                             % grab current slice
@@ -898,8 +907,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                             currMAG = app.MAG(:,:,:,t);
                             img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
-                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VisualizationPlot,'on');
                             clear currV_1 currV_2 currV_3
                         else
                             tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
@@ -931,13 +938,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                             tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
                             currMAG = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
-                            imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                            hold(app.VisualizationPlot,'on');
                         end
                     end
-
-                    imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
-                    hold(app.VisualizationPlot,'on');
+                    app.VisualizationPlot.NextPlot = 'add';
+                    if isempty(app.sliceImg)
+                        app.sliceImg = imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                    else
+                        set(app.sliceImg, 'CData', img);
+                    end
 
                 case 'centerline contours' % contours from centerline
                     str = app.VisOptionsApp.VisPts.Value;
@@ -959,9 +967,9 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                         currL = find(B(:));
                         currL = currL(1:subsample:end);
-                        xcoor_grid = cat(1,xcoor_grid,x(currL));
-                        ycoor_grid = cat(1,ycoor_grid,y(currL));
-                        zcoor_grid = cat(1,zcoor_grid,z(currL));
+                        xcoor_grid = cat(1,xcoor_grid,x(currL)*app.pixdim(1));
+                        ycoor_grid = cat(1,ycoor_grid,y(currL)*app.pixdim(2));
+                        zcoor_grid = cat(1,zcoor_grid,z(currL)*app.pixdim(3));
 
                         vx_tmp = obliqueslice(currV(:,:,:,1)/10,currCP,currNorm);
                         vx = cat(1,vx,-vx_tmp(currL));
@@ -977,37 +985,46 @@ classdef FlowProcessing < matlab.apps.AppBase
                     L = 1:length(L);
 
                     if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                        % we need a 3D patch for this setting
-                        if app.isSegmentationLoaded
-                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(currSeg)),'FaceAlpha',0.05);
+                        if isempty(app.vis3Dsurface)
+                            [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                                (1:size(currSeg,3))*app.pixdim(3));
+                            if app.isSegmentationLoaded
+                                toPlot = smooth3(currSeg);
+                            else
+                                toPlot = smooth3(app.segment);
+                            end
+                            app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                                'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
                         else
-                            hpatch = patch(app.VisualizationPlot,isosurface(smooth3(app.segment)),'FaceAlpha',0.05);
+                            app.vis3Dsurface.Visible = 'on';
                         end
-                        reducepatch(hpatch,0.6);
-                        set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                        camlight(app.VisualizationPlot);
-                        lighting(app.VisualizationPlot,'gouraud');
-                        lightangle(app.VisualizationPlot,0,0);
+                    else
+                        app.vis3Dsurface.Visible = 'off';
                     end
 
                 case 'segmentation'   % 3d vectors from the whole segmentation
-                    overLaySeg = currSeg;
-                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(overLaySeg,2))*app.pixdim(1),(1:subsample:size(overLaySeg,1))*app.pixdim(2), ...
-                        (1:subsample:size(overLaySeg,3))*app.pixdim(3));
-                    vx = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,1)/10;
-                    vy = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,2)/10;
-                    vz = -overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,3)/10;
-                    L = find(overLaySeg(1:subsample:end,1:subsample:end,1:subsample:end));
+                    [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
+                        (1:subsample:size(currSeg,3))*app.pixdim(3));
+                    vx = -currSeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,1)/10;
+                    vy = -currSeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,2)/10;
+                    vz = -currSeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,3)/10;
+                    L = find(currSeg(1:subsample:end,1:subsample:end,1:subsample:end));
                     if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                        [xx,yy,zz] = meshgrid((1:size(overLaySeg,2))*app.pixdim(1),(1:size(overLaySeg,1))*app.pixdim(2), ...
-                            (1:size(overLaySeg,3))*app.pixdim(3));
-                        % we need a 3D patch for this setting
-                        hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(overLaySeg)),'FaceAlpha',0.15);
-                        reducepatch(hpatch,0.6);
-                        set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                        camlight(app.VisualizationPlot);
-                        lighting(app.VisualizationPlot,'gouraud');
-                        lightangle(app.VisualizationPlot,0,0);
+                        if isempty(app.vis3Dsurface)
+                            [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                                (1:size(currSeg,3))*app.pixdim(3));
+                            if app.isSegmentationLoaded
+                                toPlot = smooth3(currSeg);
+                            else
+                                toPlot = smooth3(app.segment);
+                            end
+                            app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                                'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                        else
+                            app.vis3Dsurface.Visible = 'on';
+                        end
+                    else
+                        app.vis3Dsurface.Visible = 'off';
                     end
             end
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
@@ -1042,7 +1059,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             c = [];
             % note the flipped vx and vy here
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
-            p = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
+
+            if isempty(app.vectorPatch)
+                app.vectorPatch = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
+            else
+                set(app.vectorPatch,'Faces',F,'Vertices',V,'CData',C,...
+                    'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
+            end
+            uistack(app.vectorPatch,'top');
+
             caxis(app.VisualizationPlot, scale);
             colormap(app.VisualizationPlot,cmap);
             cbar = colorbar(app.VisualizationPlot);
@@ -1079,7 +1104,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
                 camroll(app.VisualizationPlot,app.rotAngles2(3));
             end
-            hold(app.VisualizationPlot,'off');
         end
 
         function viewStreamlines(app)
@@ -1156,28 +1180,32 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
 
             if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                    (1:size(currSeg,3))*app.pixdim(3));
-                % we need a 3D patch for this setting
-                hpatch = patch(app.VisualizationPlot,isosurface(xx,yy,zz,smooth3(currSeg)),'FaceAlpha',0.15);
-                reducepatch(hpatch,0.6);
-                set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                camlight(app.VisualizationPlot);
-                lighting(app.VisualizationPlot,'gouraud');
-                lightangle(app.VisualizationPlot,0,0);
+                if isempty(app.vis3Dsurface)
+                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                        (1:size(currSeg,3))*app.pixdim(3));
+                    if app.isSegmentationLoaded
+                        toPlot = smooth3(currSeg);
+                    else
+                        toPlot = smooth3(app.segment);
+                    end
+                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                else
+                    app.vis3Dsurface.Visible = 'on';
+                end
+            else
+                app.vis3Dsurface.Visible = 'off';
             end
 
             S = stream3(xcoor_grid,ycoor_grid,zcoor_grid,...
                 -vy,-vx,-vz,startX,startY,startZ);
 
-            % bins for alpha values and corresponding patches
-            edges = [0 0.3 0.6 1.0] * max(vmagn(:));
+            % bins for alpha values and corresponding patches, to max
+            % velocity value
+            edges = [0 0.3 0.6 1.0] * str2double(app.VisOptionsApp.maxVelocityVisEditField.Value);
             alphas = [0.2 0.5 0.9];
             nbins = numel(alphas);
-            Xb = cell(nbins,1);
-            Yb = cell(nbins,1);
-            Zb = cell(nbins,1);
-            Cb = cell(nbins,1);
+            Xb = cell(nbins,1); Yb = cell(nbins,1); Zb = cell(nbins,1); Cb = cell(nbins,1);
 
             P = [2 1 3];
             F = griddedInterpolant(permute(xcoor_grid,P),permute(ycoor_grid,P),...
@@ -1191,12 +1219,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     continue
                 end
 
-                XX = pts(:,1);
-                YY = pts(:,2);
-                ZZ = pts(:,3);
-
+                XX = pts(:,1); YY = pts(:,2); ZZ = pts(:,3);
                 c = F(XX,YY,ZZ);
                 c(c < minVel) = NaN;
+                c(c > str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)) = ...
+                    str2double(app.VisOptionsApp.maxVelocityVisEditField.Value);
 
                 % Bin indices per point
                 bin = discretize(c, edges);
@@ -1222,14 +1249,20 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
 
-            for k = 1:nbins
-                patch(app.VisualizationPlot,...
-                    'XData', Xb{k}, 'YData', Yb{k}, 'ZData', Zb{k}, ...
-                    'CData', Cb{k}, 'EdgeColor','interp', 'FaceColor','none', ...
-                    'LineWidth',1, ...
-                    'EdgeAlpha', alphas(k));
+            if isempty(app.streamPatch) || numel(app.streamPatch) ~= nbins
+                for k = 1:nbins
+                    app.streamPatch(k) = patch(app.VisualizationPlot,...
+                        'XData',Xb{k},'YData',Yb{k},'ZData',Zb{k},'CData',Cb{k},...
+                        'EdgeColor','interp','FaceColor','none','LineWidth',1,...
+                        'EdgeAlpha',alphas(k));
+                end
+            else
+                for k = 1:nbins
+                    set(app.streamPatch(k),...
+                        'XData',Xb{k},'YData',Yb{k},'ZData',Zb{k},'CData',Cb{k});
+                end
             end
-            toc
+
             if ~isvalid(app.VisOptionsApp)
                 scale = [0 round(app.VENC/10)];
                 backgroundC = [1 1 1];
@@ -1502,7 +1535,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                         smthMask(smthMask < 0.75) = 0;
                         outImg = imresize(outImg,2,'bilinear').*smthMask;
                     end
-                    imagesc(app.MapPlot,outImg);
+                    [xcoor_grid,ycoor_grid] = meshgrid((1:size(outImg,2))*app.pixdim(1),(1:size(outImg,1))*app.pixdim(2));
+                    imagesc(app.MapPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],outImg);
                 end
 
                 clim(app.MapPlot, scale);
@@ -2316,6 +2350,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % view vectors
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
+            app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
             viewVelocityVectors(app);
             app.SaveAnimation.Enable = 'on';
             app.SaveRotatedAnimation.Enable = 'on';
@@ -4464,8 +4499,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'off';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'off';
                     app.VisTypeDropDown.Value = 'Vectors';
                 case 'segmentation'
+                    if ~isempty(app.sliceImg)
+                        delete(findall(app.VisualizationPlot,'Type','image'))
+                        app.sliceImg = [];
+                    end
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
@@ -4479,8 +4520,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
                 case 'centerline contours'
+                    if ~isempty(app.sliceImg)
+                        delete(findall(app.VisualizationPlot,'Type','image'))
+                        app.sliceImg = [];
+                    end
                     app.SliceSpinner_2Label.Visible = 'off';
                     app.SliceSpinner_2Label.Enable = 'off';
                     app.SliceSpinner_2.Visible = 'off';
@@ -4494,6 +4541,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'on';
                     app.VisOptionsApp.VisPts.Visible = 'on';
                     app.VisOptionsApp.VisPts.Enable = 'on';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
             end
             updateVisualization(app);

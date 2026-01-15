@@ -44,6 +44,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         minVelocityVisEditField         matlab.ui.control.EditField
         velocityVisEditFieldLabel       matlab.ui.control.Label
         view_3Dpatch_checkbox           matlab.ui.control.CheckBox
+        view_3DSegpatch_checkbox        matlab.ui.control.CheckBox
     end
 
 
@@ -109,6 +110,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: view_3Dpatch_checkboxChanged
         function view_3Dpatch_checkboxChanged(app, event)
+            updateVisualization(app.CallingApp);
+        end
+
+        % Value changed function: view_3DSegpatch_checkboxChanged
+        function view_3DSegpatch_checkboxChanged(app, event)
             updateVisualization(app.CallingApp);
         end
 
@@ -360,10 +366,18 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             % Create view_3Dpatch_checkbox
             app.view_3Dpatch_checkbox = uicheckbox(app.VisPlotPanel);
             app.view_3Dpatch_checkbox.ValueChangedFcn = createCallbackFcn(app, @view_3Dpatch_checkboxChanged, true);
-            app.view_3Dpatch_checkbox.Tooltip = {'erode mask 1 voxel for selected map'};
-            app.view_3Dpatch_checkbox.Text = 'view 3D patch';
+            app.view_3Dpatch_checkbox.Tooltip = {'toggle viewing the thresholded 3D isosurface'};
+            app.view_3Dpatch_checkbox.Text = '3D surface';
             app.view_3Dpatch_checkbox.FontName = 'SansSerif';
-            app.view_3Dpatch_checkbox.Position = [46 98+162 146 22];
+            app.view_3Dpatch_checkbox.Position = [16 98+162 146 22];
+
+            % Create view_3DSegpatch_checkbox
+            app.view_3DSegpatch_checkbox = uicheckbox(app.VisPlotPanel);
+            app.view_3DSegpatch_checkbox.ValueChangedFcn = createCallbackFcn(app, @view_3DSegpatch_checkboxChanged, true);
+            app.view_3DSegpatch_checkbox.Tooltip = {'toggle viewing the loaded segmentation 3D isosurface'};
+            app.view_3DSegpatch_checkbox.Text = 'segmentation surface';
+            app.view_3DSegpatch_checkbox.FontName = 'SansSerif';
+            app.view_3DSegpatch_checkbox.Position = [16 76+162 146 22];
 
             % Create VisPts_Label
             app.VisPts_Label = uilabel(app.VisPlotPanel);
@@ -372,7 +386,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts_Label.FontSize = 10;
             app.VisPts_Label.Enable = 'off';
             app.VisPts_Label.Visible = 'off';
-            app.VisPts_Label.Position = [3 58+162 70 22];
+            app.VisPts_Label.Position = [3 56+162 70 22];
             app.VisPts_Label.Text = 'contour points';
 
             % Create VisPts
@@ -383,7 +397,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts.Enable = 'off';
             app.VisPts.Visible = 'off';
             app.VisPts.Tooltip = {'Centerline point labels used for visualization. '};
-            app.VisPts.Position = [73 58+162 70 22];
+            app.VisPts.Position = [73 56+162 70 22];
 
             % Create velocityVisEditFieldLabel_2
             app.velocityVisEditFieldLabel_2 = uilabel(app.VisPlotPanel);

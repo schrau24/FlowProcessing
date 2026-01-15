@@ -41,6 +41,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         FinishedCroppingButton          matlab.ui.control.Button
         AdjustthresholdSlider           matlab.ui.control.Slider
         AdjustthresholdSliderLabel      matlab.ui.control.Label
+        FramesToUseLabel                matlab.ui.control.Label
+        FramesToUse                     matlab.ui.control.EditField
         CropButton_3                    matlab.ui.control.Button
         CropButton_2                    matlab.ui.control.Button
         CropButton                      matlab.ui.control.Button
@@ -215,6 +217,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         streamPatch;                % the patch used and updated for streamlines
         sliceImg;                   % handle for background slice in 'slicewise'
         vis3Dsurface;               % the patch used for visualization plot
+        is3DChanged = 1;            % to check if 3D segment has changed
+        vis3DSegsurface;            % the segmentation patch used for visualization plot
+        is3DSegChanged = 1;         % to check if 3D segment has changed
 
         R2;                         % the r-squared value of the fit for cross-correlation or wavelet PWV measurement
         time_peak;                  % the determined peak systolic phase
@@ -625,12 +630,18 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
 
         function app = cropRawData(app)
+
+            % crop in time too
+            str = app.FramesToUse.Value;
+            eval(['ptRange=[' str '];']);
+            app.nframes = length(ptRange);
+
             [x, y, z] = ind2sub(size(app.mask),find(app.mask));
             lx = length(unique(x)); ly = length(unique(y)); lz = length(unique(z));
             maskIdx = find(app.mask);
 
             % crop velocity
-            tempV = reshape(app.v,[prod(app.res),3,app.nframes]);
+            tempV = reshape(app.v(:,:,:,:,ptRange),[prod(app.res),3,app.nframes]);
             tempV = tempV(maskIdx,:,:);
             tempV = reshape(tempV,lx,ly,lz,3,app.nframes);
             app.v = tempV;
@@ -638,7 +649,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             clear tempV
 
             % crop MAG
-            tempMAG = reshape(app.MAG,[prod(app.res),app.nframes]);
+            tempMAG = reshape(app.MAG(:,:,:,ptRange),[prod(app.res),app.nframes]);
             tempMAG = tempMAG(maskIdx,:);
             tempMAG = reshape(tempMAG,lx,ly,lz,app.nframes);
             app.MAG = tempMAG;
@@ -984,24 +995,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % we keep all L points now
                     L = 1:length(L);
 
-                    if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                        if isempty(app.vis3Dsurface)
-                            [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                                (1:size(currSeg,3))*app.pixdim(3));
-                            if app.isSegmentationLoaded
-                                toPlot = smooth3(currSeg);
-                            else
-                                toPlot = smooth3(app.segment);
-                            end
-                            app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                                'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                        else
-                            app.vis3Dsurface.Visible = 'on';
-                        end
-                    else
-                        app.vis3Dsurface.Visible = 'off';
-                    end
-
                 case 'segmentation'   % 3d vectors from the whole segmentation
                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                         (1:subsample:size(currSeg,3))*app.pixdim(3));
@@ -1009,24 +1002,57 @@ classdef FlowProcessing < matlab.apps.AppBase
                     vy = -currSeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,2)/10;
                     vz = -currSeg(1:subsample:end,1:subsample:end,1:subsample:end).*currV(1:subsample:end,1:subsample:end,1:subsample:end,3)/10;
                     L = find(currSeg(1:subsample:end,1:subsample:end,1:subsample:end));
-                    if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                        if isempty(app.vis3Dsurface)
-                            [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                                (1:size(currSeg,3))*app.pixdim(3));
-                            if app.isSegmentationLoaded
-                                toPlot = smooth3(currSeg);
-                            else
-                                toPlot = smooth3(app.segment);
-                            end
-                            app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                                'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
-                        else
-                            app.vis3Dsurface.Visible = 'on';
-                        end
-                    else
-                        app.vis3Dsurface.Visible = 'off';
-                    end
             end
+
+            % toggle 3D surfaces
+            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+                if isempty(app.vis3Dsurface) || app.is3DChanged
+                    app.vis3Dsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
+                            idxToRemove = ii; break;
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+
+
+                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
+                        (1:size(app.segment,3))*app.pixdim(3));
+                    toPlot = smooth3(app.segment);
+                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_surface');
+                    app.is3DChanged = 0;
+                else
+                    app.vis3Dsurface.Visible = 'on';
+                end
+            else
+                app.vis3Dsurface.Visible = 'off';
+            end
+
+            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
+                if isempty(app.vis3DSegsurface) || app.is3DSegChanged
+                    app.vis3DSegsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
+                            idxToRemove = ii; break;
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                        (1:size(currSeg,3))*app.pixdim(3));
+                    toPlot = smooth3(currSeg);
+                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_seg_surface');
+                    app.is3DSegChanged = 0;
+                else
+                    app.vis3DSegsurface.Visible = 'on';
+                end
+            else
+                app.vis3DSegsurface.Visible = 'off';
+            end
+
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
 
             % check to do smoothing of velocity field
@@ -1061,7 +1087,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
 
             if isempty(app.vectorPatch)
-                app.vectorPatch = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
+                app.vectorPatch = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat',...
+                    'EdgeColor','none','FaceAlpha',0.75,'Tag','vector_patch');
             else
                 set(app.vectorPatch,'Faces',F,'Vertices',V,'CData',C,...
                     'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
@@ -1179,22 +1206,53 @@ classdef FlowProcessing < matlab.apps.AppBase
                     startZ = zcoor_grid(L(1:substreams:end));
             end
 
+            % toggle 3D surfaces
             if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                if isempty(app.vis3Dsurface)
-                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                        (1:size(currSeg,3))*app.pixdim(3));
-                    if app.isSegmentationLoaded
-                        toPlot = smooth3(currSeg);
-                    else
-                        toPlot = smooth3(app.segment);
+                if isempty(app.vis3Dsurface) || app.is3DChanged
+                    app.vis3Dsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
+                            idxToRemove = ii; break;
+                        end
                     end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+
+
+                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
+                        (1:size(app.segment,3))*app.pixdim(3));
+                    toPlot = smooth3(app.segment);
                     app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_surface');
+                    app.is3DChanged = 0;
                 else
                     app.vis3Dsurface.Visible = 'on';
                 end
             else
                 app.vis3Dsurface.Visible = 'off';
+            end
+
+            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
+                if isempty(app.vis3DSegsurface) || app.is3DSegChanged
+                    app.vis3DSegsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
+                            idxToRemove = ii; break;
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                        (1:size(currSeg,3))*app.pixdim(3));
+                    toPlot = smooth3(currSeg);
+                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_seg_surface');
+                    app.is3DSegChanged = 0;
+                else
+                    app.vis3DSegsurface.Visible = 'on';
+                end
+            else
+                app.vis3DSegsurface.Visible = 'off';
             end
 
             S = stream3(xcoor_grid,ycoor_grid,zcoor_grid,...
@@ -1254,7 +1312,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.streamPatch(k) = patch(app.VisualizationPlot,...
                         'XData',Xb{k},'YData',Yb{k},'ZData',Zb{k},'CData',Cb{k},...
                         'EdgeColor','interp','FaceColor','none','LineWidth',1,...
-                        'EdgeAlpha',alphas(k));
+                        'EdgeAlpha',alphas(k),'Tag','streamline_patch');
                 end
             else
                 for k = 1:nbins
@@ -1784,6 +1842,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.InterpolateData.Enable = 'on';
 
             app.ViewDataButton.Enable = 'on';
+            app.FramesToUse.Enable = 'on';
+            app.FramesToUse.Value = ['1:' num2str(app.nframes)];
+
             app.ManualsegmentationupdateButton.Visible = 'on';
         end
 
@@ -2110,19 +2171,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [x, y, z] = ind2sub(size(app.mask),find(app.mask));
                 lx = length(unique(x)); ly = length(unique(y)); lz = length(unique(z));
                 maskIdx = find(app.mask);
-                if app.isTimeResolvedSeg
-                    tempIMG = reshape(app.aorta_seg,[prod(app.res),app.nframes]);
-                else
-                    tempIMG = reshape(app.aorta_seg,[prod(app.res),1]);
+                if prod(size(app.aorta_seg,1:3)) ~= length(maskIdx)
+                    if app.isTimeResolvedSeg
+                        tempIMG = reshape(app.aorta_seg,[prod(app.res),app.nframes]);
+                    else
+                        tempIMG = reshape(app.aorta_seg,[prod(app.res),1]);
+                    end
+                    tempIMG = tempIMG(maskIdx,:);
+                    if app.isTimeResolvedSeg
+                        tempIMG = reshape(tempIMG,lx,ly,lz,app.nframes);
+                    else
+                        tempIMG = reshape(tempIMG,lx,ly,lz);
+                    end
+                    app.aorta_seg = tempIMG;
+                    clear tempIMG;
                 end
-                tempIMG = tempIMG(maskIdx,:);
-                if app.isTimeResolvedSeg
-                    tempIMG = reshape(tempIMG,lx,ly,lz,app.nframes);
-                else
-                    tempIMG = reshape(tempIMG,lx,ly,lz);
-                end
-                app.aorta_seg = tempIMG;
-                clear tempIMG;
             end
 
             app.isSegmentationLoaded = 1;
@@ -2165,6 +2228,29 @@ classdef FlowProcessing < matlab.apps.AppBase
             updateMIPs(app);
         end
 
+        % Value changed function: FramesToUseValueChanged
+        function FramesToUseValueChanged(app, ~)
+
+            str = app.FramesToUse.Value;
+            eval(['ptRange=[' str '];']);
+
+            % first we recalculate the angio, then show the result
+            [app.magWeightVel, app.angio] = calc_angio(app.MAG(:,:,:,ptRange), app.v(:,:,:,:,ptRange), app.VENC);
+            updateMIPs(app);
+            normed_MIP = app.angio./max(app.angio(:));
+            % fit a Gaussian to non-zero elements to determine threshold
+            [muhat,sigmahat] = norm_fit(normed_MIP(:));
+
+            app.segment = zeros(size(app.angio));
+            app.segment(normed_MIP>muhat+2*sigmahat) = 1;
+
+            app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
+            app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
+            app.segment = single(app.segment);
+
+            View3DSegmentation(app);
+        end
+
         % Value changed function: flipseglr
         function flipseglrValueChanged(app, ~)
             app.aorta_seg = flip(app.aorta_seg,2);
@@ -2172,6 +2258,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2182,6 +2269,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2192,6 +2280,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2201,6 +2290,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2210,6 +2300,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2219,6 +2310,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2228,6 +2320,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2237,6 +2330,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2246,6 +2340,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2264,6 +2359,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2273,6 +2369,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
         end
 
@@ -2282,8 +2379,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            app.is3DSegChanged = 1;
             updateMIPs(app);
-
         end
 
         % Value changed function: SegTimeframeSpinner
@@ -2309,6 +2406,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
                 app.FinishedCroppingButton.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             else % to ensure that updated thresholding is applied to aorta_seg
                 if (~app.isSegmentationLoaded)
                     app.aorta_seg = app.segment;
@@ -2372,6 +2470,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
                 app.FinishedCroppingButton.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             end
 
             % these are hard-coded for now
@@ -2540,6 +2639,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
                         params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
                         app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
+                    app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
 
                     % flows are calculated, so we can enable 'Display Distance'
                     % and 'Parameter Drop Down'
@@ -2633,6 +2733,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
                         params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
                         app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
+                    app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
 
                     % flows are calculated, so we can enable 'Display Distance'
                     % and 'Parameter Drop Down'
@@ -2931,6 +3032,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             z = round(app.branchActual(:,3));
             index = sub2ind(size(app.aorta_seg),x,y,z);
             waveforms = app.flowPulsatile_vol(index,:);
+            netflows = app.flowPerHeartCycle_vol(index);
             str = app.PWVPoints.Value;
             if app.DisplayDistanceCheckbox.Value
                 out = textscan(str,'%f %f','Delimiter',':');
@@ -2947,10 +3049,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             writetable(tbl,[saveName '.xlsx'],'Sheet','distance (mm)','WriteMode','overwritesheet');
 
             waveforms = waveforms(ptRange,:);
-            card_time = [0:app.nframes-1]*app.timeres;
-            tbl = array2table(cat(2,card_time',waveforms'));
+            netflows = netflows(ptRange);
+            card_time = (0:app.nframes-1)*app.timeres;
+            tbl = array2table(cat(2,card_time',cat(2,waveforms,netflows)'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
             writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)','WriteMode','overwritesheet');
+            tbl = array2table(netflows');
+            tbl.Properties.VariableNames = [string(ptRange)];
+            writetable(tbl,[saveName '.xlsx'],'Sheet','net flow(ml per cycle)','WriteMode','overwritesheet');
 
             % save area
             tbl = array2table(cat(2,card_time',app.area_val(ptRange,:)'));
@@ -3121,6 +3227,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
                 app.FinishedCroppingButton.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             end
             View3DSegmentation(app);
         end
@@ -3242,6 +3349,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.segment = bwareaopen(app.segment,round(sum(app.segment(:)).*0.005),6); %The value at the end of the commnad in the minimum area of each segment to keep
             app.segment = imfill(app.segment,18,'holes'); % Fill in holes created by slow flow on the inside of vessels
             app.segment = single(app.segment);
+            app.is3DChanged = 1;
 
             % update 3D isosurface view
             View3DSegmentation(app);
@@ -3561,6 +3669,14 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             [file,path] = uiputfile([app.directory '\*.gif'],'Selection file name and location');
             filename = fullfile(path,file);
+
+            % user selection of FPS
+            prompt = {'output frame/s (1 to 30)):'};
+            dlgtitle = 'Select frames per second';
+            dims = [1 65];
+            definput = {'5'};
+            answer = inputdlg(prompt,dlgtitle,dims,definput);
+            delay = 1/str2double(answer{1});
             % loop over time frames and record
             for t = 1:app.nframes
                 app.TimeframeSpinner.Value = t;
@@ -3600,7 +3716,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);
 
-                delay = 2*app.timeres/1000;
                 if t == 1
                     imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
                 else
@@ -4053,6 +4168,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton.Enable = 'off';
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             end
 
             app.TabGroup.SelectedTab = app.VelocityUnwrappingTab;
@@ -4106,6 +4222,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton.Enable = 'off';
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             end
 
             h = waitbar(0, sprintf('Performing divergence free correction...'));
@@ -4184,6 +4301,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.CropButton.Enable = 'off';
                 app.CropButton_2.Enable = 'off';
                 app.CropButton_3.Enable = 'off';
+                app.FramesToUse.Enable = 'off';
             end
 
             % first remove outliers (force everything to +/- VENC)
@@ -4716,6 +4834,23 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ScanInfoTable.FontName = 'SansSerif';
             app.ScanInfoTable.FontSize = 10;
             app.ScanInfoTable.Position = [25 1 570 70];
+
+            % Create FramesToUseLabel
+            app.FramesToUseLabel = uilabel(app.LoadDataPanel);
+            app.FramesToUseLabel.HorizontalAlignment = 'right';
+            app.FramesToUseLabel.FontName = 'SansSerif';
+            app.FramesToUseLabel.FontSize = 14;
+            app.FramesToUseLabel.Position = [284 1 106 22];
+            app.FramesToUseLabel.Text = 'frames to use: ';
+
+            % Create FramesToUse
+            app.FramesToUse = uieditfield(app.LoadDataPanel, 'text');
+            app.FramesToUse.FontName = 'SansSerif';
+            app.FramesToUse.ValueChangedFcn = createCallbackFcn(app, @FramesToUseValueChanged, true);
+            app.FramesToUse.FontSize = 14;
+            app.FramesToUse.Tooltip = {'manually set the frames to use for processing'};
+            app.FramesToUse.Enable = 'off';
+            app.FramesToUse.Position = [411 1 150 22];
 
             % Create InterpolateData
             app.InterpolateData = uibutton(app.LoadDataPanel, 'push');

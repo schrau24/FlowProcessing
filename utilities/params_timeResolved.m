@@ -189,15 +189,24 @@ if ~bTimeResolvedSeg    % if no time-resolved segmentation, use kmeans of magnit
     segment1 = repmat(s,[1 1 nframes]);
     
     figure(4); %clf;
-    a = aa(10:10:end,:);
+    if size(aa,1) >= 10
+        a = aa(10:10:end,:);
+        ss = s(10:10:end,:);
+    else
+        a = aa(2:2:end,:);
+        ss = s(2:2:end,:);
+    end
     a = reshape(a,[size(a,1) 2*Side+1 2*Side+1]); a = a/max(a(:));
     subplot 121; montage(permute(a, [2 3 4 1]));
     title('angio images')
-    ss = s(10:10:end,:);
     ss = reshape(ss,[size(ss,1) 2*Side+1 2*Side+1]);
     subplot 122; montage(permute(ss, [2 3 4 1]));
     % set(figure(4),'Name',);
-    title(['segmentation for slices 10-' num2str(size(a,1)*10)])
+    if size(aa,1) >= 10
+        title(['segmentation for slices 10-' num2str(size(a,1)*10)])
+    else
+        title(['segmentation for slices 2-' num2str(size(a,1)*2)])
+    end
     drawnow;
 end
 if displayWaitBar
@@ -239,7 +248,9 @@ end
 % need to initialize 3D volumes for each of these parameters
 flowPerHeartCycle_vol = zeros(size(angio));
 % total flow
-flowPerHeartCycle_vol(indexes) = sum(flowPulsatile,2)./(nframes);
+% flowPerHeartCycle_vol(indexes) = sum(flowPulsatile,2)./(nframes);
+temp = cumsum(flowPulsatile,2);
+flowPerHeartCycle_vol(indexes) = temp(:,end);
 if displayWaitBar
     close(h);
 end

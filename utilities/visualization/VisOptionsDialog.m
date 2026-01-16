@@ -105,6 +105,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: SubsampleSlider
         function SubsampleSliderValueChanged(app, event)
+            app.CallingApp.isStreamsChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 
@@ -120,6 +121,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: VisPts
         function VisPtsValueChanged(app, ~)
+            app.CallingApp.isStreamsChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 

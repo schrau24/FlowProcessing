@@ -99,6 +99,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
         VisualizationGroup              matlab.ui.container.Panel
         VisTypeDropDown                 matlab.ui.control.DropDown
+        isStreamsChanged                matlab.ui.control.CheckBox % hidden to check if 3D segment has changed
         VisOptionsDropDown              matlab.ui.control.DropDown
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
@@ -194,7 +195,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         h1;                         % handle for first unwrap imagesc
         h2;                         % handle for second unwrap imagesc
         h3;                         % handle for third unwrap imagesc
-        cbar;                       % handle for unwrap colorbar
+        cbar_unwrap;                % handle for unwrap colorbar
 
         hpatch1;                    % initial 3D patch for 3D vis
         patchMask1;                 % segmentation 3D patch for 3D vis
@@ -214,12 +215,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         FullBranchDistance;         % the full distance vector (in mm)
 
         vectorPatch;                % the patch used and updated for vectors
+        streamsOut = [];            % struct holding calculated streamlines
         streamPatch;                % the patch used and updated for streamlines
         sliceImg;                   % handle for background slice in 'slicewise'
         vis3Dsurface;               % the patch used for visualization plot
         is3DChanged = 1;            % to check if 3D segment has changed
         vis3DSegsurface;            % the segmentation patch used for visualization plot
-        is3DSegChanged = 1;         % to check if 3D segment has changed
+        is3DSegChanged = 1;         % to check if loaded 3D segmentation has changed
+        cbar_vis;                   % handle for visualization colorbar
 
         R2;                         % the r-squared value of the fit for cross-correlation or wavelet PWV measurement
         time_peak;                  % the determined peak systolic phase
@@ -765,32 +768,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
 
         function updateVisualization(app)
-            colorbar(app.VisualizationPlot,'off');
-            delete(findall(app.VisualizationPlot,'Type','light'))
-            value = app.VisTypeDropDown.Value;
-            switch value
-                case 'Vectors'
-                    set(app.streamPatch,'Visible','off');
-                    set(app.vectorPatch,'Visible','on');
-                    viewVelocityVectors(app);
-                case 'Streamlines'
-                    if ~isempty(app.sliceImg)
-                        delete(app.sliceImg)
-                        app.sliceImg = [];
-                    end
-                    set(app.vectorPatch,'Visible','off');
-                    set(app.streamPatch,'Visible','on');
-                    viewStreamlines(app);
-            end
-        end
 
-        function viewVelocityVectors(app)
-
-            t = app.TimeframeSpinner.Value;
-            if t == 0   % to prevent errors when coming from other tabs
-                t = 1;
-            end
-
+            % get segmentation
             if app.isSegmentationLoaded
                 if app.isTimeResolvedSeg
                     currSeg = app.aorta_seg(:,:,:,t);
@@ -806,6 +785,125 @@ classdef FlowProcessing < matlab.apps.AppBase
             else
                 currSeg = app.segment;
             end
+
+            % grab vis parameters
+            if ~isvalid(app.VisOptionsApp)
+                scale = [0 round(app.VENC/10)];
+                backgroundC = [1 1 1];
+                axisText = [0 0 0];
+                cmap = 'jet';
+                cbarLoc = 'bottom-left';
+            else
+                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
+                backgroundC = [1 1 1];
+                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+                    backgroundC = [0 0 0];
+                end
+                axisText = [0 0 0];
+                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
+                    axisText = [1 1 1];
+                end
+                cmap = app.VisOptionsApp.ColormapDropDown.Value;
+                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
+            end
+
+            clim(app.VisualizationPlot, scale);
+            colormap(app.VisualizationPlot, cmap);
+            app.VisualizationGroup.BackgroundColor = backgroundC;
+            app.VisualizationGroup.ForegroundColor = axisText;
+            app.TimeframeSpinnerLabel.FontColor = axisText;
+            app.SliceSpinner_2Label.FontColor = axisText;
+            set(get(app.cbar_vis,'xlabel'),'string','velocity (cm/s)','Color',axisText);
+            set(app.cbar_vis,'FontSize',13,'color',axisText,'Location','west');
+            pos = get(app.cbar_vis,'position');
+            switch cbarLoc
+                case 'bottom-left'
+                    pos = [0.01 0.02 pos(3) 0.2];
+                case 'mid-left'
+                    pos = [0.01 0.41 pos(3) 0.2];
+                case 'upper-left'
+                    pos = [0.01 0.75 pos(3) 0.2];
+                case 'bottom-right'
+                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
+                case 'mid-right'
+                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
+                case 'upper-right'
+                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
+            end
+            set(app.cbar_vis,'position',pos);
+            delete(findall(app.VisualizationPlot,'Type','light'))
+
+            t = app.TimeframeSpinner.Value;
+            if t == 0   % to prevent errors when coming from other tabs
+                t = 1;
+            end
+
+            % toggle 3D surfaces
+            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+                if isempty(app.vis3Dsurface) || app.is3DChanged
+                    app.vis3Dsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
+                            idxToRemove = ii; break;
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+
+                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
+                        (1:size(app.segment,3))*app.pixdim(3));
+                    toPlot = smooth3(app.segment);
+                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_surface');
+                    app.is3DChanged = 0;
+                else
+                    app.vis3Dsurface.Visible = 'on';
+                end
+            else
+                app.vis3Dsurface.Visible = 'off';
+            end
+
+            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
+                if isempty(app.vis3DSegsurface) || app.is3DSegChanged
+                    app.vis3DSegsurface = []; idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
+                            idxToRemove = ii; break;
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
+                        (1:size(currSeg,3))*app.pixdim(3));
+                    toPlot = smooth3(currSeg);
+                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
+                        'Tag','3D_seg_surface');
+                    app.is3DSegChanged = 0;
+                else
+                    app.vis3DSegsurface.Visible = 'on';
+                end
+            else
+                app.vis3DSegsurface.Visible = 'off';
+            end
+
+            switch app.VisTypeDropDown.Value
+                case 'Vectors'
+                    set(app.streamPatch,'Visible','off');
+                    set(app.vectorPatch,'Visible','on');
+                    viewVelocityVectors(app, currSeg, t);
+                case 'Streamlines'
+                    if ~isempty(app.sliceImg)
+                        delete(app.sliceImg)
+                        app.sliceImg = [];
+                    end
+                    set(app.vectorPatch,'Visible','off');
+                    set(app.streamPatch,'Visible','on');
+                    viewStreamlines(app, currSeg, t);
+            end
+        end
+
+        function viewVelocityVectors(app, currSeg, t)
+
             currV = app.v(:,:,:,:,t);
 
             subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
@@ -1004,55 +1102,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     L = find(currSeg(1:subsample:end,1:subsample:end,1:subsample:end));
             end
 
-            % toggle 3D surfaces
-            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                if isempty(app.vis3Dsurface) || app.is3DChanged
-                    app.vis3Dsurface = []; idxToRemove = [];
-                    for ii = 1:numel(app.VisualizationPlot.Children)
-                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
-                            idxToRemove = ii; break;
-                        end
-                    end
-                    delete(app.VisualizationPlot.Children(idxToRemove));
-
-
-                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
-                        (1:size(app.segment,3))*app.pixdim(3));
-                    toPlot = smooth3(app.segment);
-                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_surface');
-                    app.is3DChanged = 0;
-                else
-                    app.vis3Dsurface.Visible = 'on';
-                end
-            else
-                app.vis3Dsurface.Visible = 'off';
-            end
-
-            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
-                if isempty(app.vis3DSegsurface) || app.is3DSegChanged
-                    app.vis3DSegsurface = []; idxToRemove = [];
-                    for ii = 1:numel(app.VisualizationPlot.Children)
-                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
-                            idxToRemove = ii; break;
-                        end
-                    end
-                    delete(app.VisualizationPlot.Children(idxToRemove));
-                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                        (1:size(currSeg,3))*app.pixdim(3));
-                    toPlot = smooth3(currSeg);
-                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_seg_surface');
-                    app.is3DSegChanged = 0;
-                else
-                    app.vis3DSegsurface.Visible = 'on';
-                end
-            else
-                app.vis3DSegsurface.Visible = 'off';
-            end
-
             vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
 
             % check to do smoothing of velocity field
@@ -1060,30 +1109,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 vmagn = imgaussfilt3(vmagn,std(vmagn(:))/10);
             end
 
-            if ~isvalid(app.VisOptionsApp)
-                a = [2 10*max(vmagn(:))/100];
-                scale = [0 round(app.VENC/10)];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet';
-                cbarLoc = 'bottom-left';
-            else
-                a = [str2double(app.VisOptionsApp.minQuiverEditField.Value) str2double(app.VisOptionsApp.maxQuiverEditField.Value)*max(vmagn(:))/100];
-                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
-                    axisText = [1 1 1];
-                end
-                cmap = app.VisOptionsApp.ColormapDropDown.Value;
-                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
-            end
-
             c = [];
             % note the flipped vx and vy here
+            a = [str2double(app.VisOptionsApp.minQuiverEditField.Value) str2double(app.VisOptionsApp.maxQuiverEditField.Value)*max(vmagn(:))/100];
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
 
             if isempty(app.vectorPatch)
@@ -1094,32 +1122,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                     'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
             end
             uistack(app.vectorPatch,'top');
-
-            caxis(app.VisualizationPlot, scale);
-            colormap(app.VisualizationPlot,cmap);
-            cbar = colorbar(app.VisualizationPlot);
-            app.VisualizationGroup.BackgroundColor = backgroundC;
-            app.VisualizationGroup.ForegroundColor = axisText;
-            app.TimeframeSpinnerLabel.FontColor = axisText;
-            app.SliceSpinner_2Label.FontColor = axisText;
-            set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
-            set(cbar,'FontSize',13,'color',axisText,'Location','west');
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.02 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.75 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
-                case 'mid-right'
-                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
 
             % make it look good
             axis(app.VisualizationPlot, 'off','tight')
@@ -1133,237 +1135,42 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
 
-        function viewStreamlines(app)
+        function viewStreamlines(app, currSeg, t)
 
-            t = app.TimeframeSpinner.Value;
-            if t == 0   % to prevent errors when coming from other tabs
-                t = 1;
-            end
-
-            if app.isSegmentationLoaded
-                if app.isTimeResolvedSeg
-                    currSeg = app.aorta_seg(:,:,:,t);
-                else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
+            alphas = [0.2 0.5 0.9]; nbins = length(alphas);
+            if app.isStreamsChanged.Value || isempty(app.streamsOut)
+                app.streamPatch = []; idxToRemove = [];
+                for ii = 1:numel(app.VisualizationPlot.Children)
+                    if contains(app.VisualizationPlot.Children(ii).Tag,'streamline_patch')
+                        idxToRemove = cat(1,idxToRemove,ii);
                     end
                 end
-            else
-                currSeg = double(app.segment);
-            end
-            currV = app.v(:,:,:,:,t);
-
-            subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
-            vx = -currSeg.*currV(:,:,:,1)/10;
-            vy = -currSeg.*currV(:,:,:,2)/10;
-            vz = -currSeg.*currV(:,:,:,3)/10;
-            vmagn = sqrt(vx.^2 + vy.^2 + vz.^2);
-            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                (1:size(currSeg,3))*app.pixdim(3));
-
-            % determine start positions of streamlines
-            switch app.VisOptionsDropDown.Value  % the current vis state, slice-wise not allowed
-                case 'centerline contours'
-                    % set the subsampling to reduce number of streamlines
-                    substreams = subsample;
-                    str = app.VisOptionsApp.VisPts.Value;
-                    eval(['ptRange=[' str '];']);
-
-                    % get oblique slices
-                    startX = []; startY = []; startZ = [];
-                    for ii = ptRange
-                        currCP = [app.branchActual(ii,2),app.branchActual(ii,1),app.branchActual(ii,3)];
-                        currNorm = app.tangent_V(ii,:); currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
-                        [B,x,y,z] = obliqueslice(currSeg,currCP,currNorm,'FillValues',0);
-                        % do a quick region grow from our centerline point
-                        tmp = cat(2,x(:),y(:),z(:)) - currCP;
-                        tmp = sqrt(sum(tmp.*tmp,2));
-                        [~, pointLinearIndexInSlice] = min(tmp);
-                        [pointColumn,pointRow] = ind2sub(size(B),pointLinearIndexInSlice(1));
-                        B = regiongrowing(B,pointColumn,pointRow);
-
-                        currL = find(B(:));
-                        currL = currL(1:substreams:end);
-                        % the start points in true image coordinates
-                        startX = cat(1,startX,x(currL)*app.pixdim(1));
-                        startY = cat(1,startY,y(currL)*app.pixdim(2));
-                        startZ = cat(1,startZ,z(currL)*app.pixdim(3));
-
-                    end
-
-                case 'segmentation'   % 3d streamlines from the whole segmentation
-                    % set the subsampling to reduce number of streamlines,
-                    % this is ~5x larger than subsample for computational
-                    % reasons
-                    substreams = round(5*subsample);
-                    L = find(currSeg);
-                    startX = xcoor_grid(L(1:substreams:end));
-                    startY = ycoor_grid(L(1:substreams:end));
-                    startZ = zcoor_grid(L(1:substreams:end));
+                delete(app.VisualizationPlot.Children(idxToRemove));
+                app.streamsOut = calculateStreamlines(currSeg, app.v, ...
+                    round(app.VisOptionsApp.SubsampleSlider.Value), app.pixdim, ...
+                    str2double(app.VisOptionsApp.minQuiverEditField.Value), str2double(app.VisOptionsApp.maxVelocityVisEditField.Value), ...
+                    app.VisOptionsDropDown.Value, ...
+                    app.VisOptionsApp.VisPts.Value, app.branchActual, app.tangent_V);
             end
 
-            % toggle 3D surfaces
-            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
-                if isempty(app.vis3Dsurface) || app.is3DChanged
-                    app.vis3Dsurface = []; idxToRemove = [];
-                    for ii = 1:numel(app.VisualizationPlot.Children)
-                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
-                            idxToRemove = ii; break;
-                        end
-                    end
-                    delete(app.VisualizationPlot.Children(idxToRemove));
-
-
-                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
-                        (1:size(app.segment,3))*app.pixdim(3));
-                    toPlot = smooth3(app.segment);
-                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_surface');
-                    app.is3DChanged = 0;
-                else
-                    app.vis3Dsurface.Visible = 'on';
-                end
-            else
-                app.vis3Dsurface.Visible = 'off';
-            end
-
-            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
-                if isempty(app.vis3DSegsurface) || app.is3DSegChanged
-                    app.vis3DSegsurface = []; idxToRemove = [];
-                    for ii = 1:numel(app.VisualizationPlot.Children)
-                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
-                            idxToRemove = ii; break;
-                        end
-                    end
-                    delete(app.VisualizationPlot.Children(idxToRemove));
-                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                        (1:size(currSeg,3))*app.pixdim(3));
-                    toPlot = smooth3(currSeg);
-                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_seg_surface');
-                    app.is3DSegChanged = 0;
-                else
-                    app.vis3DSegsurface.Visible = 'on';
-                end
-            else
-                app.vis3DSegsurface.Visible = 'off';
-            end
-
-            S = stream3(xcoor_grid,ycoor_grid,zcoor_grid,...
-                -vy,-vx,-vz,startX,startY,startZ);
-
-            % bins for alpha values and corresponding patches, to max
-            % velocity value
-            edges = [0 0.3 0.6 1.0] * str2double(app.VisOptionsApp.maxVelocityVisEditField.Value);
-            alphas = [0.2 0.5 0.9];
-            nbins = numel(alphas);
-            Xb = cell(nbins,1); Yb = cell(nbins,1); Zb = cell(nbins,1); Cb = cell(nbins,1);
-
-            P = [2 1 3];
-            F = griddedInterpolant(permute(xcoor_grid,P),permute(ycoor_grid,P),...
-                permute(zcoor_grid,P),permute(vmagn,P),'linear','none');
-            minVel = str2double(app.VisOptionsApp.minQuiverEditField.Value);
-
-            for ii = 1:numel(S)
-                pts = S{ii};
-                n = size(pts,1);
-                if n < 2
-                    continue
-                end
-
-                XX = pts(:,1); YY = pts(:,2); ZZ = pts(:,3);
-                c = F(XX,YY,ZZ);
-                c(c < minVel) = NaN;
-                c(c > str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)) = ...
-                    str2double(app.VisOptionsApp.maxVelocityVisEditField.Value);
-
-                % Bin indices per point
-                bin = discretize(c, edges);
-
-                for k = 1:nbins
-                    idx = find(bin == k);
-                    if isempty(idx)
-                        continue
-                    end
-
-                    % Extract contiguous segments
-                    d = diff(idx);
-                    segStart = [1; find(d > 1)+1];
-                    segEnd   = [segStart(2:end)-1; numel(idx)];
-
-                    for s = 1:numel(segStart)
-                        ii0 = idx(segStart(s):segEnd(s));
-                        Xb{k} = [Xb{k}; XX(ii0); NaN];
-                        Yb{k} = [Yb{k}; YY(ii0); NaN];
-                        Zb{k} = [Zb{k}; ZZ(ii0); NaN];
-                        Cb{k} = [Cb{k}; c(ii0); NaN];
-                    end
-                end
-            end
-
-            if isempty(app.streamPatch) || numel(app.streamPatch) ~= nbins
+            if isempty(app.streamPatch) || app.isStreamsChanged.Value
                 for k = 1:nbins
                     app.streamPatch(k) = patch(app.VisualizationPlot,...
-                        'XData',Xb{k},'YData',Yb{k},'ZData',Zb{k},'CData',Cb{k},...
+                        'XData',app.streamsOut.Xb{k,t},'YData',app.streamsOut.Yb{k,t},...
+                        'ZData',app.streamsOut.Zb{k,t},'CData',app.streamsOut.Cb{k,t},...
                         'EdgeColor','interp','FaceColor','none','LineWidth',1,...
-                        'EdgeAlpha',alphas(k),'Tag','streamline_patch');
+                        'EdgeAlpha',alphas(k),'Tag',sprintf('streamline_patch%i',k));
                 end
+                app.isStreamsChanged.Value = 0;
             else
                 for k = 1:nbins
                     set(app.streamPatch(k),...
-                        'XData',Xb{k},'YData',Yb{k},'ZData',Zb{k},'CData',Cb{k});
+                        'XData',app.streamsOut.Xb{k,t},'YData',app.streamsOut.Yb{k,t},...
+                        'ZData',app.streamsOut.Zb{k,t},'CData',app.streamsOut.Cb{k,t},...
+                        'EdgeAlpha',alphas(k),'Tag',sprintf('streamline_patch%i',k));
                 end
             end
-
-            if ~isvalid(app.VisOptionsApp)
-                scale = [0 round(app.VENC/10)];
-                backgroundC = [1 1 1];
-                axisText = [0 0 0];
-                cmap = 'jet';
-                cbarLoc = 'bottom-left';
-            else
-                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
-                    axisText = [1 1 1];
-                end
-                cmap = app.VisOptionsApp.ColormapDropDown.Value;
-                cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
-            end
-
-            caxis(app.VisualizationPlot, scale);
-            colormap(app.VisualizationPlot,cmap);
-            cbar = colorbar(app.VisualizationPlot);
-            app.VisualizationGroup.BackgroundColor = backgroundC;
-            app.VisualizationGroup.ForegroundColor = axisText;
-            set(get(cbar,'xlabel'),'string','velocity (cm/s)','Color',axisText);
-            set(cbar,'FontSize',13,'color',axisText,'Location','west');
-            pos = get(cbar,'position');
-            switch cbarLoc
-                case 'bottom-left'
-                    pos = [0.01 0.02 pos(3) 0.2];
-                case 'mid-left'
-                    pos = [0.01 0.41 pos(3) 0.2];
-                case 'upper-left'
-                    pos = [0.01 0.75 pos(3) 0.2];
-                case 'bottom-right'
-                    pos = [0.99-pos(3) 0.02 pos(3) 0.2];
-                case 'mid-right'
-                    pos = [0.99-pos(3) 0.41 pos(3) 0.2];
-                case 'upper-right'
-                    pos = [0.99-pos(3) 0.75 pos(3) 0.2];
-            end
-            set(cbar,'position',pos);
+            uistack(app.streamPatch,'top');
 
             % make it look good
             axis(app.VisualizationPlot, 'off','tight')
@@ -1686,11 +1493,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                 clim(app.Unwrap_3, [-scaling scaling]);
 
                 % Colorbar once
-                app.cbar = colorbar(app.Unwrap_1, 'Location', 'west');
-                xlabel(app.cbar, 'velocity (cm/s)', 'FontSize', 12, 'Color', 'black');
-                set(app.cbar, 'FontSize', 12, 'Color', 'black');
-                pos = get(app.cbar,'Position');
-                set(app.cbar, 'Position', [0.01 0.01 pos(3) 0.2]);
+                app.cbar_unwrap = colorbar(app.Unwrap_1, 'Location', 'west');
+                xlabel(app.cbar_unwrap, 'velocity (cm/s)', 'FontSize', 12, 'Color', 'black');
+                set(app.cbar_unwrap, 'FontSize', 12, 'Color', 'black');
+                pos = get(app.cbar_unwrap,'Position');
+                set(app.cbar_unwrap, 'Position', [0.01 0.01 pos(3) 0.2]);
             else
                 % Update existing images only
                 set(app.h1, 'CData', PCA_masked(:,:,s,1));
@@ -2225,6 +2032,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
+            isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2259,6 +2067,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2270,6 +2079,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2281,6 +2091,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2291,6 +2102,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2311,6 +2123,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2331,6 +2144,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2341,6 +2155,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2360,6 +2175,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2370,6 +2186,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2380,6 +2197,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.is3DSegChanged = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2449,7 +2267,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             % view vectors
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
             app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
-            viewVelocityVectors(app);
+
+            colormap(app.VisualizationPlot, 'jet');
+            clim(app.VisualizationPlot, [0 app.VENC/10]);
+
+            % Colorbar once
+            colorbar(app.VisualizationPlot,'off');
+            app.cbar_vis = colorbar(app.VisualizationPlot);
+
+            updateVisualization(app);
             app.SaveAnimation.Enable = 'on';
             app.SaveRotatedAnimation.Enable = 'on';
             app.VisOptions.Enable = 'on';
@@ -4415,18 +4241,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Value changed function: flipvx
         function flipvxValueChanged(app, ~)
             app.v(:,:,:,1,:) = -app.v(:,:,:,1,:);
+            app.isStreamsChanged.Value = 1;
             updateVisualization(app);
         end
 
         % Value changed function: flipvy
         function flipvyValueChanged(app, ~)
             app.v(:,:,:,2,:) = -app.v(:,:,:,2,:);
+            app.isStreamsChanged.Value = 1;
             updateVisualization(app);
         end
 
         % Value changed function: flipvz
         function flipvzValueChanged(app, ~)
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
+            app.isStreamsChanged.Value = 1;
             updateVisualization(app);
         end
 
@@ -4663,6 +4492,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
             end
+            app.isStreamsChanged.Value = 1;
             updateVisualization(app);
             viewMap(app);
         end
@@ -5445,6 +5275,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisTypeDropDown.FontSize = 16;
             app.VisTypeDropDown.Position = [150 700 125 28];
             app.VisTypeDropDown.Value = 'Vectors';
+
+            % Create isStreamsChanged checkbox (always hidden)
+            app.isStreamsChanged = uicheckbox(app.Maps);
+            app.isStreamsChanged.Text = '';
+            app.isStreamsChanged.FontName = 'SansSerif';
+            app.isStreamsChanged.FontSize = 1;
+            app.isStreamsChanged.Position = [1162 270 2 2];
+            app.isStreamsChanged.Value = 1;
 
             % Create VisualizationPlot
             app.VisualizationPlot = uiaxes(app.VisualizationGroup);

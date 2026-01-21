@@ -135,8 +135,16 @@ for ii = 1:4
             VENC = abs(info.RescaleIntercept)*10;              % venc, in mm/s
         end
 
-        % Philips standard is MPS, so first folder has measurement
-        % direction
+%         % Philips standard is MPS, so first folder has measurement
+%         % direction
+%         switch vCount
+%             case 1
+%                 vx = img_out*10;
+%             case 2
+%                 vy = img_out*10;
+%             case 3
+%                 vz = img_out*10;
+%         end
         switch tmpOri
             case 'Tra'
                 switch vCount
@@ -158,11 +166,11 @@ for ii = 1:4
                 end
             case 'Sag'
                 switch vCount
-                    case 'through'
-                        vz = img_out*10;
-                    case 'ap'
+                    case 3  % anterior-posterior
                         vy = img_out*10;
-                    case 'fh'
+                    case 1  % through-plane, right_left
+                        vz = img_out*10;
+                    case 2  % foot-head
                         vx = img_out*10;
                 end
         end

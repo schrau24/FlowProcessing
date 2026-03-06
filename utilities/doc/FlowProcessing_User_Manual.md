@@ -16,8 +16,9 @@ This software builds from previous work, and the use of this tool should be asso
    1. [Installation](#installation)
    2. [Data needed](#data-needed)
       1. [Philips par/rec](#philips-parrec)
-      2. [Siemens dicom](#siemens-dicom)
-      3. [mrStruct](#mrstruct) 
+      2. [Philips dicom](#philips-dicom)
+      3. [Siemens dicom](#siemens-dicom)
+      4. [mrStruct](#mrstruct) 
    3. [Starting the tool](#starting-the-tool)
 3. [Loading and Preprocessing tab](#loading-preprocessing)
    1. [Load Data](#load-data)
@@ -64,8 +65,13 @@ SUBJECTID or other identifier_3.par, SUBJECTID or other identifier_3.rec
 
 Note: some delayed reconstructed Philips .par / .rec data does not fit this data structure. The tool will try to parse the different .par files and load them accordingly.
 
+#### Philips dicom <a name="philips-dicom"></a> 
+Reconstructed Philips .dcm files can be recursively loaded in (note, this option can be time-consuming). All files should be located within 4 folders with the following format:\
+one folder with the magnitude dicoms, and 3 folders with the separate velocity directions\
+note the naming of these folders does not matter as velocity information is gathered directly from the dicom headers
+
 #### Siemens dicom <a name="siemens-dicom"></a> 
-Reconstructed Siemens .dcm files can be recursively loaded in (note, this option can be time-consuming). All files shouled be located within 4 folders with the following format:\
+Reconstructed Siemens .dcm files can be recursively loaded in (note, this option can be time-consuming). All files should be located within 4 folders with the following format:\
 one folder with the magnitude dicoms, and 3 folders with the separate velocity directions\
 note the naming of these folders does not matter as velocity information is gathered directly from the dicom headers
 
@@ -82,7 +88,7 @@ Within Matlab, navigate to the folder containing FlowProcessing.m. Type this int
 <img src="img2.png?raw=true" width="450px">
 
 Click `Load 4D Flow Data` \
-You will be prompted: first to select the file type to load, and second to select either the file (Philips - one of the reconstructed .rec files) or folder (Siemens dicom).
+You will be prompted: first to select the file type to load, and second to select either the file (Philips - one of the reconstructed .rec files, mrStruct files) or folder (Philips dicom, Siemens dicom).
 
 After loading completion, the tool 4D flow acquisition image information is displayed, as well as axial, coronal, and sagittal maximum intensity projections using a calculated angiographic image. An automated thresh-holding of the angiogram is used to display a 3D isosurface within the field of view:
 
@@ -104,6 +110,8 @@ An external 3D viewer, [imtool3d](https://github.com/tanguyduval/imtool3D_td), l
 
 ### Crop Data  <a name="crop-data"></a>
 Cropping of data to include only the vessels of interest is recommended and can be performed using the individual `Crop button` above each MIP.
+#### Optional cropping in time
+Using the 'View Data' button, the user can check data quality (magnitude plus 3 velocity directions over time). The user can also crop the data in time (e.g. only saving systolic phases) by setting the ‘frames to use’ field. The MIP is updated accordingly.
 
 ### Corrections  <a name="corrections"></a>
 #### Velocity Unwrapping <a name="velocity-unwrapping"></a>

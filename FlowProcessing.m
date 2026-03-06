@@ -1808,7 +1808,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
                     end
                 else
-                    app.(name) = allValues.(name);
+					try
+                        app.(name) = allValues.(name);
+                    catch
+                        warning('%s is not a member of app group',name);
+                    end
                 end
             end
 
@@ -2274,6 +2278,25 @@ classdef FlowProcessing < matlab.apps.AppBase
             % Colorbar once
             colorbar(app.VisualizationPlot,'off');
             app.cbar_vis = colorbar(app.VisualizationPlot);
+
+            % reset the patches
+            app.streamPatch = [];
+            app.vectorPatch = [];
+            idxToRemove = [];
+            for ii = 1:numel(app.VisualizationPlot.Children)
+                if contains(app.VisualizationPlot.Children(ii).Tag,'vector_patch')
+                    idxToRemove = cat(1,idxToRemove,ii);
+                end
+            end
+            delete(app.VisualizationPlot.Children(idxToRemove));
+
+            idxToRemove = [];
+            for ii = 1:numel(app.VisualizationPlot.Children)
+                if contains(app.VisualizationPlot.Children(ii).Tag,'streamline_patch')
+                    idxToRemove = cat(1,idxToRemove,ii);
+                end
+            end
+            delete(app.VisualizationPlot.Children(idxToRemove));
 
             updateVisualization(app);
             app.SaveAnimation.Enable = 'on';
@@ -2877,7 +2900,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             waveforms = waveforms(ptRange,:);
             netflows = netflows(ptRange);
             card_time = (0:app.nframes-1)*app.timeres;
-            tbl = array2table(cat(2,card_time',cat(2,waveforms,netflows)'));
+            tbl = array2table(cat(2,([card_time nan])',cat(2,waveforms,netflows)'));
             tbl.Properties.VariableNames = ["cardiac time(ms)",string(ptRange)];
             writetable(tbl,[saveName '.xlsx'],'Sheet','flow(ml per s)','WriteMode','overwritesheet');
             tbl = array2table(netflows');

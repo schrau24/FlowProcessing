@@ -12,8 +12,11 @@ subfolders = dir(directory); subfolders = subfolders(3:end);
 % if only 2 subfolders, we check if they are 'Mag' and 'Phase', then update
 % subfolder names appropriately
 if length(subfolders) == 2
-    if strcmp(subfolders(1).name,'Mag') && strcmp(subfolders(2).name,'Phase')
-        subsubfolders = dir(fullfile(directory,subfolders(2).name)); subsubfolders = subsubfolders(3:end);
+    if any(contains({subfolders.name}, 'mag')) || any(contains({subfolders.name}, 'Mag')) && any(contains({subfolders.name}, 'Phase'))
+        if find(contains({subfolders.name},'Phase')) == 1
+            subfolders = subfolders([2 1]);
+        end
+        subsubfolders = dir(fullfile(directory,'Phase')); subsubfolders = subsubfolders(3:end);
         subfolders(2).name = fullfile('Phase',subsubfolders(1).name);
         subfolders(3).name = fullfile('Phase',subsubfolders(2).name);
         subfolders(4).name = fullfile('Phase',subsubfolders(3).name);
@@ -32,16 +35,44 @@ for ii = 1:4
     % if the tmp table has more than one row, we have enhanced dicoms,
     % which have different headers and data format to sort through
     if ii == 1
-        if size(tmp,1) > 1
+        if size(tmp,1) > 1 || length(files) == 1
             isEnhancedDicom = 1;
-            nslices = size(tmp,1);
-            nframes = tmp{1,'Frames'};
-            timeres = info.CardiacRRIntervalSpecified/nframes;
-            pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
-                info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
+            if length(files) > 1
+                nslices = size(tmp,1);
+                nframes = tmp{1,'Frames'};
+                timeres = info.CardiacRRIntervalSpecified/nframes;
+                pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
+                    info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
+            else
+                % loop through frame items and store triggers
+                % and slices
+                count = 0; nTotalImgs = tmp{1,'Frames'}; pcaFlag = 0;
+                for nn = nTotalImgs-100:nTotalImgs
+                    count = count + 1;
+                    eval(sprintf('aa=info.PerFrameFunctionalGroupsSequence.Item_%i;',nn))
+                    tt(count) = aa.CardiacSynchronizationSequence.Item_1.NominalCardiacTriggerDelayTime;
+                    IOP = aa.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
+                    IPP = aa.PlanePositionSequence.Item_1.ImagePositionPatient;
+                    R = IOP(1:3);
+                    C = IOP(4:6);
+                    normal = cross(R, C);
+                    calculatedSliceLocation = dot(IPP, normal);
+                    sl_loc(count) = calculatedSliceLocation;
+                    if strcmp(aa.Private_2005_140f.Item_1.Private_2005_1011,'M')
+                        pcaFlag = 1;
+                    end
+                end
+                tt = unique(tt); sl_loc = unique(sl_loc);
+                nframes = length(tt);               % number of reconstructed frames
+                timeres = mean(diff(tt));           % temporal resolution, in ms
+                nslices = tmp{1,'Frames'}/nframes;
+                if pcaFlag; nslices = nslices/2; end
+                pixdim =[info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;...
+                    mean(diff(sl_loc))]';
+            end
         else
             count = 0;
-            for nn = length(files)-100:length(files)
+            for nn = 1:length(files)
                 count = count + 1;
                 aa = dicominfo(fullfile(files(nn).folder,files(nn).name));
                 tt(count) = aa.TriggerTime;
@@ -50,23 +81,40 @@ for ii = 1:4
             tt = unique(tt); sl_loc = unique(sl_loc);
             nframes = length(tt);               % number of reconstructed frames
             timeres = mean(diff(tt));           % temporal resolution, in ms
-            nslices = tmp{1,'Frames'}/nframes;
+            nslices = length(files)/nframes;
             pixdim = [info.PixelSpacing(1) info.PixelSpacing(2) mean(diff(sl_loc))];
         end
         res = [tmp{1,'Rows'} tmp{1,'Columns'} nslices];
         fov = pixdim.*res/10;                       % Field of view in cm
     end
-    
+
     if isEnhancedDicom; img_out = zeros([res,nframes]); end
     for table_row = 1:size(tmp,1)
-        [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
+        try
+            [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
+        catch
+            try
+                [img, spatial, dim] = dicomreadVolume(fullfile(subjectFolder,f_4Dflow(ii).name));
+            catch
+                [img, spatial, dim] = dicomreadVolume(fullfile(files(end).folder,files(end).name));
+            end
+        end
         if isEnhancedDicom
-            img_out(:,:,table_row,:) = double(img);
+            try
+                if length(files)==1
+                    if size(img,4) ~= nslices*nframes
+                        img = img(:,:,:,1:nslices*nframes);
+                    end
+                    img_out = double(reshape(img,[res(1:3) nframes]));
+                end
+            catch
+                img_out(:,:,table_row,:) = double(img);
+            end
         else
             img_out = double(permute(reshape(img,[res(1:2) nframes res(3)]),[1 2 4 3]));
         end
     end
-    
+
     isMag = 0;
     if isEnhancedDicom
         isMag = contains(info.ComplexImageComponent,'MAGNITUDE');
@@ -77,15 +125,15 @@ for ii = 1:4
         MAG = img_out;
         MAG = MAG/max(abs(MAG(:)));
         % flip z direction
-%         MAG = flip(MAG,3);
+        %         MAG = flip(MAG,3);
     else            % '\P\ or 'PHASE'
-        vCount = vCount+1;
+        vCount = vCount+1; vDir = [];
         % velocity info
         if isEnhancedDicom
             img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
                 info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleIntercept;
             dirs = {'rl','ap','fh'};    % convention for HFS scans
-            dcmorient = info.ImageOrientationPatient;
+            dcmorient = IOP;
             rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
             colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
             if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
@@ -115,7 +163,7 @@ for ii = 1:4
                     dirs = {'through','ap','fh'};
                     vDir = dirs{find(abs(tmpVDir)>0.6)};
             end
-            
+
         else
             img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
             dirs = {'rl','ap','fh'};    % convention for HFS scans
@@ -135,16 +183,6 @@ for ii = 1:4
             VENC = abs(info.RescaleIntercept)*10;              % venc, in mm/s
         end
 
-%         % Philips standard is MPS, so first folder has measurement
-%         % direction
-%         switch vCount
-%             case 1
-%                 vx = img_out*10;
-%             case 2
-%                 vy = img_out*10;
-%             case 3
-%                 vz = img_out*10;
-%         end
         switch tmpOri
             case 'Tra'
                 switch vCount
@@ -165,13 +203,33 @@ for ii = 1:4
                         vx = img_out*10;
                 end
             case 'Sag'
-                switch vCount
-                    case 3  % anterior-posterior
-                        vy = img_out*10;
-                    case 1  % through-plane, right_left
-                        vz = img_out*10;
-                    case 2  % foot-head
-                        vx = img_out*10;
+                if ~isempty(vDir)
+                    switch vDir
+                        case 'through'
+                            vz = img_out*10;
+                        case 'fh'
+                            vx = img_out*10;
+                        case 'ap'
+                            vy = img_out*10;
+                    end
+                else
+                    switch vCount
+                        case 3  % anterior-posterior
+                            vy = img_out*10;
+                        case 1  % through-plane, right_left
+                            vz = img_out*10;
+                        case 2  % foot-head
+                            vx = img_out*10;
+                    end
+
+%                     switch vCount
+%                         case 2  % anterior-posterior
+%                             vy = img_out*10;
+%                         case 1  % through-plane, right_left
+%                             vz = img_out*10;
+%                         case 3  % foot-head
+%                             vx = img_out*10;
+%                     end
                 end
         end
     end
@@ -193,7 +251,6 @@ switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
     case 'Sag'
         ori.label = 'sagittal';
         vx = -vx;
-        vz = -vz;
         ori.vxlabel = 'F-H';
         ori.vylabel = 'A-P';
         ori.vzlabel = 'R-L';

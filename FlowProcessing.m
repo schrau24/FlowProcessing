@@ -2298,6 +2298,19 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             delete(app.VisualizationPlot.Children(idxToRemove));
 
+            app.vis3Dsurface = [];
+            app.vis3DSegsurface = [];
+            idxToRemove = [];
+            for ii = 1:numel(app.VisualizationPlot.Children)
+                if contains(app.VisualizationPlot.Children(ii).Tag,'3D_seg_surface')
+                    idxToRemove = cat(1,idxToRemove,ii);
+                end
+                if contains(app.VisualizationPlot.Children(ii).Tag,'3D_surface')
+                    idxToRemove = cat(1,idxToRemove,ii);
+                end
+            end
+            delete(app.VisualizationPlot.Children(idxToRemove));
+
             updateVisualization(app);
             app.SaveAnimation.Enable = 'on';
             app.SaveRotatedAnimation.Enable = 'on';
@@ -3653,7 +3666,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Turn image into indexed image (the gif format needs this)
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);
 
-                delay = 2*app.timeres/1000;
+                delay = 1/(5*2); % default to 5 fps, factor of two to account for ct_time update
                 if t == 1
                     imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
                 else

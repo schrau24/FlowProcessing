@@ -9,8 +9,6 @@ disp('Loading data')
 load(fullfile(directory,'mag_struct.mat'));
 MAG = mrStruct.dataAy;
 MAG = MAG/max(abs(MAG(:)));
-% flip z direction
-MAG = flip(MAG,3);
 
 % load velocity
 load(fullfile(directory,'vel_struct.mat'));
@@ -26,6 +24,8 @@ VENC = mrStruct.user.venc_in_plane*10;              % venc, in mm/s
 pixdim = mrStruct.vox(1:3);                         % the reconstructed resolution
 fov = pixdim.*res/10;                               % Field of view in cm
 
+
+
 %% manually change velocity directions depending on scan orientations
 
 % velocity directions correspond to the following:
@@ -36,7 +36,7 @@ switch mrStruct.orient % orientation number (1 - axial, 2 - sagittal, 3 - corona
     case ''     % empty orientation, tell user and set as default (sagittal)
         warning('no orientation in mrStruct, setting to default sagittal')
         ori.label = 'sagittal';
-%         vx = -vx;
+        vy = -vy;
         vz = -vz;
         ori.vxlabel = 'F-H';
         ori.vylabel = 'A-P';
@@ -53,7 +53,7 @@ switch mrStruct.orient % orientation number (1 - axial, 2 - sagittal, 3 - corona
         ori.vzlabel = 'F-H';
     case 'sag'
         ori.label = 'sagittal';
-        vx = -vx;
+        vy = -vy;
         vz = -vz; 
         if strcmp('AP',phasedir)
             ori.vxlabel = 'F-H';
@@ -79,8 +79,9 @@ end
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
 clear vx vy vz
-% flip z direction
-v = flip(v,3);
+
+MAG = flip(flip(MAG,2),3);
+v = flip(flip(v,2),3);
 
 % take the means
 vMean = mean(v,5);

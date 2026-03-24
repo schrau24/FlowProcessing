@@ -1956,9 +1956,20 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg = double(niftiread(fullfile(app.segDirectory,tmp)));
                 end
                 % lastly check nifti info in case of needed permutations
-                % (slicer export issue)
-                info_tmp = niftiinfo(fullfile(tmp2(1).folder,tmp2(1).name));
-                if any(info_tmp.Transform.T([2 3 5]) ~= 0)
+                % (slicer export issue), check for rotation
+                info_tmp = niftiinfo(fullfile(tmp2(1).folder,tmp));
+                threshold = 1e-3; R = info_tmp.Transform.T(1:3,1:3);
+                Rn = R ./ vecnorm(R);
+                isAxisAligned = true;
+                for i = 1:3
+                    nz = sum(abs(Rn(:,i)) > threshold);
+                    if nz ~= 1
+                        isAxisAligned = false;
+                        break;
+                    end
+                end
+
+                if ~isAxisAligned
                     app.aorta_seg = permute(app.aorta_seg,[2 1 3]);
                 end
             elseif strncmp(tmp(end-3:end),'.nii',3)
@@ -2036,7 +2047,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstart = 1; m_ystart = 1; m_zstart = 1;
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
-            isStreamsChanged.Value = 1;
+            app.isStreamsChanged.Value = 1;
             updateMIPs(app);
         end
 

@@ -20,18 +20,54 @@ for ii = 1:4
     % if the tmp table has more than one row, we have enhanced dicoms,
     % which have different headers and data format to sort through
     if ii == 1
-        if size(tmp,1) > 1
+        if size(tmp,1) > 1 || length(files) == 1
             isEnhancedDicom = 1;
+            if length(files) > 1
             nslices = size(tmp,1);
             nframes = tmp{1,'Frames'};
             timeres = info.CardiacRRIntervalSpecified/nframes;
             pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
                 info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
         else
-            nframes = info.CardiacNumberOfImages;       % number of reconstructed frames
-            timeres = info.TriggerTime/nframes;         % temporal resolution, in ms
+                % loop through frame items and store triggers
+                % and slices
+                count = 0; nTotalImgs = tmp{1,'Frames'}; pcaFlag = 0;
+                for nn = round(nTotalImgs/2):nTotalImgs
+                    count = count + 1;
+                    eval(sprintf('aa=info.PerFrameFunctionalGroupsSequence.Item_%i;',nn))
+                    tt(count) = aa.CardiacSynchronizationSequence.Item_1.NominalCardiacTriggerDelayTime;
+                    IOP = aa.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
+                    IPP = aa.PlanePositionSequence.Item_1.ImagePositionPatient;
+                    R = IOP(1:3);
+                    C = IOP(4:6);
+                    normal = cross(R, C);
+                    calculatedSliceLocation = dot(IPP, normal);
+                    sl_loc(count) = calculatedSliceLocation;
+                    if strcmp(aa.Private_2005_140f.Item_1.Private_2005_1011,'M')
+                        pcaFlag = 1;
+                    end
+                end
+                tt = unique(tt); sl_loc = unique(sl_loc);
+                nframes = length(tt);               % number of reconstructed frames
+                timeres = mean(diff(tt));           % temporal resolution, in ms
             nslices = tmp{1,'Frames'}/nframes;
-            pixdim = [info.PixelSpacing(1) info.PixelSpacing(2) info.SliceThickness];
+                if pcaFlag; nslices = nslices/2; end
+                pixdim =[info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;...
+                    mean(diff(sl_loc))]';
+            end
+        else
+            count = 0;
+            for nn = round(length(files)/2):length(files)
+                count = count + 1;
+                aa = dicominfo(fullfile(files(nn).folder,files(nn).name));
+                tt(count) = aa.TriggerTime;
+                sl_loc(count) = aa.SliceLocation;
+            end
+            tt = unique(tt); sl_loc = unique(sl_loc);
+            nframes = length(tt);               % number of reconstructed frames
+            timeres = mean(diff(tt));           % temporal resolution, in ms
+            nslices = length(files)/nframes;
+            pixdim = [info.PixelSpacing(1) info.PixelSpacing(2) mean(diff(sl_loc))];
         end
         res = [tmp{1,'Rows'} tmp{1,'Columns'} nslices];
         fov = pixdim.*res/10;                       % Field of view in cm
@@ -97,8 +133,27 @@ for ii = 1:4
             
         else
             img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
-            vInfo = info.Private_0051_1014;
-            tmpOri = info.Private_0051_100e;
+            try
+                vInfo = info.Private_0051_1014;
+                tmpOri = info.Private_0051_100e;
+            catch
+                vInfo = info.Private_0021_1129;
+                dirs = {'rl','ap','fh'};    % convention for HFS scans
+                dcmorient = info.ImageOrientationPatient;
+                rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
+                colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
+                if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+                    tmpOri = 'Tra';
+                elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
+                    tmpOri = 'Cor';
+                elseif strcmp(rowDir,'ap') && strcmp(colDir,'fh')
+                    tmpOri = 'Sag';
+                else
+                    warning('unknown image orientation, assuming transversal');
+                    tmpOri = 'Tra';
+                end
+            end
+
             tmpVDir = strfind(vInfo,'_');
             VENC = str2double(vInfo(2:tmpVDir(1)-1))*10;              % venc, in mm/s
             vDir = vInfo(tmpVDir(end)+1:end);

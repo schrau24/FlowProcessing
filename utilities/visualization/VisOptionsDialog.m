@@ -74,6 +74,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             % Update UI with input values
             app.maxVelocityVisEditField.Value = num2str(vecVel);
 
+            % Sync numeric cache in CallingApp so it is valid from first render
+            if app.callingAppValid()
+                app.CallingApp.visParams.maxVel    = vecVel;
+                app.CallingApp.visParams.minVel    = str2double(app.minVelocityVisEditField.Value);
+                app.CallingApp.visParams.minQuiver = str2double(app.minQuiverEditField.Value);
+                app.CallingApp.visParams.maxQuiver = str2double(app.maxQuiverEditField.Value);
+            end
+
             figure(app.VisOptionsDialogUIFigure);
         end
 
@@ -83,50 +91,74 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisOptionsDialogUIFigure.Visible = 'off';
         end
 
+        % -----------------------------------------------------------------
+        % HELPER: silently bail if the main app has been closed/deleted
+        % -----------------------------------------------------------------
+        function ok = callingAppValid(app)
+            try
+                ok = ~isempty(app.CallingApp) && ishandle(app.CallingApp.FlowProcessingUIFigure);
+            catch
+                ok = false;
+            end
+        end
+
         % Value changed function: minVelocityVisEditField
         function minVelocityVisEditFieldValueChanged(app, event)
-            app.CallingApp.VisualizationPlot.CLim = [str2double(app.minVelocityVisEditField.Value) str2double(app.maxVelocityVisEditField.Value)];
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.minVel = str2double(app.minVelocityVisEditField.Value);
+            app.CallingApp.VisualizationPlot.CLim = [app.CallingApp.visParams.minVel, app.CallingApp.visParams.maxVel];
         end
 
         % Value changed function: maxVelocityVisEditField
         function maxVelocityVisEditFieldValueChanged(app, event)
-            app.CallingApp.VisualizationPlot.CLim = [str2double(app.minVelocityVisEditField.Value) str2double(app.maxVelocityVisEditField.Value)];
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.maxVel = str2double(app.maxVelocityVisEditField.Value);
+            app.CallingApp.VisualizationPlot.CLim = [app.CallingApp.visParams.minVel, app.CallingApp.visParams.maxVel];
         end
 
         % Value changed function: minQuiverEditField
         function minQuiverEditFieldValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.minQuiver = str2double(app.minQuiverEditField.Value);
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: maxQuiverEditField
         function maxQuiverEditFieldValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.maxQuiver = str2double(app.maxQuiverEditField.Value);
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: SubsampleSlider
         function SubsampleSliderValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: view_3Dpatch_checkboxChanged
         function view_3Dpatch_checkboxChanged(app, event)
+            if ~app.callingAppValid(), return; end
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: view_3DSegpatch_checkboxChanged
         function view_3DSegpatch_checkboxChanged(app, event)
+            if ~app.callingAppValid(), return; end
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: VisPts
         function VisPtsValueChanged(app, ~)
+            if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 
         % Value changed function: LocationDropDown
         function LocationDropDownValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             currCbar = app.CallingApp.VisualizationPlot.Colorbar;
             cbarLoc = app.LocationDropDown.Value;
             pos = get(currCbar,'position');
@@ -149,18 +181,19 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: ColormapDropDown
         function ColormapDropDownValueChanged(app, event)
-            cmap = app.ColormapDropDown.Value;
+            if ~app.callingAppValid(), return; end
             if contains(app.ColormapDropDown.Value,'inverse')
-                eval(['cmap=' erase(app.ColormapDropDown.Value,'inverse ') '(256);']);
+                cmap = feval(erase(app.ColormapDropDown.Value,'inverse '), 256);
                 cmap = flip(cmap,1);
             else
-                eval(['cmap=' app.ColormapDropDown.Value '(256);']);
+                cmap = feval(app.ColormapDropDown.Value, 256);
             end
             colormap(app.CallingApp.VisualizationPlot,cmap);
         end
 
         % Value changed function: TextcolorDropDown
         function TextcolorDropDownValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             axisText = [0 0 0];
             if strcmp(app.TextcolorDropDown.Value,'white')
                 axisText = [1 1 1];
@@ -172,6 +205,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: backgroundDropDown
         function backgroundDropDownValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             backgroundC = [1 1 1];
             if strcmp(app.backgroundDropDown.Value,'black')
                 backgroundC = [0 0 0];
@@ -181,16 +215,21 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: minMapEditField
         function minMapEditFieldValueChanged(app, event)
-            app.CallingApp.MapPlot.CLim = [str2double(app.minMapEditField.Value) str2double(app.maxMapEditField.Value)];
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.minMap = str2double(app.minMapEditField.Value);
+            app.CallingApp.MapPlot.CLim = [app.CallingApp.visParams.minMap, app.CallingApp.visParams.maxMap];
         end
 
         % Value changed function: maxMapEditField
         function maxMapEditFieldValueChanged(app, event)
-            app.CallingApp.MapPlot.CLim = [str2double(app.minMapEditField.Value) str2double(app.maxMapEditField.Value)];
+            if ~app.callingAppValid(), return; end
+            app.CallingApp.visParams.maxMap = str2double(app.maxMapEditField.Value);
+            app.CallingApp.MapPlot.CLim = [app.CallingApp.visParams.minMap, app.CallingApp.visParams.maxMap];
         end
 
         % Value changed function: LocationDropDown_2
         function LocationDropDown_2ValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             currCbar = app.CallingApp.MapPlot.Colorbar;
             cbarLoc = app.LocationDropDown_2.Value;
             pos = get(currCbar,'position');
@@ -213,18 +252,19 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: ColormapDropDown_2
         function ColormapDropDown_2ValueChanged(app, event)
-            cmap = app.ColormapDropDown_2.Value;
+            if ~app.callingAppValid(), return; end
             if contains(app.ColormapDropDown_2.Value,'inverse')
-                eval(['cmap=' erase(app.ColormapDropDown_2.Value,'inverse ') '(256);']);
+                cmap = feval(erase(app.ColormapDropDown_2.Value,'inverse '), 256);
                 cmap = flip(cmap,1);
             else
-                eval(['cmap=' app.ColormapDropDown_2.Value '(256);']);
+                cmap = feval(app.ColormapDropDown_2.Value, 256);
             end
             colormap(app.CallingApp.MapPlot,cmap);
         end
 
         % Value changed function: TextcolorDropDown_2
         function TextcolorDropDown_2ValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
             axisText = [0 0 0];
             if strcmp(app.TextcolorDropDown_2.Value,'white')
                 axisText = [1 1 1];
@@ -236,11 +276,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: mask_erosion_checkboxChanged
         function mask_erosion_checkboxChanged(app, event)
+            if ~app.callingAppValid(), return; end
             viewMap(app.CallingApp);
         end
 
-        % Value changed function: mask_erosion_checkboxChanged
+        % Value changed function: smoothMap_checkboxChanged
         function smoothMap_checkboxChanged(app, event)
+            if ~app.callingAppValid(), return; end
             viewMap(app.CallingApp);
         end
 

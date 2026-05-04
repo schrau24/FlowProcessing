@@ -159,6 +159,21 @@ classdef FlowProcessing < matlab.apps.AppBase
         SaveAppStateButton              matlab.ui.control.Button
     end
 
+    % Properties that need to be accessible by companion apps (e.g. VisOptionsDialog)
+    properties (Access = public)
+        maskHandles;                % cell(1,10) of mask checkbox handles – set in startupFcn
+
+        % Cached numeric vis parameters – written by VisOptionsDialog on every field change
+        % so that FlowProcessing.m never calls str2double at render time.
+        visParams = struct( ...
+            'minVel',    0, ...
+            'maxVel',    150, ...
+            'minQuiver', 0, ...
+            'maxQuiver', 100, ...
+            'minMap',    0, ...
+            'maxMap',    150);
+    end
+
     properties (Access = private)
         VisOptionsApp;              % the VisOptions app with associated params
         directory;                  % the data directory
@@ -198,18 +213,18 @@ classdef FlowProcessing < matlab.apps.AppBase
         cbar_unwrap;                % handle for unwrap colorbar
 
         hpatch1;                    % initial 3D patch for 3D vis
-        patchMask1;                 % segmentation 3D patch for 3D vis
-        patchMask2;                 % segmentation 3D patch for 3D vis
-        patchMask3;                 % segmentation 3D patch for 3D vis
-        patchMask4;                 % segmentation 3D patch for 3D vis
-        patchMask5;                 % segmentation 3D patch for 3D vis
-        patchMask6;                 % segmentation 3D patch for 3D vis
-        patchMask7;                 % segmentation 3D patch for 3D vis
-        patchMask8;                 % segmentation 3D patch for 3D vis
-        patchMask9;                 % segmentation 3D patch for 3D vis
-        patchMask10;                % segmentation 3D patch for 3D vis
+        patchMasks = cell(1,10);    % segmentation 3D patch handles (replaces patchMask1..10)
 
         rotAngles;                  % rotation angles used for viewing, can be changed by viewer
+
+        % --- isosurface geometry caches (dirty-flag pattern) ------------
+        segIsoFV        = [];       % cached isosurface for app.segment (main seg)
+        segIsoFV_dirty  = true;     % set true whenever app.segment changes
+        segIsoFV_coords = [];       % cached [xx,yy,zz] meshgrid struct for main seg
+        visSegIsoFV       = [];     % cached isosurface for currSeg (vis tab)
+        visSegIsoFV_dirty = true;
+
+        isAnimating = false;    	% true during SaveRotatedAnimation – suppresses axis tight
 
         usedBranches;               % a list that is built up to determine which branches to perform flow measurements on
         FullBranchDistance;         % the full distance vector (in mm)
@@ -235,31 +250,75 @@ classdef FlowProcessing < matlab.apps.AppBase
 
     methods (Access = public)
 
+        % -----------------------------------------------------------------
+        % HELPER: return the active combined segmentation for a given frame.
+        % Replaces the 12+ duplicated currSeg construction blocks.
+        % -----------------------------------------------------------------
+        function currSeg = getCurrentSeg(app, t)
+            if app.isSegmentationLoaded
+                if app.isTimeResolvedSeg
+                    currSeg = logical(app.aorta_seg(:,:,:,t));
+                else
+                    activeIdx = app.getActiveMaskIndices();
+                    if isempty(activeIdx)
+                        currSeg = false(size(app.aorta_seg,1), size(app.aorta_seg,2), size(app.aorta_seg,3));
+                    else
+                        currSeg = any(app.aorta_seg(:,:,:,activeIdx), 4);
+                    end
+                end
+            else
+                currSeg = logical(app.segment);
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % HELPER: return indices of currently checked mask checkboxes.
+        % -----------------------------------------------------------------
+        function idx = getActiveMaskIndices(app)
+            if isempty(app.maskHandles)
+                idx = [];
+                return
+            end
+            idx = find(cellfun(@(h) h.Value, app.maskHandles));
+        end
+
         function View3DSegmentation(app)
 
             cla(app.View3D);
 
             c = prism(size(app.aorta_seg,4));
             if (app.isSegmentationLoaded)
-                if app.mask1.Value
-                    aa = smooth3(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value));
-                    hold(app.View3D,'on')
-                    app.patchMask1 = patch(app.View3D, isosurface(aa,.5),'FaceColor',c(1,:),'EdgeColor', 'none','FaceAlpha',0.5);
-                    reducepatch(app.patchMask1,0.6);
-                end
-                if ~app.isTimeResolvedSeg
-                    for ii = 2:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
+                if app.isTimeResolvedSeg
+                    % Time-resolved: show only the current timeframe as a single surface
+                    if app.maskHandles{1}.Value
+                        aa = smooth3(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value));
+                        hold(app.View3D,'on')
+                        app.patchMasks{1} = patch(app.View3D, isosurface(aa,.5), ...
+                            'FaceColor',c(1,:),'EdgeColor','none','FaceAlpha',0.5);
+                        reducepatch(app.patchMasks{1}, 0.6);
+                    end
+                else
+                    % Static multi-mask: draw each active mask as its own coloured surface
+                    for ii = 1:size(app.aorta_seg, 4)
+                    if app.maskHandles{ii}.Value
                             aa = smooth3(app.aorta_seg(:,:,:,ii));
                             hold(app.View3D,'on')
-                            eval(sprintf('app.patchMask%i=patch(app.View3D,isosurface(aa,.5),''FaceColor'',c(ii,:),''EdgeColor'',''none'',''FaceAlpha'',0.5);',ii));
-                            eval(sprintf('reducepatch(app.patchMask%i,0.6);,',ii));
-                        end
+                        app.patchMasks{ii} = patch(app.View3D, isosurface(aa,.5), ...
+                            'FaceColor',c(ii,:),'EdgeColor','none','FaceAlpha',0.5);
+                        reducepatch(app.patchMasks{ii}, 0.6);
                     end
                 end
+                end
             else
+                % No manual segmentation – use the auto-threshold segment.
+                % Compute isosurface locally in voxel index space to match
+                % the voxel-space xlim/ylim set below.
+                % NOTE: do NOT use segIsoFV here – that cache stores mm-scaled
+                % vertices for updateVisualization and must not be mixed with
+                % the voxel-space coordinates used by View3D.
                 ss = smooth3(app.segment);
-                app.hpatch1 = patch(app.View3D, isosurface(ss,.5),'FaceColor','red','EdgeColor', 'none','FaceAlpha',0.35);
+                app.hpatch1 = patch(app.View3D, isosurface(ss, 0.5), ...
+                    'FaceColor','red','EdgeColor','none','FaceAlpha',0.35);
                 reducepatch(app.hpatch1 ,0.6);
             end
             hold(app.View3D,'off')
@@ -279,8 +338,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             % if rotation angles are non-zero, rotate now
             if sum(abs(app.rotAngles)) > 0
                 if (app.isSegmentationLoaded)
-                    rotate(app.patchMask1,[1 0 0], app.rotAngles(1))
-                    rotate(app.patchMask1,[0 1 0], app.rotAngles(2))
+                    rotate(app.patchMasks{1},[1 0 0], app.rotAngles(1))
+                    rotate(app.patchMasks{1},[0 1 0], app.rotAngles(2))
                 else
                     rotate(app.hpatch1,[1 0 0], app.rotAngles(1))
                     rotate(app.hpatch1,[0 1 0], app.rotAngles(2))
@@ -293,21 +352,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             colorbar(app.View3D_2,'off')
             cla(app.View3D_2);
 
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
-            currSeg = smooth3(currSeg);
+            currSeg = app.getCurrentSeg(app.SegTimeframeSpinner.Value);
+            currSeg = smooth3(double(currSeg));
 
             hpatch = patch(app.View3D_2,isosurface(currSeg,0.5),'FaceAlpha',0.20);
             reducepatch(hpatch,0.6);
@@ -355,20 +401,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         function view3D_wParams(app)
 
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
+            currSeg = app.getCurrentSeg(app.SegTimeframeSpinner.Value);
 
             % indices for flow plotting
             x = round(app.branchActual(:,1));
@@ -380,11 +413,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             cla(app.View3D_2);
             colorbar(app.View3D_2,'off');
 
-            if app.isSegmentationLoaded
-                hpatch = patch(app.View3D_2,isosurface(smooth3(currSeg),0.5),'FaceAlpha',0.25);
-            else
-                hpatch = patch(app.View3D_2,isosurface(smooth3(app.segment),0.5),'FaceAlpha',0.25);
-            end
+            hpatch = patch(app.View3D_2, isosurface(smooth3(double(currSeg)),0.5),'FaceAlpha',0.25);
             reducepatch(hpatch,0.6);
             set(hpatch,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none');
 
@@ -435,7 +464,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 textint = app.FullBranchDistance(minIdx:5:minIdx2);
                 textint2 = minIdx:5:minIdx2;
             else
-                eval(['ptRange=[' str '];']);
+                ptRange = str2num(str); %#ok<ST2NM>
                 ptRange(ptRange>length(app.branchActual)) = [];
                 textint2 = ptRange(1:5:end); textint = textint2;
             end
@@ -482,7 +511,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                eval(['ptRange=[' str '];']);
+                ptRange = str2num(str); %#ok<ST2NM>
                 ptRange(ptRange>length(app.branchActual)) = [];
                 % reset the string to correct max
                 outNums = sscanf(str,'%i:%i:%i');
@@ -568,8 +597,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         set(h,'AlphaData',img2(:,:,ct))
                         hold(gca,'off');
                     else
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
+                        for ii = app.getActiveMaskIndices()
                                 ct = ct+1;
                                 hold(gca,'on');
                                 h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
@@ -578,7 +606,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                         end
                     end
-                end
                 axis equal off
                 daspect([1 1 1]);
 
@@ -603,8 +630,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         set(h,'AlphaData',img2(:,:,ct))
                         hold(gca,'off');
                     else
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
+                        for ii = app.getActiveMaskIndices()
                                 ct = ct+1;
                                 hold(gca,'on');
                                 h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
@@ -613,7 +639,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             end
                         end
                     end
-                end
                 axis equal off
                 daspect([1 1 1]);
                 set(cropFig,'Name','Cropped image')
@@ -636,7 +661,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % crop in time too
             str = app.FramesToUse.Value;
-            eval(['ptRange=[' str '];']);
+            ptRange = str2num(str); %#ok<ST2NM>
             app.nframes = length(ptRange);
 
             [x, y, z] = ind2sub(size(app.mask),find(app.mask));
@@ -684,109 +709,66 @@ classdef FlowProcessing < matlab.apps.AppBase
             % colormap for multimask
             c = prism(size(app.aorta_seg,4));
 
-            % Set mips
+            % Determine which mask indices are active (computed once for all 3 axes)
+            if app.isSegmentationLoaded && ~app.isTimeResolvedSeg
+                activeMasks = app.getActiveMaskIndices();
+            end
+            tSeg = app.SegTimeframeSpinner.Value;
+
+            % Helper: overlay active mask projections onto a given axes
+            function overlayMasks(ax, dim, imSize, alpha)
+                if ~app.isSegmentationLoaded, return; end
+                if app.isTimeResolvedSeg
+                    hold(ax,'on');
+                    img2 = reshape(max(app.aorta_seg(:,:,:,tSeg),[],dim), imSize);
+                    h = imagesc(ax, cat(3, c(1,1)*ones(imSize), c(1,2)*ones(imSize), c(1,3)*ones(imSize)));
+                    set(h,'AlphaData', alpha*img2);
+                    hold(ax,'off');
+                else
+                    for ii = activeMasks
+                        hold(ax,'on');
+                        img2 = reshape(max(app.aorta_seg(:,:,:,ii),[],dim), imSize);
+                        h = imagesc(ax, cat(3, c(ii,1)*ones(imSize), c(ii,2)*ones(imSize), c(ii,3)*ones(imSize)));
+                        set(h,'AlphaData', 0.15*img2);
+                        hold(ax,'off');
+                    end
+                end
+            end
+
+            % X axis MIP
             cla(app.AxesX);
             imSize = size(max(app.angio,[],1)); imSize = imSize(2:3);
             imagesc(app.AxesX,reshape(max(app.angio,[],1),imSize));
-            if app.isSegmentationLoaded
-                if ~app.isTimeResolvedSeg
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            hold(app.AxesX,'on');
-                            img2 = reshape(max(app.aorta_seg(:,:,:,ii),[],1),imSize);
-                            h = imagesc(app.AxesX,cat(3, c(ii,1)*ones(imSize), c(ii,2)*ones(imSize), c(ii,3)*ones(imSize)));
-                            set(h,'AlphaData',0.15*img2)
-                            hold(app.AxesX,'off');
-                        end
-                    end
-                else
-                    hold(app.AxesX,'on');
-                    img2 = reshape(max(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value),[],1),imSize);
-                    h = imagesc(app.AxesX,cat(3, c(1,1)*ones(imSize), c(1,2)*ones(imSize), c(1,3)*ones(imSize)));
-                    set(h,'AlphaData',0.25*img2)
-                    hold(app.AxesX,'off');
-                end
-            end
+            overlayMasks(app.AxesX, 1, imSize, 0.25);
             set(app.AxesX,'XTickLabel','','YTickLabel','')
-            colormap(app.AxesX,'gray')
-            axis(app.AxesX,'equal')
-            daspect(app.AxesX,[1 1 1]);
+            colormap(app.AxesX,'gray'); axis(app.AxesX,'equal'); daspect(app.AxesX,[1 1 1]);
 
+            % Y axis MIP
             cla(app.AxesY);
             imSize = size(max(app.angio,[],2)); imSize = imSize([1,3]);
             imagesc(app.AxesY,reshape(max(app.angio,[],2),imSize));
-            if app.isSegmentationLoaded
-                if ~app.isTimeResolvedSeg
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            hold(app.AxesY,'on');
-                            img2 = reshape(max(app.aorta_seg(:,:,:,ii),[],2),imSize);
-                            h = imagesc(app.AxesY,cat(3, c(ii,1)*ones(imSize), c(ii,2)*ones(imSize), c(ii,3)*ones(imSize)));
-                            set(h,'AlphaData',0.15*img2)
-                            hold(app.AxesY,'off');
-                        end
-                    end
-                else
-                    hold(app.AxesY,'on');
-                    img2 = reshape(max(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value),[],2),imSize);
-                    h = imagesc(app.AxesY,cat(3, c(1,1)*ones(imSize), c(1,2)*ones(imSize), c(1,3)*ones(imSize)));
-                    set(h,'AlphaData',0.25*img2)
-                    hold(app.AxesY,'off');
-                end
-            end
+            overlayMasks(app.AxesY, 2, imSize, 0.25);
             set(app.AxesY,'XTickLabel','','YTickLabel','')
-            colormap(app.AxesY,'gray')
-            axis(app.AxesY,'equal')
-            daspect(app.AxesY,[1 1 1]);
+            colormap(app.AxesY,'gray'); axis(app.AxesY,'equal'); daspect(app.AxesY,[1 1 1]);
 
+            % Z axis MIP
             cla(app.AxesZ);
             imSize = size(max(app.angio,[],3)); imSize = imSize([1,2]);
             imagesc(app.AxesZ,reshape(max(app.angio,[],3),imSize));
-            if app.isSegmentationLoaded
-                if ~app.isTimeResolvedSeg
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            hold(app.AxesZ,'on');
-                            img2 = reshape(max(app.aorta_seg(:,:,:,ii),[],3),imSize);
-                            h = imagesc(app.AxesZ,cat(3, c(ii,1)*ones(imSize), c(ii,2)*ones(imSize), c(ii,3)*ones(imSize)));
-                            set(h,'AlphaData',0.25*img2)
-                            hold(app.AxesZ,'off');
-                        end
-                    end
-                else
-                    hold(app.AxesZ,'on');
-                    img2 = reshape(max(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value),[],3),imSize);
-                    h = imagesc(app.AxesZ,cat(3, c(1,1)*ones(imSize), c(1,2)*ones(imSize), c(1,3)*ones(imSize)));
-                    set(h,'AlphaData',0.25*img2)
-                    hold(app.AxesZ,'off');
-                end
-            end
+            overlayMasks(app.AxesZ, 3, imSize, 0.25);
             set(app.AxesZ,'XTickLabel','','YTickLabel','')
-            colormap(app.AxesZ,'gray')
-            axis(app.AxesZ,'equal')
-            daspect(app.AxesZ,[1 1 1]);
+            colormap(app.AxesZ,'gray'); axis(app.AxesZ,'equal'); daspect(app.AxesZ,[1 1 1]);
         end
 
         function updateVisualization(app)
 
-            % get segmentation
-            if app.isSegmentationLoaded
-                if app.isTimeResolvedSeg
-                    currSeg = app.aorta_seg(:,:,:,t);
-                else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
-                    end
-                end
-            else
-                currSeg = app.segment;
-            end
+            t = app.TimeframeSpinner.Value;
+            if t == 0, t = 1; end
 
-            % grab vis parameters
+            % get segmentation via helper (eliminates duplicated block)
+            currSeg = app.getCurrentSeg(t);
+
+            % grab vis parameters – use cached numeric values where possible
             if ~isvalid(app.VisOptionsApp)
                 scale = [0 round(app.VENC/10)];
                 backgroundC = [1 1 1];
@@ -794,7 +776,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 cmap = 'jet';
                 cbarLoc = 'bottom-left';
             else
-                scale = [str2double(app.VisOptionsApp.minVelocityVisEditField.Value) str2double(app.VisOptionsApp.maxVelocityVisEditField.Value)];
+                scale      = [app.visParams.minVel, app.visParams.maxVel];
                 backgroundC = [1 1 1];
                 if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
                     backgroundC = [0 0 0];
@@ -833,12 +815,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             set(app.cbar_vis,'position',pos);
             delete(findall(app.VisualizationPlot,'Type','light'))
 
-            t = app.TimeframeSpinner.Value;
-            if t == 0   % to prevent errors when coming from other tabs
-                t = 1;
-            end
-
             % toggle 3D surfaces
+            % vis3Dsurface  = background anatomy shell (app.segment, full FOV)
+            % vis3DSegsurface = vessel of interest (currSeg / aorta_seg)
+            % Both use pixdim-scaled grids so they share the same mm coordinate space.
             if app.VisOptionsApp.view_3Dpatch_checkbox.Value
                 if isempty(app.vis3Dsurface) || app.is3DChanged
                     app.vis3Dsurface = []; idxToRemove = [];
@@ -849,18 +829,25 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     delete(app.VisualizationPlot.Children(idxToRemove));
 
-                    [xx,yy,zz] = meshgrid((1:size(app.segment,2))*app.pixdim(1),(1:size(app.segment,1))*app.pixdim(2), ...
-                        (1:size(app.segment,3))*app.pixdim(3));
-                    toPlot = smooth3(app.segment);
-                    app.vis3Dsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_surface');
+                    if app.segIsoFV_dirty || isempty(app.segIsoFV)
+                        [xx,yy,zz] = meshgrid( ...
+                            (1:size(app.segment,2))*app.pixdim(1), ...
+                            (1:size(app.segment,1))*app.pixdim(2), ...
+                            (1:size(app.segment,3))*app.pixdim(3));
+                        app.segIsoFV       = isosurface(xx,yy,zz,smooth3(app.segment));
+                        app.segIsoFV_dirty  = false;
+                    end
+                    app.vis3Dsurface = patch(app.VisualizationPlot, app.segIsoFV, ...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor','none', ...
+                        'PickableParts','none','Tag','3D_surface');
                     app.is3DChanged = 0;
                 else
                     app.vis3Dsurface.Visible = 'on';
                 end
             else
+                if ~isempty(app.vis3Dsurface) && isvalid(app.vis3Dsurface)
                 app.vis3Dsurface.Visible = 'off';
+            end
             end
 
             if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
@@ -872,18 +859,26 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
                     end
                     delete(app.VisualizationPlot.Children(idxToRemove));
-                    [xx,yy,zz] = meshgrid((1:size(currSeg,2))*app.pixdim(1),(1:size(currSeg,1))*app.pixdim(2), ...
-                        (1:size(currSeg,3))*app.pixdim(3));
-                    toPlot = smooth3(currSeg);
-                    app.vis3DSegsurface = patch(app.VisualizationPlot,isosurface(xx,yy,zz,toPlot),...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor', 'none','PickableParts','none',...
-                        'Tag','3D_seg_surface');
+
+                    if app.visSegIsoFV_dirty || isempty(app.visSegIsoFV)
+                        [xx,yy,zz] = meshgrid( ...
+                            (1:size(currSeg,2))*app.pixdim(1), ...
+                            (1:size(currSeg,1))*app.pixdim(2), ...
+                            (1:size(currSeg,3))*app.pixdim(3));
+                        app.visSegIsoFV       = isosurface(xx,yy,zz,smooth3(double(currSeg)));
+                        app.visSegIsoFV_dirty = false;
+                    end
+                    app.vis3DSegsurface = patch(app.VisualizationPlot, app.visSegIsoFV, ...
+                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor','none', ...
+                        'PickableParts','none','Tag','3D_seg_surface');
                     app.is3DSegChanged = 0;
                 else
                     app.vis3DSegsurface.Visible = 'on';
                 end
             else
+                if ~isempty(app.vis3DSegsurface) && isvalid(app.vis3DSegsurface)
                 app.vis3DSegsurface.Visible = 'off';
+            end
             end
 
             switch app.VisTypeDropDown.Value
@@ -900,6 +895,68 @@ classdef FlowProcessing < matlab.apps.AppBase
                     set(app.streamPatch,'Visible','on');
                     viewStreamlines(app, currSeg, t);
             end
+
+            % Always finalise axis/camera in the full update so the scene
+            % is correctly framed after any patch is created or toggled.
+            % Skip during animation – limits are frozen by the animation loop.
+            if ~app.isAnimating
+            axis(app.VisualizationPlot, 'off', 'tight')
+            view(app.VisualizationPlot, [0 0 1]);
+            daspect(app.VisualizationPlot, [1 1 1]);
+            camorbit(app.VisualizationPlot, app.rotAngles2(2), app.rotAngles2(1), [1 1 0])
+            camroll(app.VisualizationPlot, app.rotAngles2(3));
+            end
+            hold(app.VisualizationPlot, 'off');
+        end
+
+        % -----------------------------------------------------------------
+        % FAST PATH: called only when the timeframe changes.
+        % Skips all appearance/geometry work (colormap, isosurfaces, camera,
+        % colorbar, lights) – those are unchanged. Only updates the velocity
+        % data shown on existing patch/image objects.
+        % -----------------------------------------------------------------
+        function updateVisualizationData(app)
+
+            t = app.TimeframeSpinner.Value;
+            if t == 0, t = 1; end
+
+            % If patches don't exist yet, fall back to the full update
+            % which will also set up axis limits and camera correctly.
+            if isempty(app.vectorPatch) && isempty(app.streamPatch)
+                updateVisualization(app);
+                return;
+            end
+
+            currSeg = app.getCurrentSeg(t);
+
+            switch app.VisTypeDropDown.Value
+                case 'Streamlines'
+                    if ~isempty(app.streamsOut)
+                        alphas = [0.2 0.5 0.9];
+                        firstRender = isempty(app.streamPatch) || app.isStreamsChanged.Value;
+                        for k = 1:numel(app.streamPatch)
+                            [X2,Y2,Z2,C2] = streamsToSurface( ...
+                                app.streamsOut.Xb{k,t}, app.streamsOut.Yb{k,t}, ...
+                                app.streamsOut.Zb{k,t}, app.streamsOut.Cb{k,t});
+                            set(app.streamPatch(k), ...
+                                'XData',X2,'YData',Y2,'ZData',Z2,'CData',C2, ...
+                                'EdgeAlpha', alphas(k));
+                        end
+                        % On the first render the axis limits are not yet set —
+                        % reset them so the patches are visible.
+                        if firstRender && ~app.isAnimating
+                            axis(app.VisualizationPlot, 'off', 'tight')
+                            view(app.VisualizationPlot, [0 0 1]);
+                            daspect(app.VisualizationPlot, [1 1 1]);
+                            camorbit(app.VisualizationPlot, app.rotAngles2(2), app.rotAngles2(1), [1 1 0])
+                            camroll(app.VisualizationPlot, app.rotAngles2(3));
+                        end
+                    end
+
+                case 'Vectors'
+                    % Recompute geometry for the new frame, update patch in-place.
+                    viewVelocityVectors(app, currSeg, t);
+            end
         end
 
         function viewVelocityVectors(app, currSeg, t)
@@ -911,16 +968,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'slice-wise'   % slicewise vectors
                     if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
 
-                        % do the rotation
-                        tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                        currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
-                        for f = 1:3
-                            tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
-                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                            currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
-                        end
-                        currV = currV_tmp; clear currV_tmp;
+                        % Rotate seg, velocity, and magnitude using helper (replaces 3-step imrotate3 cascade)
+                        [currSeg, currV, currMAG] = app.rotateVol3D(currSeg, currV, app.MAG(:,:,:,t), app.rotAngles2);
 
                         % grab current slice
                         sl = app.SliceSpinner_2.Value;
@@ -937,9 +986,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                         [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                             -5);   % cheat here and put the vel vectors at a negative location to overlay better
 
-                        tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
-                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                        currMAG = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                         img = repmat(currMAG(:,:,sl),[1 1 3]);
                     else % sagittal scan
                         if isequal(app.rotAngles2,[0,0]) % no additional rotation
@@ -1018,15 +1064,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
                             clear currV_1 currV_2 currV_3
                         else
-                            tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                            currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
-                            for f = 1:3
-                                tmp = imrotate3(currV(:,:,:,f),app.rotAngles2(2),[0 -1 0],'nearest');
-                                tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                                currV_tmp(:,:,:,f) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
-                            end
-                            currV = currV_tmp; clear currV_tmp;
+                            [currSeg, currV, currMAG] = app.rotateVol3D(currSeg, currV, app.MAG(:,:,:,t), app.rotAngles2);
 
                             % grab current slice
                             sl = app.SliceSpinner_2.Value;
@@ -1043,9 +1081,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                             if ~isequal(app.pixdim(1),app.pixdim(2))
                                 fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
                             end
-                            tmp = imrotate3(app.MAG(:,:,:,t),app.rotAngles2(2),[0 -1 0],'nearest');
-                            tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                            currMAG = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
                             img = repmat(currMAG(:,:,sl),[1 1 3]);
                         end
                     end
@@ -1058,7 +1093,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 case 'centerline contours' % contours from centerline
                     str = app.VisOptionsApp.VisPts.Value;
-                    eval(['ptRange=[' str '];']);
+                    ptRange = str2num(str); %#ok<ST2NM>
 
                     % oblique slices
                     L = []; xcoor_grid = []; ycoor_grid = []; zcoor_grid = [];
@@ -1111,73 +1146,123 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             c = [];
             % note the flipped vx and vy here
-            a = [str2double(app.VisOptionsApp.minQuiverEditField.Value) str2double(app.VisOptionsApp.maxQuiverEditField.Value)*max(vmagn(:))/100];
+            a = [app.visParams.minQuiver, app.visParams.maxQuiver * max(vmagn(:))/100];
             [F,V,C]=quiver3Dpatch(xcoor_grid(L),ycoor_grid(L),zcoor_grid(L),-vy(L),-vx(L),-vz(L),c,a);
 
             if isempty(app.vectorPatch)
                 app.vectorPatch = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat',...
                     'EdgeColor','none','FaceAlpha',0.75,'Tag','vector_patch');
+                % First render – set up axis and camera
+            axis(app.VisualizationPlot, 'off','tight')
+            view(app.VisualizationPlot,[0 0 1]);
+            daspect(app.VisualizationPlot,[1 1 1])
+            if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
+                camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+                camroll(app.VisualizationPlot,app.rotAngles2(3));
+            end
             else
+                % Data update only – reuse existing axes/camera state
                 set(app.vectorPatch,'Faces',F,'Vertices',V,'CData',C,...
                     'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
             end
             uistack(app.vectorPatch,'top');
-
-            % make it look good
-            axis(app.VisualizationPlot, 'off','tight')
-            view(app.VisualizationPlot,[0 0 1]);
-            daspect(app.VisualizationPlot,[1 1 1])
-
-            if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
-                % update view angle
-                camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
-                camroll(app.VisualizationPlot,app.rotAngles2(3));
-            end
         end
 
         function viewStreamlines(app, currSeg, t)
 
             alphas = [0.2 0.5 0.9]; nbins = length(alphas);
+
+            % Step 1: recalculate streamlines if needed (vis type change, param change etc.)
             if app.isStreamsChanged.Value || isempty(app.streamsOut)
-                app.streamPatch = []; idxToRemove = [];
-                for ii = 1:numel(app.VisualizationPlot.Children)
-                    if contains(app.VisualizationPlot.Children(ii).Tag,'streamline_patch')
-                        idxToRemove = cat(1,idxToRemove,ii);
-                    end
-                end
-                delete(app.VisualizationPlot.Children(idxToRemove));
+
+                % Always delete ALL existing streamline surface objects first
+                % so we never try to set() them with a differently-sized matrix.
+                toDelete = findall(app.VisualizationPlot, 'Tag', 'streamline_patch1', ...
+                    '-or','Tag','streamline_patch2','-or','Tag','streamline_patch3');
+                delete(toDelete);
+                app.streamPatch = [];
+
                 app.streamsOut = calculateStreamlines(currSeg, app.v, ...
                     round(app.VisOptionsApp.SubsampleSlider.Value), app.pixdim, ...
-                    str2double(app.VisOptionsApp.minQuiverEditField.Value), str2double(app.VisOptionsApp.maxVelocityVisEditField.Value), ...
+                    app.visParams.minQuiver, app.visParams.maxVel, ...
                     app.VisOptionsDropDown.Value, ...
                     app.VisOptionsApp.VisPts.Value, app.branchActual, app.tangent_V);
-            end
 
-            if isempty(app.streamPatch) || app.isStreamsChanged.Value
-                for k = 1:nbins
-                    app.streamPatch(k) = patch(app.VisualizationPlot,...
-                        'XData',app.streamsOut.Xb{k,t},'YData',app.streamsOut.Yb{k,t},...
-                        'ZData',app.streamsOut.Zb{k,t},'CData',app.streamsOut.Cb{k,t},...
-                        'EdgeColor','interp','FaceColor','none','LineWidth',1,...
-                        'EdgeAlpha',alphas(k),'Tag',sprintf('streamline_patch%i',k));
+                % Pad all frames to the same length per bin so surface object
+                % dimensions never change between frames (required by MATLAB surface).
+                [nbins_out, nframes_out] = size(app.streamsOut.Xb);
+                for k = 1:nbins_out
+                    maxLen = max(cellfun(@numel, app.streamsOut.Xb(k,:)));
+                    if maxLen == 0, maxLen = 1; end
+                    for tt = 1:nframes_out
+                            app.streamsOut.Xb{k,tt}(end+1:maxLen,1) = NaN;
+                            app.streamsOut.Yb{k,tt}(end+1:maxLen,1) = NaN;
+                            app.streamsOut.Zb{k,tt}(end+1:maxLen,1) = NaN;
+                            app.streamsOut.Cb{k,tt}(end+1:maxLen,1) = NaN;
+                        % Guarantee column vector regardless of original orientation
+                        app.streamsOut.Xb{k,tt} = app.streamsOut.Xb{k,tt}(:);
+                        app.streamsOut.Yb{k,tt} = app.streamsOut.Yb{k,tt}(:);
+                        app.streamsOut.Zb{k,tt} = app.streamsOut.Zb{k,tt}(:);
+                        app.streamsOut.Cb{k,tt} = app.streamsOut.Cb{k,tt}(:);
+                    end
                 end
                 app.isStreamsChanged.Value = 0;
-            else
+            end
+
+            % Step 2: create surface objects if they don't exist yet
+            if isempty(app.streamPatch)
                 for k = 1:nbins
-                    set(app.streamPatch(k),...
-                        'XData',app.streamsOut.Xb{k,t},'YData',app.streamsOut.Yb{k,t},...
-                        'ZData',app.streamsOut.Zb{k,t},'CData',app.streamsOut.Cb{k,t},...
-                        'EdgeAlpha',alphas(k),'Tag',sprintf('streamline_patch%i',k));
+                    [X2,Y2,Z2,C2] = streamsToSurface( ...
+                        app.streamsOut.Xb{k,t}, app.streamsOut.Yb{k,t}, ...
+                        app.streamsOut.Zb{k,t}, app.streamsOut.Cb{k,t});
+                    app.streamPatch(k) = surface(app.VisualizationPlot, ...
+                        X2, Y2, Z2, C2, ...
+                        'EdgeColor','interp','FaceColor','none', ...
+                        'EdgeAlpha', alphas(k), ...
+                        'Tag', sprintf('streamline_patch%i',k));
+                end
+            else
+                % Step 3: surfaces exist and are correctly sized — swap data only
+                for k = 1:nbins
+                    [X2,Y2,Z2,C2] = streamsToSurface( ...
+                        app.streamsOut.Xb{k,t}, app.streamsOut.Yb{k,t}, ...
+                        app.streamsOut.Zb{k,t}, app.streamsOut.Cb{k,t});
+                    set(app.streamPatch(k),'XData',X2,'YData',Y2,'ZData',Z2,'CData',C2);
                 end
             end
             uistack(app.streamPatch,'top');
+        end
 
-            % make it look good
-            axis(app.VisualizationPlot, 'off','tight')
-            view(app.VisualizationPlot,[0 0 1]);
-            daspect(app.VisualizationPlot,[1 1 1]);
-            camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
-            hold(app.VisualizationPlot,'off');
+        % -----------------------------------------------------------------
+        % HELPER: apply three-axis rotation to seg, velocity, and MAG
+        % ang = [pitch, yaw, roll] matching original rotAngles2 convention.
+        % -----------------------------------------------------------------
+        function [seg_r, V_r, mag_r] = rotateVol3D(app, seg, V, mag, ang) %#ok<INUSL>
+            % Rotate seg
+            tmp   = imrotate3(seg,  ang(2), [0 -1 0], 'nearest');
+            tmp   = imrotate3(tmp,  ang(1), [-1 0 0], 'nearest');
+            seg_r = imrotate3(tmp,  ang(3), [0  0 1], 'nearest');
+
+            % Rotate each velocity component.
+            % Allocate V_r after the first component is rotated so the output
+            % size is known — imrotate3 pads to fit the rotated bounding box
+            % and the output size depends on the INPUT size, not seg_r size.
+            nComp = size(V, 4);
+            V_r   = [];
+            for f = 1:nComp
+                tmp      = imrotate3(V(:,:,:,f), ang(2), [0 -1 0], 'nearest');
+                tmp      = imrotate3(tmp,        ang(1), [-1 0 0], 'nearest');
+                Vf_r  = imrotate3(tmp,        ang(3), [0  0 1], 'nearest');
+                if isempty(V_r)
+                    V_r = zeros([size(Vf_r), nComp], 'like', V);
+                end
+                V_r(:,:,:,f) = Vf_r;
+            end
+
+            % Rotate MAG
+            tmp   = imrotate3(mag,  ang(2), [0 -1 0], 'nearest');
+            tmp   = imrotate3(tmp,  ang(1), [-1 0 0], 'nearest');
+            mag_r = imrotate3(tmp,  ang(3), [0  0 1], 'nearest');
         end
 
         function [outImg, outVol, idx_currSeg] = viewMap(app)
@@ -1186,39 +1271,37 @@ classdef FlowProcessing < matlab.apps.AppBase
             if ~contains(app.MapType.Value,'None')
                 isWSS = 0;
                 t = app.TimeframeSpinner.Value;
-                if app.isTimeResolvedSeg
-                    currSeg = app.aorta_seg(:,:,:,t);
-                else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
-                    end
-                    if ~app.isSegmentationLoaded
-                        currSeg = app.segment;
-                    end
+                currSeg = app.getCurrentSeg(t);
+
+                % Rotate using the full segment volume (same size as app.v) so
+                % imrotate3 output sizes are consistent. Apply currSeg mask afterward.
+                [seg_rot, currV_rot, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,1)/10, app.MAG(:,:,:,1), app.rotAngles2);
+
+                % Rotate currSeg separately (may be smaller if from aorta_seg)
+                tmpSeg  = imrotate3(double(currSeg), app.rotAngles2(2), [0 -1 0], 'nearest');
+                tmpSeg  = imrotate3(tmpSeg,          app.rotAngles2(1), [-1 0 0], 'nearest');
+                currSeg = logical(imrotate3(tmpSeg,  app.rotAngles2(3), [0  0 1], 'nearest'));
+
+                % Pad or crop currSeg to match rotated full-volume size if needed
+                sz_full = size(seg_rot);
+                sz_seg  = size(currSeg);
+                if ~isequal(sz_full, sz_seg)
+                    tmp = false(sz_full);
+                    r = min(sz_full(1),sz_seg(1)); c = min(sz_full(2),sz_seg(2)); s = min(sz_full(3),sz_seg(3));
+                    tmp(1:r,1:c,1:s) = currSeg(1:r,1:c,1:s);
+                    currSeg = tmp;
                 end
 
-                tmp = imrotate3(currSeg,app.rotAngles2(2),[0 -1 0],'nearest');
-                tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                currSeg = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
-
-                % grab current velocity
+                % grab current velocity (all frames, already divided by 10 for units)
                 if contains(app.MapTime.Value,'resolved')
-                    currV = app.v(:,:,:,:,t)/10;
-                else
-                    currV = app.v/10;
-                end
-                for tt = 1:size(currV,5)
-                    for f = 1:3
-                        tmp = imrotate3(currV(:,:,:,f,tt),app.rotAngles2(2),[0 -1 0],'nearest');
-                        tmp = imrotate3(tmp,app.rotAngles2(1),[-1 0 0],'nearest');
-                        currV_tmp(:,:,:,f,tt) = imrotate3(tmp,app.rotAngles2(3),[0 0 1],'nearest');
+                    currV = zeros([sz_full, 3, size(app.v,5)], 'like', app.v);
+                    for tt = 1:size(app.v,5)
+                        [~, currV_tt, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,tt)/10, app.MAG(:,:,:,1), app.rotAngles2);
+                        currV(:,:,:,:,tt) = currV_tt;
                     end
+                else
+                    currV = repmat(currV_rot,[1 1 1 1 size(app.v,5)]);
                 end
-                currV = currV_tmp; clear currV_tmp;
 
                 vx = currSeg.*currV(:,:,:,1,:);
                 vy = currSeg.*currV(:,:,:,2,:);
@@ -1303,14 +1386,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
 
                         % the viscous dissipation function at each voxel
+                        % Pack all 9 gradient components into a 3x3 cell for clean indexing
+                        gradV = {v11, v12, v13; v21, v22, v23; v31, v32, v33};
                         theta_v = 0;
                         for ii = 1:3
                             for jj = 1:3
-                                dij = 0;
-                                if ii==jj
-                                    dij = 1;
-                                end
-                                theta_v = theta_v + eval(sprintf('((v%i%i + v%i%i) - 2/3*div.*dij).^2',ii,jj,jj,ii));
+                                dij = double(ii == jj);
+                                theta_v = theta_v + (gradV{ii,jj} + gradV{jj,ii} - (2/3)*div.*dij).^2;
                             end
                         end
                         theta_v = 1/2*theta_v;
@@ -1353,7 +1435,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cmap = 'jet(256)';
                     cbarLoc = 'bottom-left';
                 else
-                    scale = [str2double(app.VisOptionsApp.minMapEditField.Value) str2double(app.VisOptionsApp.maxMapEditField.Value)];
+                    scale = [app.visParams.minMap, app.visParams.maxMap];
                     backgroundC = [1 1 1];
                     if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
                         backgroundC = [0 0 0];
@@ -1363,10 +1445,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                         axisText = [1 1 1];
                     end
                     if contains(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse')
-                        eval(['cmap=' erase(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse ') '(256);']);
+                        cmap = feval(erase(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse '), 256);
                         cmap = flip(cmap,1);
                     else
-                        eval(['cmap=' app.VisOptionsApp.ColormapDropDown_2.Value '(256);']);
+                        cmap = feval(app.VisOptionsApp.ColormapDropDown_2.Value, 256);
                     end
                     cbarLoc = app.VisOptionsApp.LocationDropDown_2.Value;
                 end
@@ -1379,7 +1461,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % first determine time operation
                     switch app.MapTime.Value
                         case 'time-resolved'
-                            outImg = outVol;
+                            % outVol is x×y×z×t — select the current frame
+                            outImg = outVol(:,:,:,t);
                         case 'time-averaged'
                             outImg = nanmean(outVol,4);
                         case 'peak'
@@ -1451,20 +1534,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             t = app.TimeframeSpinner_3.Value;
             s = app.SliceSpinner.Value;
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
+            currSeg = app.getCurrentSeg(t);
 
             PCA_masked = app.v(:,:,:,:,t).*repmat(permute(currSeg,[1 2 3 5 4]),[1 1 1 3 1])/10;
 
@@ -1544,6 +1614,19 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.InterpolateData.Icon = 'interpolate.jpg';
             app.VelocityUnwrapping.Icon = 'unwrap.jpg';
             app.DFW.Icon = 'DFW.jpg';
+
+            % Build maskHandles cell array – eliminates all eval(sprintf('app.mask%i...')) calls
+            app.maskHandles = {app.mask1, app.mask2, app.mask3, app.mask4, app.mask5, ...
+                               app.mask6, app.mask7, app.mask8, app.mask9, app.mask10};
+
+            % Initialise visParams cache with sensible defaults
+            app.visParams.minVel    = 0;
+            app.visParams.maxVel    = 150;
+            app.visParams.minQuiver = 0;
+            app.visParams.maxQuiver = 100;
+            app.visParams.minMap    = 0;
+            app.visParams.maxMap    = 150;
+
             drawnow;
         end
 
@@ -2032,8 +2115,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     tmp = zeros(size(app.aorta_seg));
                     tmp(app.aorta_seg == ii) = 1;
                     tmpMask(:,:,:,ii) = tmp;
-                    eval(sprintf('app.mask%i.Visible=''on'';',ii));
-                    eval(sprintf('app.mask%i.Value=1;',ii));
+                    app.maskHandles{ii}.Visible = 'on';
+                    app.maskHandles{ii}.Value   = 1;
                 end
                 app.aorta_seg = tmpMask; clear tmp tmpMask;
                 app.MaskLabel.Visible = 'on';
@@ -2055,7 +2138,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function FramesToUseValueChanged(app, ~)
 
             str = app.FramesToUse.Value;
-            eval(['ptRange=[' str '];']);
+            ptRange = str2num(str); %#ok<ST2NM>
 
             % first we recalculate the angio, then show the result
             [app.magWeightVel, app.angio] = calc_angio(app.MAG(:,:,:,ptRange), app.v(:,:,:,:,ptRange), app.VENC);
@@ -2259,13 +2342,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     Vmag = app.aorta_seg.*squeeze(sqrt(sum(app.v.^2,4)));
                     idx = find(mean(app.aorta_seg,4));
                 else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
-                    end
+                    currSeg = app.getCurrentSeg(app.TimeframeSpinner.Value);
                     Vmag = repmat(currSeg,[1 1 1 app.nframes]).*squeeze(sqrt(sum(app.v.^2,4)));
                     idx = find(sum(currSeg,4));
                 end
@@ -2355,13 +2432,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 if app.isTimeResolvedSeg
                     ss = imerode(app.aorta_seg(:,:,:,app.time_peak),se);
                 else
-                    currSeg = zeros(size(app.aorta_seg,1:3));
-                    % only use segmentations that were selected in first tab
-                    for ii = 1:size(app.aorta_seg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                        end
-                    end
+                    currSeg = app.getCurrentSeg();
                     ss = imerode(currSeg,se);
                 end
             else
@@ -2491,13 +2562,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         aortaSeg_timeResolved = app.aorta_seg;
                     else
                         aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
-                        currSeg = zeros(size(app.aorta_seg,1:3));
-                        % only use segmentations that were selected in first tab
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
-                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                            end
-                        end
+                        currSeg = app.getCurrentSeg(1); % frame-independent static seg
                         if ~app.isSegmentationLoaded
                             currSeg = app.segment;
                         end
@@ -2547,7 +2612,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % update maps tab, send spaced initial centerline points to maps tab
                     app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
                     app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
-
+                    app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                 case 2  % go into update_centerline code for manual adjustments
                     app.SplineSpacingSlider.Visible = 'on';
                     app.SplineSpacingSliderLabel.Visible = 'on';
@@ -2586,13 +2651,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         aortaSeg_timeResolved = app.aorta_seg;
                     else
                         aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
-                        currSeg = zeros(size(app.aorta_seg,1:3));
-                        % only use segmentations that were selected in first tab
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
-                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                            end
-                        end
+                        currSeg = app.getCurrentSeg(1); % frame-independent static seg
                         if ~app.isSegmentationLoaded
                             currSeg = app.segment;
                         end
@@ -2642,6 +2701,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     % update maps tab, send spaced initial centerline points to maps tab
                     app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
                     app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
+                    app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                     app.SplineSpacingSlider.Visible = 'off';
                     app.SplineSpacingSliderLabel.Visible = 'off';
             end
@@ -2671,7 +2731,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                eval(['ptRange=[' str '];']);
+                ptRange = str2num(str); %#ok<ST2NM>
             end
             waveforms = waveforms(ptRange,:);
 
@@ -2913,7 +2973,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                eval(['ptRange=[' str '];']);
+                ptRange = str2num(str); %#ok<ST2NM>
             end
 
             % save sheet with ptRange and distance
@@ -3109,8 +3169,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateLeftButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        eval(sprintf('rotate(app.patchMask%i,[0 1 0],10);',ii))
+                    if app.maskHandles{ii}.Value
+                        rotate(app.patchMasks{ii},[0 1 0],10);
                     end
                 end
             else
@@ -3124,8 +3184,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateRightButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        eval(sprintf('rotate(app.patchMask%i,[0 1 0],-10);',ii))
+                    if app.maskHandles{ii}.Value
+                        rotate(app.patchMasks{ii},[0 1 0],-10);
                     end
                 end
             else
@@ -3139,8 +3199,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateDownButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        eval(sprintf('rotate(app.patchMask%i,[1 0 0],10);',ii))
+                    if app.maskHandles{ii}.Value
+                        rotate(app.patchMasks{ii},[1 0 0],10);
                     end
                 end
             else
@@ -3154,8 +3214,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         function RotateUpButtonPushed(app, ~)
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        eval(sprintf('rotate(app.patchMask%i,[1 0 0],-10);',ii))
+                    if app.maskHandles{ii}.Value
+                        rotate(app.patchMasks{ii},[1 0 0],-10);
                     end
                 end
             else
@@ -3261,7 +3321,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             if value
                 % grab distances
-                eval(['ptRange=[' str '];']);
+                ptRange = str2num(str); %#ok<ST2NM>
                 app.PWVPoints.Value = [num2str(app.FullBranchDistance(ptRange(1))) ': ' num2str(app.FullBranchDistance(ptRange(end)))];
                 app.PWVPointsLabel.Text = ['Vessel dist (mm) [' num2str(app.FullBranchDistance(ptRange(1))) ':' num2str(app.FullBranchDistance(ptRange(end))) ']'];
             else
@@ -3288,7 +3348,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             if contains(app.MapTime.Value,'resolved')
                 viewMap(app);
             end
-            updateVisualization(app);
+            % Use fast path when only the timeframe changed – skips all
+            % appearance/geometry work that hasn't changed.
+            updateVisualizationData(app);
         end
 
         % Value changed function: MapType
@@ -3390,20 +3452,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     definput = {'0','0','0.0032'};
                     answer = inputdlg(prompt,dlgtitle,dims,definput);
 
-                    if app.isTimeResolvedSeg
-                        currSeg = app.aorta_seg(:,:,:,t);
-                    else
-                        currSeg = zeros(size(app.aorta_seg,1:3));
-                        % only use segmentations that were selected in first tab
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
-                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                            end
-                        end
-                        if ~app.isSegmentationLoaded
-                            currSeg = app.segment;
-                        end
-                    end
+                    currSeg = app.getCurrentSeg(t);
 
                     peakSystole = str2double(answer{1})==0;
                     viscosity = str2double(answer{3});
@@ -3622,7 +3671,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 errordlg('rotated animation not available for slice-wise vectors')
                 return;
             end
-            app.rotAngles2 = [0 0 0]; % reset the rotations and inform
+            app.rotAngles2 = [0 0 0];
             disp('only native orientation allowed for animated rotations');
 
             % temporarily hide other things for plotting
@@ -3637,63 +3686,75 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             [file,path] = uiputfile([app.directory '\*.gif'],'Selection file name and location');
             filename = fullfile(path,file);
-            % we default to 180 frames and deal over rotations and time
-            % frames
-            % loop over time frames and record
+
+            % --- PRE-LOOP: render frame 1 at zero rotation to establish
+            % stable limits BEFORE freezing them. axis tight is still active here.
+            app.TimeframeSpinner.Value = 1;
+                updateVisualization(app);
+            drawnow;
+
+            % Capture the stable limits from the neutral render
+                    veclim_x = app.VisualizationPlot.XLim;
+                    veclim_y = app.VisualizationPlot.YLim;
+                    veclim_z = app.VisualizationPlot.ZLim;
+            maplim_x = app.MapPlot.XLim;
+            maplim_y = app.MapPlot.YLim;
+
+            % Freeze limits and suppress axis tight for the entire loop
+            app.VisualizationPlot.XLim = veclim_x;
+            app.VisualizationPlot.YLim = veclim_y;
+            app.VisualizationPlot.ZLim = veclim_z;
+                    app.VisualizationPlot.XLimMode = 'manual';
+                    app.VisualizationPlot.YLimMode = 'manual';
+                    app.VisualizationPlot.ZLimMode = 'manual';
+            app.MapPlot.XLim = maplim_x;
+            app.MapPlot.YLim = maplim_y;
+            axis(app.VisualizationPlot, 'vis3d');   % lock aspect ratio for rotation
+
+            app.isAnimating = true;  % suppresses axis tight inside update functions
+
             ct_time = 1;
             ct_rotation = 0;
             for t = 1:180
                 app.TimeframeSpinner.Value = ct_time;
-                updateVisualization(app);
+                updateVisualizationData(app);   % fast path – data only, no axis reset
 
-                camorbit(app.VisualizationPlot,app.rotAngles2(2)+4*ct_rotation,app.rotAngles2(1),[1 1 0])
-                axis(app.VisualizationPlot,'vis3d')
-                % freeze limits to avoid jittering in gif
-                if t == 1
-                    veclim_x = app.VisualizationPlot.XLim;
-                    veclim_y = app.VisualizationPlot.YLim;
-                    veclim_z = app.VisualizationPlot.ZLim;
-                    app.VisualizationPlot.XLimMode = 'manual';
-                    app.VisualizationPlot.YLimMode = 'manual';
-                    app.VisualizationPlot.ZLimMode = 'manual';
-                    maplim_x = app.MapPlot.XLim;
-                    maplim_y = app.MapPlot.YLim;
-                else
+                % Apply current rotation
+                view(app.VisualizationPlot, [0 0 1]);
+                camorbit(app.VisualizationPlot, 4*ct_rotation, 0, [1 1 0]);
+
+                % Re-apply frozen limits (vis3d may relax them slightly)
                     app.VisualizationPlot.XLim = veclim_x;
                     app.VisualizationPlot.YLim = veclim_y;
                     app.VisualizationPlot.ZLim = veclim_z;
                     app.MapPlot.XLim = maplim_x;
                     app.MapPlot.YLim = maplim_y;
-                end
-                pause(0.01);
 
-                % only save the vectors/streamlines plot
+                drawnow;
+
+                % Capture and write frame
                 ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
-                % Turn screenshot into image
                 im = frame2im(ff);
-                % add time label
-                im = insertText(im,[100 1],sprintf('t = %2.2f s', (ct_time-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
-
-                % Turn image into indexed image (the gif format needs this)
+                im = insertText(im, [100 1], sprintf('t = %2.2f s', (ct_time-1)*(app.timeres/1000)), ...
+                    'BoxColor','white','FontSize',18);
                 [imind,cm] = rgb2ind(im(1:673,:,:),256);
-
-                delay = 1/(5*2); % default to 5 fps, factor of two to account for ct_time update
+                delay = 1/(5*2);
                 if t == 1
                     imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
                 else
                     imwrite(imind,cm, filename,'gif','WriteMode','append','DelayTime',delay);
                 end
-                if mod(t,2) == 1 % odd update ct_rotation
+
+                if mod(t,2) == 1
                     ct_rotation = ct_rotation + 1;
                 else
                     ct_time = ct_time + 1;
-                    if ct_time > app.nframes
-                        ct_time = 1;
-                    end
+                    if ct_time > app.nframes, ct_time = 1; end
                 end
             end
 
-            % turn back on
+            % Restore state
+            app.isAnimating = false;
             app.VisualizationPlot.XLimMode = 'auto';
             app.VisualizationPlot.YLimMode = 'auto';
             app.VisualizationPlot.ZLimMode = 'auto';
@@ -3704,7 +3765,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.SliceSpinner_2.Visible = 'on';
                 app.SliceSpinner_2Label.Visible = 'on';
             end
-
             app.MapType.Visible = 'on';
             app.MapPlot.Toolbar.Visible = 'on';
             app.VisualizationPlot.Toolbar.Visible = 'on';
@@ -4056,13 +4116,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         Vmag = app.aorta_seg.*squeeze(sqrt(sum(app.v.^2,4)));
                         idx = find(mean(app.aorta_seg,4));
                     else
-                        currSeg = zeros(size(app.aorta_seg,1:3));
-                        % only use segmentations that were selected in first tab
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
-                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                            end
-                        end
+                        currSeg = app.getCurrentSeg(1); % frame-independent static seg
                         Vmag = repmat(currSeg,[1 1 1 app.nframes]).*squeeze(sqrt(sum(app.v.^2,4)));
                         idx = find(sum(currSeg,4));
                     end
@@ -4106,17 +4160,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 vzN = double(app.v(:,:,:,3,t));
 
                 if app.isSegmentationLoaded
-                    if app.isTimeResolvedSeg
-                        currSeg = app.aorta_seg(:,:,:,t);
-                    else
-                        currSeg = zeros(size(app.aorta_seg,1:3));
-                        % only use segmentations that were selected in first tab
-                        for ii = 1:size(app.aorta_seg,4)
-                            if eval(sprintf('app.mask%i.Value==1',ii))
-                                currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                            end
-                        end
-                    end
+                    currSeg = app.getCurrentSeg(t);
                 else
                     currSeg = app.segment;
                 end
@@ -4226,20 +4270,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             sl = app.SliceSpinner.Value;
             tf = app.TimeframeSpinner_3.Value;
 
-            if app.isTimeResolvedSeg
-                currSeg = app.aorta_seg(:,:,:,t);
-            else
-                currSeg = zeros(size(app.aorta_seg,1:3));
-                % only use segmentations that were selected in first tab
-                for ii = 1:size(app.aorta_seg,4)
-                    if eval(sprintf('app.mask%i.Value==1',ii))
-                        currSeg(find(app.aorta_seg(:,:,:,ii))) = 1;
-                    end
-                end
-                if ~app.isSegmentationLoaded
-                    currSeg = app.segment;
-                end
-            end
+            currSeg = app.getCurrentSeg(t);
             tmpV = app.v(:,:,:,:,tf-1:tf).*repmat(currSeg, [1 1 1 3 2]);
             tmpV = squeeze(tmpV(:,:,sl,:,:));
             venc = app.VENC;
@@ -4535,11 +4566,18 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'on';
                     app.VisOptionsApp.VisPts.Visible = 'on';
                     app.VisOptionsApp.VisPts.Enable = 'on';
+                    app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
             end
             app.isStreamsChanged.Value = 1;
+            % Delete existing streamPatch surfaces — the new mode will produce
+            % a different padded length so the old surface dimensions are invalid.
+            if ~isempty(app.streamPatch)
+                try; delete(app.streamPatch); catch; end
+                app.streamPatch = [];
+            end
             updateVisualization(app);
             viewMap(app);
         end
@@ -4562,14 +4600,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     currSeg = app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value);
                 else
                     currSeg = app.aorta_seg;
-                    keepSegs = zeros(size(currSeg,4),1);
-                    % only edit currently selected segmentations
-                    for ii = 1:size(currSeg,4)
-                        if eval(sprintf('app.mask%i.Value==1',ii))
-                            keepSegs(ii) = 1;
-                        end
-                    end
-                    currSeg = currSeg(:,:,:,find(keepSegs));
+                    activeIdx = app.getActiveMaskIndices();
+                    currSeg = currSeg(:,:,:,activeIdx);
                 end
             else
                 currSeg = app.segment;

@@ -153,6 +153,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function VisPtsValueChanged(app, ~)
             if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
+            app.CallingApp.isPathlinesChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 

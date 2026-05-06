@@ -99,7 +99,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
         VisualizationGroup              matlab.ui.container.Panel
         VisTypeDropDown                 matlab.ui.control.DropDown
-        isStreamsChanged                matlab.ui.control.CheckBox % hidden to check if 3D segment has changed
+        isStreamsChanged                matlab.ui.control.CheckBox 
+        isPathlinesChanged              matlab.ui.control.CheckBox 
         VisOptionsDropDown              matlab.ui.control.DropDown
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
@@ -232,6 +233,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         vectorPatch;                % the patch used and updated for vectors
         streamsOut = [];            % struct holding calculated streamlines
         streamPatch;                % the patch used and updated for streamlines
+        pathlinesOut = [];          % struct holding calculated pathlines (dataStore + time_steps)
+        pathlinePatch;              % surface handles for pathline rendering (nParticles × 1)
+        pathlineInterp = [];        % cached 4D griddedInterpolant structs (expensive – reuse)
         sliceImg;                   % handle for background slice in 'slicewise'
         vis3Dsurface;               % the patch used for visualization plot
         is3DChanged = 1;            % to check if 3D segment has changed
@@ -884,6 +888,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             switch app.VisTypeDropDown.Value
                 case 'Vectors'
                     set(app.streamPatch,'Visible','off');
+                    if ~isempty(app.pathlinePatch)
+                        set(app.pathlinePatch,'Visible','off');
+                    end
                     set(app.vectorPatch,'Visible','on');
                     viewVelocityVectors(app, currSeg, t);
                 case 'Streamlines'
@@ -891,9 +898,20 @@ classdef FlowProcessing < matlab.apps.AppBase
                         delete(app.sliceImg)
                         app.sliceImg = [];
                     end
+                    if ~isempty(app.pathlinePatch)
+                        set(app.pathlinePatch,'Visible','off');
+                    end
                     set(app.vectorPatch,'Visible','off');
                     set(app.streamPatch,'Visible','on');
                     viewStreamlines(app, currSeg, t);
+                case 'Pathlines'
+                    if ~isempty(app.sliceImg)
+                        delete(app.sliceImg)
+                        app.sliceImg = [];
+                    end
+                    set(app.vectorPatch,'Visible','off');
+                    set(app.streamPatch,'Visible','off');
+                    viewPathlines(app, currSeg, t);
             end
 
             % Always finalise axis/camera in the full update so the scene
@@ -922,7 +940,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % If patches don't exist yet, fall back to the full update
             % which will also set up axis limits and camera correctly.
-            if isempty(app.vectorPatch) && isempty(app.streamPatch)
+            if isempty(app.vectorPatch) && isempty(app.streamPatch) && isempty(app.pathlinePatch)
                 updateVisualization(app);
                 return;
             end
@@ -952,6 +970,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                             camroll(app.VisualizationPlot, app.rotAngles2(3));
                         end
                     end
+
+                case 'Pathlines'
+                    % Timeframe spinner selects which time window to display
+                    viewPathlines(app, currSeg, t);
 
                 case 'Vectors'
                     % Recompute geometry for the new frame, update patch in-place.
@@ -1234,7 +1256,144 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
 
         % -----------------------------------------------------------------
-        % HELPER: apply three-axis rotation to seg, velocity, and MAG
+        % PATHLINE VISUALIZATION
+        % Pathlines trace particle trajectories through time using ODE45
+        % integration through a 4D velocity field. Each particle is emitted
+        % from a centerline contour seed point and tracked for the full
+        % cardiac cycle. The timeframe spinner selects the emission time
+        % window to display.
+        % -----------------------------------------------------------------
+        function viewPathlines(app, currSeg, t)
+
+            % --- (Re)calculate if needed --------------------------------
+            if app.isPathlinesChanged.Value || isempty(app.pathlinesOut)
+
+                % Clean up old patch objects
+                if ~isempty(app.pathlinePatch)
+                    try; delete(app.pathlinePatch); catch; end
+                    app.pathlinePatch = [];
+                end
+
+                % Get seed points from centerline contours (same logic as
+                % calculateStreamlines / viewVelocityVectors)
+                str      = app.VisOptionsApp.VisPts.Value;
+                ptRange  = str2num(str); %#ok<ST2NM>
+                subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
+
+                startX = []; startY = []; startZ = [];
+                for ii = ptRange
+                    currCP   = [app.branchActual(ii,2), app.branchActual(ii,1), app.branchActual(ii,3)];
+                    currNorm = app.tangent_V(ii,:);
+                    currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
+                    [B, x, y, z] = obliqueslice(currSeg, currCP, currNorm, 'FillValues', 0);
+
+                    tmp  = cat(2, x(:), y(:), z(:)) - currCP;
+                    tmp  = sqrt(sum(tmp .* tmp, 2));
+                    [~, pointLinearIndexInSlice] = min(tmp);
+                    [pointColumn, pointRow] = ind2sub(size(B), pointLinearIndexInSlice(1));
+                    B    = regiongrowing(B, pointColumn, pointRow);
+
+                    currL = find(B(:));
+                    if isempty(currL), continue; end
+                    currL  = currL(1:subsample:end);
+                    startX = cat(1, startX, x(currL) * app.pixdim(1));
+                    startY = cat(1, startY, y(currL) * app.pixdim(2));
+                    startZ = cat(1, startZ, z(currL) * app.pixdim(3));
+                end
+
+                if isempty(startX)
+                    warning('viewPathlines: no valid seed points found.');
+                    return
+                end
+
+                % start_points: N×3 in [x y z] = [row col slice] * pixdim
+                % NOTE: ndgrid convention swaps x↔y vs meshgrid — kept
+                % consistent with pathline_testing.m (startY, startX, startZ)
+                start_points = [startY, startX, startZ];
+
+                % Build 4D interpolants (cached — only recompute when invalidated)
+                if isempty(app.pathlineInterp)
+                    hWait = waitbar(0, 'Building 4D velocity interpolants...');
+                    [Xg, Yg, Zg, Tg] = ndgrid( ...
+                        (1:size(currSeg,1)) * app.pixdim(1), ...
+                        (1:size(currSeg,2)) * app.pixdim(2), ...
+                        (1:size(currSeg,3)) * app.pixdim(3), ...
+                        (1:app.nframes)     * (app.timeres/1000));
+                    vx_4d = -squeeze(app.v(:,:,:,1,:));
+                    vy_4d = -squeeze(app.v(:,:,:,2,:));
+                    vz_4d = -squeeze(app.v(:,:,:,3,:));
+                    app.pathlineInterp.U    = griddedInterpolant(Xg, Yg, Zg, Tg, -vx_4d, 'linear');
+                    app.pathlineInterp.V    = griddedInterpolant(Xg, Yg, Zg, Tg, -vy_4d, 'linear');
+                    app.pathlineInterp.W    = griddedInterpolant(Xg, Yg, Zg, Tg, -vz_4d, 'linear');
+                    smoothMask = smooth3(double(currSeg));
+                    [Xg3, Yg3, Zg3] = ndgrid( ...
+                        (1:size(currSeg,1)) * app.pixdim(1), ...
+                        (1:size(currSeg,2)) * app.pixdim(2), ...
+                        (1:size(currSeg,3)) * app.pixdim(3));
+                    app.pathlineInterp.mask = griddedInterpolant(Xg3, Yg3, Zg3, smoothMask, 'linear');
+                    if ishandle(hWait), close(hWait); end
+                end
+
+                % ODE integration
+                app.pathlinesOut = calculatePathlines( ...
+                    start_points, app.nframes, app.timeres, ...
+                    app.pathlineInterp, app.visParams.minVel, app.visParams.maxVel);
+
+                app.isPathlinesChanged.Value = 0;
+            end
+
+            % --- Render: show trajectories active during window t ------
+            % Each time window k corresponds to a cardiac frame — particles
+            % emitted at each window are shown as they travel through the
+            % remaining frames.
+            if isempty(app.pathlinesOut) || isempty(app.pathlinesOut.dataStore)
+                return
+            end
+
+            % Delete old patches and recreate (pathlines don't have a
+            % fixed uniform length like streamlines so surface trick doesn't apply —
+            % use patch with NaN separators; there are far fewer particles
+            % than streamline points so this is fast enough)
+            if ~isempty(app.pathlinePatch)
+                try; delete(app.pathlinePatch); catch; end
+                app.pathlinePatch = [];
+            end
+
+            numParticles = size(app.pathlinesOut.dataStore, 2);
+            patchIdx     = 0;
+            hold(app.VisualizationPlot, 'on');
+
+            for i = 1:numParticles
+                % Collect all segments for this particle up to window t
+                Xp = []; Yp = []; Zp = []; Cp = [];
+                for k = 1:min(t, size(app.pathlinesOut.dataStore, 1))
+                    d = app.pathlinesOut.dataStore{k, i};
+                    if isempty(d), continue; end
+                    Xp = [Xp; d.coords(:,2); NaN]; %#ok<AGROW>
+                    Yp = [Yp; d.coords(:,1); NaN]; %#ok<AGROW>
+                    Zp = [Zp; d.coords(:,3); NaN]; %#ok<AGROW>
+                    Cp = [Cp; d.vel/10;       NaN]; %#ok<AGROW>
+                end
+                if isempty(Xp), continue; end
+                patchIdx = patchIdx + 1;
+                app.pathlinePatch(patchIdx) = patch(app.VisualizationPlot, ...
+                    'XData',        Xp, ...
+                    'YData',        Yp, ...
+                    'ZData',        Zp, ...
+                    'CData',        Cp, ...
+                    'CDataMapping', 'scaled', ...
+                    'FaceColor',    'none', ...
+                    'EdgeColor',    'interp', ...
+                    'LineWidth',    0.75, ...
+                    'EdgeAlpha',    0.75, ...
+                    'Tag', 'pathline_patch');
+            end
+            hold(app.VisualizationPlot, 'off');
+
+            if ~isempty(app.pathlinePatch)
+                uistack(app.pathlinePatch, 'top');
+            end
+        end
         % ang = [pitch, yaw, roll] matching original rotAngles2 convention.
         % -----------------------------------------------------------------
         function [seg_r, V_r, mag_r] = rotateVol3D(app, seg, V, mag, ang) %#ok<INUSL>
@@ -1977,7 +2136,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.VisOptionsApp.projectionDropDown.Enable = 'on';
                         app.VisOptionsApp.projectionDropDown_Label.Enable = 'on';
 
-                        app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
+                        app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
                 end
                 app.TimeframeSpinner.Value = app.time_peak;
                 updateVisualization(app);
@@ -2131,6 +2290,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2166,6 +2326,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2178,6 +2339,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2190,6 +2352,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2201,6 +2364,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2222,6 +2386,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2243,6 +2408,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2254,6 +2420,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2274,6 +2441,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2285,6 +2453,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -2296,6 +2465,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.is3DSegChanged = 1;
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateMIPs(app);
         end
 
@@ -4320,6 +4490,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function flipvxValueChanged(app, ~)
             app.v(:,:,:,1,:) = -app.v(:,:,:,1,:);
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateVisualization(app);
         end
 
@@ -4327,6 +4498,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function flipvyValueChanged(app, ~)
             app.v(:,:,:,2,:) = -app.v(:,:,:,2,:);
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateVisualization(app);
         end
 
@@ -4334,6 +4506,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function flipvzValueChanged(app, ~)
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             updateVisualization(app);
         end
 
@@ -4450,6 +4623,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.vMean = mean(app.v,5);
             app.isInterpolated = 1;
             app.pixdim = [interpRes interpRes interpRes];
+            app.pathlineInterp = [];  % invalidate 4D interpolant cache
 
             % add to infoTable
             app.ScanInfoTable.Data = cat(1, app.ScanInfoTable.Data,...
@@ -4497,6 +4671,17 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.toXEditFieldLabel.Text = 'cm/s';
                     app.VisOptionsApp.maxQuiverEditField.Enable = 'off';
                     app.VisOptionsApp.maxQuiverEditField.Visible = 'off';
+                case 'Pathlines'
+                    app.VisOptionsApp.cutoffvaluesLabel.Text = 'min velocity';
+                    app.VisOptionsApp.toXEditFieldLabel.Position = [73 180+162 40 22];
+                    app.VisOptionsApp.toXEditFieldLabel.Text = 'cm/s';
+                    app.VisOptionsApp.maxQuiverEditField.Enable = 'off';
+                    app.VisOptionsApp.maxQuiverEditField.Visible = 'off';
+                    % Clean up streamline surfaces when switching to pathlines
+                    if ~isempty(app.streamPatch)
+                        try; delete(app.streamPatch); catch; end
+                        app.streamPatch = [];
+                    end
             end
             updateVisualization(app);
             viewMap(app);
@@ -4548,6 +4733,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
+                    % Pathlines not available in segmentation mode
+                    if strcmp(app.VisTypeDropDown.Value,'Pathlines')
+                        app.VisTypeDropDown.Value = 'Vectors';
+                    end
                 case 'centerline contours'
                     if ~isempty(app.sliceImg)
                         delete(findall(app.VisualizationPlot,'Type','image'))
@@ -4569,15 +4758,23 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
-                    app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
+                    app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
             end
             app.isStreamsChanged.Value = 1;
+            app.isPathlinesChanged.Value = 1;
             % Delete existing streamPatch surfaces — the new mode will produce
             % a different padded length so the old surface dimensions are invalid.
             if ~isempty(app.streamPatch)
                 try; delete(app.streamPatch); catch; end
                 app.streamPatch = [];
             end
+            % Delete existing pathline patches on mode switch
+            if ~isempty(app.pathlinePatch)
+                try; delete(app.pathlinePatch); catch; end
+                app.pathlinePatch = [];
+            end
+            % Invalidate interpolant cache when vis source changes
+            app.pathlineInterp = [];
             updateVisualization(app);
             viewMap(app);
         end
@@ -5362,6 +5559,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.isStreamsChanged.FontSize = 1;
             app.isStreamsChanged.Position = [1162 270 2 2];
             app.isStreamsChanged.Value = 1;
+
+            % Create isPathlinesChanged checkbox (always hidden)
+            app.isPathlinesChanged = uicheckbox(app.Maps);
+            app.isPathlinesChanged.Text = '';
+            app.isPathlinesChanged.FontName = 'SansSerif';
+            app.isPathlinesChanged.FontSize = 1;
+            app.isPathlinesChanged.Position = [1162 270 2 2];
+            app.isPathlinesChanged.Value = 1;
 
             % Create VisualizationPlot
             app.VisualizationPlot = uiaxes(app.VisualizationGroup);

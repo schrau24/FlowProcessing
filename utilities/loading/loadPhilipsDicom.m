@@ -259,7 +259,7 @@ switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
         vx = -vx;
         vy = -vy;
         vz = -vz;
-        ori.vxlabel = 'F-H';
+        ori.vxlabel = 'H-F';
         ori.vylabel = 'R-L';
         ori.vzlabel = 'A-P';
 end

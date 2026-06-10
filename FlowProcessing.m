@@ -99,8 +99,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         PeaksystoleEditFieldLabel       matlab.ui.control.Label
         VisualizationGroup              matlab.ui.container.Panel
         VisTypeDropDown                 matlab.ui.control.DropDown
-        isStreamsChanged                matlab.ui.control.CheckBox 
-        isPathlinesChanged              matlab.ui.control.CheckBox 
+        isStreamsChanged                matlab.ui.control.CheckBox
+        isPathlinesChanged              matlab.ui.control.CheckBox
         VisOptionsDropDown              matlab.ui.control.DropDown
         SliceSpinner_2                  matlab.ui.control.Spinner
         SliceSpinner_2Label             matlab.ui.control.Label
@@ -250,9 +250,109 @@ classdef FlowProcessing < matlab.apps.AppBase
         V_matrix;                   % vertices for 3D vis
         rotAngles2;                 % rotation angles used for viewing maps, can be changed by viewer
         isWSScalculated = 0;        % is WSS calculated
+
+        % Orientation axis widget handles (cell arrays, one per 3D axes)
+        % Each cell: {hX, hY, hZ, tX, tY, tZ} — three lines + three text labels
+        oriAxis_View3D    = {};
+        oriAxis_VisPlt    = {};
     end
 
     methods (Access = public)
+
+        % -----------------------------------------------------------------
+        % ORIENTATION LABEL HELPER
+        % Place anatomical direction labels at the ends of each 3D axis.
+        %
+        % Native-orientation display convention (view([0 0 -1])):
+        %   MATLAB plot-X = array dim2 (columns) = ori.vylabel direction
+        %   MATLAB plot-Y = array dim1 (rows)    = ori.vxlabel direction
+        %   MATLAB plot-Z = array dim3 (slices)  = ori.vzlabel direction
+        %
+        % The labels are derived directly from the loader-supplied ori struct
+        % so they are correct for every scanner type and orientation without
+        % any coordinate transformation.
+        % -----------------------------------------------------------------
+        % -----------------------------------------------------------------
+        % ORIENTATION AXIS WIDGET
+        % Draws three orthogonal labelled axes in the upper-left corner of
+        % the given 3D axes. Returns handles so rotate() can be called on
+        % them in lock-step with the main data patches.
+        %
+        % Placement: the widget origin is fixed at the upper-left corner of
+        % the current data bounding box (in data coordinates).  The arms
+        % are scaled to ~15% of the smallest FOV dimension.
+        %
+        % Axis → anatomical direction mapping for the native view([0 0 -1]):
+        %   plot-X = array dim2 (cols)   = ori.vylabel
+        %   plot-Y = array dim1 (rows)   = ori.vxlabel
+        %   plot-Z = array dim3 (slices) = ori.vzlabel
+        % -----------------------------------------------------------------
+        function handles = drawOriAxis(app, ax)
+            % drawOriAxis  Create (or recreate) the orientation axis widget.
+            % Each arm shows a single letter at its tip: the first letter of
+            % the axis label, which corresponds to the positive index direction
+            % (e.g. 'F-H' → arm points toward Foot, label = 'F').
+
+            delete(findobj(ax, 'Tag', 'ori_axis_widget'));
+
+            if ~isfield(app.ori, 'vxlabel')
+                handles = struct(); return;
+            end
+
+            xl = xlim(ax); yl = ylim(ax); zl = zlim(ax);
+            armLen = 0.1 * min([diff(xl), diff(yl), diff(zl)]);
+            if armLen <= 0, armLen = 10; end
+
+            % Widget origin: upper-left corner
+            ox = xl(1) + diff(xl)*0.05;     if ox<1; ox = 1; end
+            oy = yl(1) - diff(yl)*0.05;     if oy<1; oy = 1; end
+            oz = zl(1);                     if oz<1; oz = 1; end
+
+            % Tip letter = last character = direction of increasing array index
+            % Convention: 'F-H' means low-index=Foot, high-index=Head → tip='H'
+            tipX = app.ori.vylabel(end);   % dim2 (cols, plot-X)
+            tipY = app.ori.vxlabel(end);   % dim1 (rows, plot-Y)
+            tipZ = app.ori.vzlabel(end);   % dim3 (slices, plot-Z)
+
+            hold(ax, 'on');
+
+            hX = line(ax, [ox, ox+armLen], [oy, oy], [oz, oz], ...
+                'Color',[0.9 0.2 0.2], 'LineWidth',2, 'Tag','ori_axis_widget');
+            tX = text(ax, ox+armLen*1.3, oy, oz, tipX, ...
+                'Color',[0.9 0.2 0.2], 'FontSize',11, 'FontWeight','bold', ...
+                'HorizontalAlignment','center','VerticalAlignment','middle', ...
+                'Tag','ori_axis_widget', 'PickableParts','none');
+
+            hY = line(ax, [ox, ox], [oy, oy+armLen], [oz, oz], ...
+                'Color',[0.2 0.75 0.2], 'LineWidth',2, 'Tag','ori_axis_widget');
+            tY = text(ax, ox, oy+armLen*1.3, oz, tipY, ...
+                'Color',[0.2 0.75 0.2], 'FontSize',11, 'FontWeight','bold', ...
+                'HorizontalAlignment','center','VerticalAlignment','middle', ...
+                'Tag','ori_axis_widget', 'PickableParts','none');
+
+            hZ = line(ax, [ox, ox], [oy, oy], [oz, oz+armLen], ...
+                'Color',[0.2 0.4 0.9], 'LineWidth',2, 'Tag','ori_axis_widget');
+            tZ = text(ax, ox, oy, oz+armLen*1.3, tipZ, ...
+                'Color',[0.2 0.4 0.9], 'FontSize',11, 'FontWeight','bold', ...
+                'HorizontalAlignment','center','VerticalAlignment','middle', ...
+                'Tag','ori_axis_widget', 'PickableParts','none');
+
+            hold(ax, 'off');
+
+            handles = struct('hX',hX,'hY',hY,'hZ',hZ,'tX',tX,'tY',tY,'tZ',tZ);
+        end
+
+        function rotateOriAxis(~, handles, axis_vec, angle_deg)
+            % rotateOriAxis  Apply the same rotate() call to the widget that was
+            % applied to the data patches, so the widget stays in sync.
+            if isempty(handles) || ~isfield(handles,'hX'), return; end
+            objs = [handles.hX, handles.hY, handles.hZ, ...
+                handles.tX, handles.tY, handles.tZ];
+            valid = objs(isvalid(objs));
+            if ~isempty(valid)
+                rotate(valid, axis_vec, angle_deg);
+            end
+        end
 
         % -----------------------------------------------------------------
         % HELPER: return the active combined segmentation for a given frame.
@@ -304,14 +404,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                 else
                     % Static multi-mask: draw each active mask as its own coloured surface
                     for ii = 1:size(app.aorta_seg, 4)
-                    if app.maskHandles{ii}.Value
+                        if app.maskHandles{ii}.Value
                             aa = smooth3(app.aorta_seg(:,:,:,ii));
                             hold(app.View3D,'on')
-                        app.patchMasks{ii} = patch(app.View3D, isosurface(aa,.5), ...
-                            'FaceColor',c(ii,:),'EdgeColor','none','FaceAlpha',0.5);
-                        reducepatch(app.patchMasks{ii}, 0.6);
+                            app.patchMasks{ii} = patch(app.View3D, isosurface(aa,.5), ...
+                                'FaceColor',c(ii,:),'EdgeColor','none','FaceAlpha',0.5);
+                            reducepatch(app.patchMasks{ii}, 0.6);
+                        end
                     end
-                end
                 end
             else
                 % No manual segmentation – use the auto-threshold segment.
@@ -338,6 +438,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             xlim(app.View3D,[m_ystart m_ystop]);
             ylim(app.View3D,[m_xstart m_xstop]);
             axis(app.View3D,'off');
+            app.oriAxis_View3D = app.drawOriAxis(app.View3D);
 
             % if rotation angles are non-zero, rotate now
             if sum(abs(app.rotAngles)) > 0
@@ -468,7 +569,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 textint = app.FullBranchDistance(minIdx:5:minIdx2);
                 textint2 = minIdx:5:minIdx2;
             else
-                ptRange = str2num(str); %#ok<ST2NM>
+                ptRange = str2num(str);
                 ptRange(ptRange>length(app.branchActual)) = [];
                 textint2 = ptRange(1:5:end); textint = textint2;
             end
@@ -515,7 +616,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                ptRange = str2num(str); %#ok<ST2NM>
+                ptRange = str2num(str);
                 ptRange(ptRange>length(app.branchActual)) = [];
                 % reset the string to correct max
                 outNums = sscanf(str,'%i:%i:%i');
@@ -602,14 +703,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                         hold(gca,'off');
                     else
                         for ii = app.getActiveMaskIndices()
-                                ct = ct+1;
-                                hold(gca,'on');
-                                h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
-                                set(h,'AlphaData',img2(:,:,ct))
-                                hold(gca,'off');
-                            end
+                            ct = ct+1;
+                            hold(gca,'on');
+                            h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
+                            set(h,'AlphaData',img2(:,:,ct))
+                            hold(gca,'off');
                         end
                     end
+                end
                 axis equal off
                 daspect([1 1 1]);
 
@@ -635,14 +736,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                         hold(gca,'off');
                     else
                         for ii = app.getActiveMaskIndices()
-                                ct = ct+1;
-                                hold(gca,'on');
-                                h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
-                                set(h,'AlphaData',img2(:,:,ct).*tmp_mask)
-                                hold(gca,'off');
-                            end
+                            ct = ct+1;
+                            hold(gca,'on');
+                            h = imagesc(cat(3,c(ii,1)*ones(size(img)),c(ii,2)*ones(size(img)),c(ii,3)*ones(size(img))));
+                            set(h,'AlphaData',img2(:,:,ct).*tmp_mask)
+                            hold(gca,'off');
                         end
                     end
+                end
                 axis equal off
                 daspect([1 1 1]);
                 set(cropFig,'Name','Cropped image')
@@ -665,7 +766,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % crop in time too
             str = app.FramesToUse.Value;
-            ptRange = str2num(str); %#ok<ST2NM>
+            ptRange = str2num(str);
             app.nframes = length(ptRange);
 
             [x, y, z] = ind2sub(size(app.mask),find(app.mask));
@@ -850,8 +951,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             else
                 if ~isempty(app.vis3Dsurface) && isvalid(app.vis3Dsurface)
-                app.vis3Dsurface.Visible = 'off';
-            end
+                    app.vis3Dsurface.Visible = 'off';
+                end
             end
 
             if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
@@ -881,8 +982,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             else
                 if ~isempty(app.vis3DSegsurface) && isvalid(app.vis3DSegsurface)
-                app.vis3DSegsurface.Visible = 'off';
-            end
+                    app.vis3DSegsurface.Visible = 'off';
+                end
             end
 
             switch app.VisTypeDropDown.Value
@@ -918,11 +1019,24 @@ classdef FlowProcessing < matlab.apps.AppBase
             % is correctly framed after any patch is created or toggled.
             % Skip during animation – limits are frozen by the animation loop.
             if ~app.isAnimating
-            axis(app.VisualizationPlot, 'off', 'tight')
-            view(app.VisualizationPlot, [0 0 1]);
-            daspect(app.VisualizationPlot, [1 1 1]);
-            camorbit(app.VisualizationPlot, app.rotAngles2(2), app.rotAngles2(1), [1 1 0])
-            camroll(app.VisualizationPlot, app.rotAngles2(3));
+                axis(app.VisualizationPlot, 'off', 'tight')
+                view(app.VisualizationPlot, [0 0 1]);
+                daspect(app.VisualizationPlot, [1 1 1]);
+                if ~(contains(app.VisOptionsDropDown.Value,'slice-wise'))
+                    camorbit(app.VisualizationPlot, app.rotAngles2(2), app.rotAngles2(1), [1 1 0])
+                    camroll(app.VisualizationPlot, app.rotAngles2(3));
+                end
+                if app.VisOptionsApp.view_orientation_checkbox.Value
+                    app.oriAxis_VisPlt = app.drawOriAxis(app.VisualizationPlot);
+                else
+                    idxToRemove = [];
+                    for ii = 1:numel(app.VisualizationPlot.Children)
+                        if strcmp(app.VisualizationPlot.Children(ii).Tag,'ori_axis_widget')
+                            idxToRemove = cat(1,idxToRemove,ii);
+                        end
+                    end
+                    delete(app.VisualizationPlot.Children(idxToRemove));
+                end
             end
             hold(app.VisualizationPlot, 'off');
         end
@@ -988,134 +1102,60 @@ classdef FlowProcessing < matlab.apps.AppBase
             subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
             switch app.VisOptionsDropDown.Value  % the current vector vis state
                 case 'slice-wise'   % slicewise vectors
-                    if contains(app.ori.label,'axial') || contains(app.ori.label,'coronal')
 
-                        % Rotate seg, velocity, and magnitude using helper (replaces 3-step imrotate3 cascade)
-                        [currSeg, currV, currMAG] = app.rotateVol3D(currSeg, currV, app.MAG(:,:,:,t), app.rotAngles2);
+                    % 1. Uniformly rotate the spatial volume, velocity vectors, and magnitude image
+                    % This replaces the 3-step manual rot90 cascade and handles 3D vectors.
+                    [currSeg, currV, currMAG] = app.rotateVol3D(currSeg, currV, app.MAG(:,:,:,t), app.rotAngles2);
 
-                        % grab current slice
-                        sl = app.SliceSpinner_2.Value;
-                        if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                        end
-                        if sl > size(currV,3)
-                            sl = round(size(currV,3)/2);
-                        end
-                        L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                        vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                        vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                        vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                        [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                            -5);   % cheat here and put the vel vectors at a negative location to overlay better
+                    % 2. Grab and clamp the current slice based on the NEW rotated Z-dimension
+                    sl = app.SliceSpinner_2.Value;
 
-                        img = repmat(currMAG(:,:,sl),[1 1 3]);
-                    else % sagittal scan
-                        if isequal(app.rotAngles2,[0,0]) % no additional rotation
-                            % grab current slice
-                            sl = app.SliceSpinner_2.Value;
-                            if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
-                                app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                            end
-                            if sl > size(currV,3)
-                                sl = round(size(currV,3)/2);
-                            end
-                            currSeg = squeeze(currSeg(:,:,sl));
-                            currV_1 = squeeze(currV(:,:,sl,1));
-                            currV_2 = squeeze(currV(:,:,sl,2));
-                            currV_3 = squeeze(currV(:,:,sl,3));
-                            L = find(currSeg(1:subsample:end,1:subsample:end));
-                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
-                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
-                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
-                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
-                            if ~isequal(app.pixdim(1),app.pixdim(2))
-                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                            end
-                            currMAG = app.MAG(:,:,:,t);
-                            img = repmat(currMAG(:,:,sl),[1 1 3]);
-                            clear currV_1 currV_2 currV_3
-                        elseif isequal(app.rotAngles2,[90,0]) % rotate into axial view
-                            % grab current slice
-                            sl = app.SliceSpinner_2.Value;
-                            if app.SliceSpinner_2.Limits(2) ~= size(currV,1)
-                                app.SliceSpinner_2.Limits = [1 size(currV,1)];
-                            end
-                            if sl > size(currV,1)
-                                sl = round(size(currV,1)/2);
-                            end
-                            currSeg = rot90(squeeze(currSeg(sl,:,:)));
-                            currV_1 = rot90(squeeze(currV(sl,:,:,1)));
-                            currV_2 = rot90(squeeze(currV(sl,:,:,2)));
-                            currV_3 = rot90(squeeze(currV(sl,:,:,3)));
-                            L = find(currSeg(1:subsample:end,1:subsample:end));
-                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
-                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
-                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
-                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(3), ...
-                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
-                            if ~isequal(app.pixdim(1),app.pixdim(2))
-                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                            end
-                            currMAG = app.MAG(:,:,:,t);
-                            img = repmat(rot90(squeeze(currMAG(sl,:,:))),[1 1 3]);
-                            clear currV_1 currV_2 currV_3
-                        elseif isequal(app.rotAngles2,[0,90]) % rotate into coronal view
-                            % grab current slice
-                            sl = app.SliceSpinner_2.Value;
-                            if app.SliceSpinner_2.Limits(2) ~= size(currV,2)
-                                app.SliceSpinner_2.Limits = [1 size(currV,2)];
-                            end
-                            if sl > size(currV,2)
-                                sl = round(size(currV,2)/2);
-                            end
-                            currSeg = squeeze(currSeg(:,end-sl+1,:));
-                            currV_1 = squeeze(currV(:,end-sl+1,:,1));
-                            currV_2 = squeeze(currV(:,end-sl+1,:,2));
-                            currV_3 = squeeze(currV(:,end-sl+1,:,3));
-                            L = find(currSeg(1:subsample:end,1:subsample:end));
-                            vx = -currSeg(1:subsample:end,1:subsample:end).*currV_1(1:subsample:end,1:subsample:end)/10;
-                            vy = -currSeg(1:subsample:end,1:subsample:end).*currV_2(1:subsample:end,1:subsample:end)/10;
-                            vz = -currSeg(1:subsample:end,1:subsample:end).*currV_3(1:subsample:end,1:subsample:end)/10;
-                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(3),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
-                            if ~isequal(app.pixdim(1),app.pixdim(2))
-                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                            end
-                            currMAG = app.MAG(:,:,:,t);
-                            img = repmat(squeeze(currMAG(:,end-sl+1,:)),[1 1 3]);
-                            clear currV_1 currV_2 currV_3
-                        else
-                            [currSeg, currV, currMAG] = app.rotateVol3D(currSeg, currV, app.MAG(:,:,:,t), app.rotAngles2);
-
-                            % grab current slice
-                            sl = app.SliceSpinner_2.Value;
-                            app.SliceSpinner_2.Limits = [1 size(currV,3)];
-                            if sl > size(currV,3)
-                                sl = round(size(currV,3)/2);
-                            end
-                            L = find(currSeg(1:subsample:end,1:subsample:end,sl));
-                            vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
-                            vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
-                            vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
-                            [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
-                                -5);   % cheat here and put the vel vectors at a negative location to overlay better
-                            if ~isequal(app.pixdim(1),app.pixdim(2))
-                                fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n') % Because I am a bit uncertain about how app.pixdim is used in meshgrid (Bobby, October 2024). If the in-plane sizes are equal, however, it should be fine regardless.
-                            end
-                            img = repmat(currMAG(:,:,sl),[1 1 3]);
-                        end
+                    if app.SliceSpinner_2.Limits(2) ~= size(currV,3)
+                        app.SliceSpinner_2.Limits = [1 size(currV,3)];
                     end
+
+                    % If the previous slice value is now out-of-bounds for the new view, reset to middle
+                    if sl > size(currV,3)
+                        sl = round(size(currV,3)/2);
+                        app.SliceSpinner_2.Value = sl; % Update the UI so it doesn't get stuck
+                    end
+
+                    % 3. Extract the slice data and calculate velocity components
+                    % Since rotateVol3D handled the view shift, dimension 3 is ALWAYS the correct slice axis now.
+                    L = find(currSeg(1:subsample:end,1:subsample:end,sl));
+                    vx = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,1)/10;
+                    vy = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,2)/10;
+                    vz = -currSeg(1:subsample:end,1:subsample:end,sl).*currV(1:subsample:end,1:subsample:end,sl,3)/10;
+
+                    x_idx = 1:subsample:size(currSeg,2);
+                    y_idx = 1:subsample:size(currSeg,1);
+
+                    x_vec = (x_idx - size(currSeg,2)/2) * app.pixdim(1);
+                    y_vec = (y_idx - size(currSeg,1)/2) * app.pixdim(2);
+
+                    % Build the meshgrid
+                    [xcoor_grid, ycoor_grid, zcoor_grid] = meshgrid(x_vec, y_vec, -5);
+                    if ~isequal(app.pixdim(1),app.pixdim(2))
+                        fprintf('WARNING: in-plane voxel sizes are not equal. This might lead to incorrect aspect ratios. Please contact Eric Schrauben/Bobby Runderkamp. \n')
+                    end
+
+                    % 5. Render the image
+                    img = repmat(currMAG(:,:,sl),[1 1 3]);
+
+                    x_bounds = [min(xcoor_grid(:)), max(xcoor_grid(:))];
+                    y_bounds = [min(ycoor_grid(:)), max(ycoor_grid(:))];
+
                     app.VisualizationPlot.NextPlot = 'add';
                     if isempty(app.sliceImg)
-                        app.sliceImg = imagesc(app.VisualizationPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],img,[0.05 0.7]);
+                        app.sliceImg = imagesc(app.VisualizationPlot, x_bounds, y_bounds, img, [0.05 0.7]);
                     else
-                        set(app.sliceImg, 'CData', img);
+                        % Update BOTH the pixel data and the spatial location
+                        set(app.sliceImg, 'CData', img, 'XData', x_bounds, 'YData', y_bounds);
                     end
-
+                    %===================================================================================================
                 case 'centerline contours' % contours from centerline
                     str = app.VisOptionsApp.VisPts.Value;
-                    ptRange = str2num(str); %#ok<ST2NM>
+                    ptRange = str2num(str);
 
                     % oblique slices
                     L = []; xcoor_grid = []; ycoor_grid = []; zcoor_grid = [];
@@ -1175,13 +1215,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.vectorPatch = patch(app.VisualizationPlot,'Faces',F,'Vertices',V,'CData',C,'FaceColor','flat',...
                     'EdgeColor','none','FaceAlpha',0.75,'Tag','vector_patch');
                 % First render – set up axis and camera
-            axis(app.VisualizationPlot, 'off','tight')
-            view(app.VisualizationPlot,[0 0 1]);
-            daspect(app.VisualizationPlot,[1 1 1])
-            if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
-                camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
-                camroll(app.VisualizationPlot,app.rotAngles2(3));
-            end
+                axis(app.VisualizationPlot, 'off','tight')
+                view(app.VisualizationPlot,[0 0 1]);
+                daspect(app.VisualizationPlot,[1 1 1])
+                if ~contains(app.VisOptionsDropDown.Value,'slice-wise')
+                    camorbit(app.VisualizationPlot,app.rotAngles2(2),app.rotAngles2(1),[1 1 0])
+                    camroll(app.VisualizationPlot,app.rotAngles2(3));
+                end
             else
                 % Data update only – reuse existing axes/camera state
                 set(app.vectorPatch,'Faces',F,'Vertices',V,'CData',C,...
@@ -1217,10 +1257,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     maxLen = max(cellfun(@numel, app.streamsOut.Xb(k,:)));
                     if maxLen == 0, maxLen = 1; end
                     for tt = 1:nframes_out
-                            app.streamsOut.Xb{k,tt}(end+1:maxLen,1) = NaN;
-                            app.streamsOut.Yb{k,tt}(end+1:maxLen,1) = NaN;
-                            app.streamsOut.Zb{k,tt}(end+1:maxLen,1) = NaN;
-                            app.streamsOut.Cb{k,tt}(end+1:maxLen,1) = NaN;
+                        app.streamsOut.Xb{k,tt}(end+1:maxLen,1) = NaN;
+                        app.streamsOut.Yb{k,tt}(end+1:maxLen,1) = NaN;
+                        app.streamsOut.Zb{k,tt}(end+1:maxLen,1) = NaN;
+                        app.streamsOut.Cb{k,tt}(end+1:maxLen,1) = NaN;
                         % Guarantee column vector regardless of original orientation
                         app.streamsOut.Xb{k,tt} = app.streamsOut.Xb{k,tt}(:);
                         app.streamsOut.Yb{k,tt} = app.streamsOut.Yb{k,tt}(:);
@@ -1277,7 +1317,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 % Get seed points from centerline contours (same logic as
                 % calculateStreamlines / viewVelocityVectors)
                 str      = app.VisOptionsApp.VisPts.Value;
-                ptRange  = str2num(str); %#ok<ST2NM>
+                ptRange  = str2num(str);
                 subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
 
                 startX = []; startY = []; startZ = [];
@@ -1326,29 +1366,75 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.pathlineInterp.V    = griddedInterpolant(Xg, Yg, Zg, Tg, -vy_4d, 'linear');
                     app.pathlineInterp.W    = griddedInterpolant(Xg, Yg, Zg, Tg, -vz_4d, 'linear');
                     smoothMask = smooth3(double(currSeg));
+
+                    % Close open vessel ends (inlet/outlet planes where the
+                    % segmentation has no wall cap).
+                    %
+                    % We dilate the binary mask isotropically by 1 voxel — this
+                    % adds a thin shell around the ENTIRE vessel including the
+                    % open ends. Taking the union with the original gives a fully
+                    % closed mask. Only the newly added voxels (the caps) matter
+                    % because the existing walls are already in smoothMask.
+                    %
+                    % This works for any vessel orientation (axial, oblique, etc.)
+                    % because it closes faces in all three dimensions uniformly.
+                    se3d        = strel('sphere', 1);
+                    dilatedSeg  = imdilate(logical(currSeg), se3d);
+                    endCaps     = smooth3(double(dilatedSeg & ~logical(currSeg)));
+                    smoothMask  = min(smoothMask + endCaps * 0.6, 1);
+                    % The 0.6 factor ensures the cap crosses the 0.5 boundary
+                    % threshold used in maskBoundaryEvent while staying below 1.
+
                     [Xg3, Yg3, Zg3] = ndgrid( ...
                         (1:size(currSeg,1)) * app.pixdim(1), ...
                         (1:size(currSeg,2)) * app.pixdim(2), ...
                         (1:size(currSeg,3)) * app.pixdim(3));
                     app.pathlineInterp.mask = griddedInterpolant(Xg3, Yg3, Zg3, smoothMask, 'linear');
+                    % Store volume bounds so maskBoundaryEvent can stop particles
+                    % that reach the edge of the image volume (cropped or not).
+                    app.pathlineInterp.bounds = [ ...
+                        Xg3(1),   Xg3(end); ...   % [xMin, xMax]
+                        Yg3(1),   Yg3(end); ...   % [yMin, yMax]
+                        Zg3(1),   Zg3(end)];      % [zMin, zMax]
                     if ishandle(hWait), close(hWait); end
+                end
+
+                % Read user-specified pathline parameters from VisOptionsDialog
+                pathLenVal = str2double(app.VisOptionsApp.PathlineLengthEditField.Value);
+                if isnan(pathLenVal) || pathLenVal <= 0
+                    pathLenSec = [];   % empty = track for full cardiac cycle
+                else
+                    pathLenSec = pathLenVal;
+                end
+
+                releaseVal = str2double(app.VisOptionsApp.PathlineReleaseEditField.Value);
+                if isnan(releaseVal) || releaseVal < 1
+                    releaseFrame = [];  % empty = release at all frames
+                else
+                    releaseFrame = round(releaseVal);
                 end
 
                 % ODE integration
                 app.pathlinesOut = calculatePathlines( ...
                     start_points, app.nframes, app.timeres, ...
-                    app.pathlineInterp, app.visParams.minVel, app.visParams.maxVel);
+                    app.pathlineInterp, app.visParams.minVel, app.visParams.maxVel, ...
+                    pathLenSec, releaseFrame);
 
                 app.isPathlinesChanged.Value = 0;
             end
 
-            % --- Render: show trajectories active during window t ------
-            % Each time window k corresponds to a cardiac frame — particles
-            % emitted at each window are shown as they travel through the
-            % remaining frames.
+            % --- Render: show trajectory accumulated up to timeframe t ----
+            % The dataStore rows correspond to windows in the order they were
+            % computed (starting at releaseFrame). The timeframe spinner
+            % controls how many windows of path are shown (trail length).
             if isempty(app.pathlinesOut) || isempty(app.pathlinesOut.dataStore)
                 return
             end
+
+            % Number of windows to show = t (clamped to what was computed)
+            nComputed    = size(app.pathlinesOut.dataStore, 1);
+            numParticles = size(app.pathlinesOut.dataStore, 2);
+            nShow        = min(t, nComputed);
 
             % Delete old patches and recreate (pathlines don't have a
             % fixed uniform length like streamlines so surface trick doesn't apply —
@@ -1359,38 +1445,54 @@ classdef FlowProcessing < matlab.apps.AppBase
                 app.pathlinePatch = [];
             end
 
-            numParticles = size(app.pathlinesOut.dataStore, 2);
             patchIdx     = 0;
             hold(app.VisualizationPlot, 'on');
 
+            % Collect all particle trajectories first so we can pad to uniform length
+            allX = cell(numParticles,1); allY = cell(numParticles,1);
+            allZ = cell(numParticles,1); allC = cell(numParticles,1);
             for i = 1:numParticles
-                % Collect all segments for this particle up to window t
                 Xp = []; Yp = []; Zp = []; Cp = [];
-                for k = 1:min(t, size(app.pathlinesOut.dataStore, 1))
+                for k = 1:nShow
                     d = app.pathlinesOut.dataStore{k, i};
                     if isempty(d), continue; end
-                    Xp = [Xp; d.coords(:,2); NaN]; %#ok<AGROW>
-                    Yp = [Yp; d.coords(:,1); NaN]; %#ok<AGROW>
-                    Zp = [Zp; d.coords(:,3); NaN]; %#ok<AGROW>
-                    Cp = [Cp; d.vel/10;       NaN]; %#ok<AGROW>
+                    Xp = [Xp; d.coords(:,2); NaN];
+                    Yp = [Yp; d.coords(:,1); NaN];
+                    Zp = [Zp; d.coords(:,3); NaN];
+                    Cp = [Cp; d.vel;       NaN];
                 end
-                if isempty(Xp), continue; end
+                allX{i} = Xp(:); allY{i} = Yp(:);
+                allZ{i} = Zp(:); allC{i} = Cp(:);
+            end
+
+            % Pad all to same length for uniform surface dimensions
+            maxLen = max(cellfun(@numel, allX));
+            if maxLen == 0, hold(app.VisualizationPlot,'off'); return; end
+
+            for i = 1:numParticles
+                if isempty(allX{i}), continue; end
+                n = numel(allX{i});
+                if n < maxLen
+                    allX{i}(end+1:maxLen,1) = NaN;
+                    allY{i}(end+1:maxLen,1) = NaN;
+                    allZ{i}(end+1:maxLen,1) = NaN;
+                    allC{i}(end+1:maxLen,1) = NaN;
+                end
+
+                [X2,Y2,Z2,C2] = streamsToSurface(allX{i}, allY{i}, allZ{i}, allC{i});
                 patchIdx = patchIdx + 1;
-                app.pathlinePatch(patchIdx) = patch(app.VisualizationPlot, ...
-                    'XData',        Xp, ...
-                    'YData',        Yp, ...
-                    'ZData',        Zp, ...
-                    'CData',        Cp, ...
-                    'CDataMapping', 'scaled', ...
+                app.pathlinePatch(patchIdx) = surface(app.VisualizationPlot, ...
+                    X2, Y2, Z2, C2, ...
+                    'EdgeColor', 'interp', ...
                     'FaceColor',    'none', ...
-                    'EdgeColor',    'interp', ...
-                    'LineWidth',    0.75, ...
-                    'EdgeAlpha',    0.75, ...
+                    'EdgeAlpha', 0.75, ...
+                    'LineWidth', 0.75, ...
                     'Tag', 'pathline_patch');
             end
             hold(app.VisualizationPlot, 'off');
 
             if ~isempty(app.pathlinePatch)
+                clim(app.VisualizationPlot, [app.visParams.minVel, app.visParams.maxVel]);
                 uistack(app.pathlinePatch, 'top');
             end
         end
@@ -1402,10 +1504,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             tmp   = imrotate3(tmp,  ang(1), [-1 0 0], 'nearest');
             seg_r = imrotate3(tmp,  ang(3), [0  0 1], 'nearest');
 
-            % Rotate each velocity component.
-            % Allocate V_r after the first component is rotated so the output
-            % size is known — imrotate3 pads to fit the rotated bounding box
-            % and the output size depends on the INPUT size, not seg_r size.
+            % 1. Rotate each velocity component spatially
+            % This moves the voxels to their new 3D positions
             nComp = size(V, 4);
             V_r   = [];
             for f = 1:nComp
@@ -1418,11 +1518,50 @@ classdef FlowProcessing < matlab.apps.AppBase
                 V_r(:,:,:,f) = Vf_r;
             end
 
+            % 2. Mathematical Vector Rotation
+            % Construct individual rotation matrices matching the imrotate3 steps.
+
+            % Step A: Rotate around [0 1 0] by ang(2)
+            Ry = [cosd(ang(2)),  0, sind(ang(2)); ...
+                0,             1,  0;            ...
+                -sind(ang(2)),  0,  cosd(ang(2))];
+
+            % Step B: Rotate around [1 0 0] by ang(1)
+            Rx = [1,  0,             0;            ...
+                0,  cosd(ang(1)),  -sind(ang(1)); ...
+                0, sind(ang(1)),  cosd(ang(1))];
+
+            % Step C: Rotate around [0 0 1] by ang(3) -> standard positive Z-axis rotation
+            Rz = [cosd(ang(3)), -sind(ang(3)),  0; ...
+                sind(ang(3)),  cosd(ang(3)),  0; ...
+                0,             0,             1];
+
+            % Combine matrices in sequential order (Y first, then X, then Z)
+            R = Rz * Rx * Ry;
+
+            % CRITICAL FIX: Extract components in true Cartesian order [Vx; Vy; Vz]
+            % Channel 1 is Vy, Channel 2 is Vx, Channel 3 is Vz
+            Vx_flat = reshape(V_r(:,:,:,2), [], 1);
+            Vy_flat = reshape(V_r(:,:,:,1), [], 1);
+            Vz_flat = reshape(V_r(:,:,:,3), [], 1);
+
+            V_flat = [Vx_flat, Vy_flat, Vz_flat].'; % Unified 3 x N matrix
+
+            % Perform the matrix multiplication to re-orient the arrows correctly
+            V_rot_flat = R * V_flat;
+
+            % Reassign back to V_r matching the layout (Ch1=Vy, Ch2=Vx, Ch3=Vz)
+            sz_xyz = size(V_r(:,:,:,1));
+            V_r(:,:,:,2) = reshape(V_rot_flat(1,:), sz_xyz); % Rotated Vx -> Channel 2
+            V_r(:,:,:,1) = reshape(V_rot_flat(2,:), sz_xyz); % Rotated Vy -> Channel 1
+            V_r(:,:,:,3) = reshape(V_rot_flat(3,:), sz_xyz); % Rotated Vz -> Channel 3
+
             % Rotate MAG
             tmp   = imrotate3(mag,  ang(2), [0 -1 0], 'nearest');
             tmp   = imrotate3(tmp,  ang(1), [-1 0 0], 'nearest');
             mag_r = imrotate3(tmp,  ang(3), [0  0 1], 'nearest');
         end
+
 
         function [outImg, outVol, idx_currSeg] = viewMap(app)
             cla(app.MapPlot);
@@ -1567,7 +1706,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                         % code adopted from open source left atrial post-processing
                         % software from Oxford (Dr. Aaron Hess):
                         % https://ora.ox.ac.uk/objects/uuid:8f2910d9-44ed-4479-85b1-dbd4f06ea54c
-
                         vx = squeeze(vx)/100; % in m/s
                         vy = squeeze(vy)/100;
                         vz = squeeze(vz)/100;
@@ -1776,7 +1914,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Build maskHandles cell array – eliminates all eval(sprintf('app.mask%i...')) calls
             app.maskHandles = {app.mask1, app.mask2, app.mask3, app.mask4, app.mask5, ...
-                               app.mask6, app.mask7, app.mask8, app.mask9, app.mask10};
+                app.mask6, app.mask7, app.mask8, app.mask9, app.mask10};
 
             % Initialise visParams cache with sensible defaults
             app.visParams.minVel    = 0;
@@ -2050,7 +2188,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         end
                     end
                 else
-					try
+                    try
                         app.(name) = allValues.(name);
                     catch
                         warning('%s is not a member of app group',name);
@@ -2153,11 +2291,15 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: ClearAppAndRestartButton
         function ClearAppAndRestartButtonPushed(app, ~)
-            if ~isempty(app.VisOptionsApp)
-                delete(app.VisOptionsApp.VisOptionsDialogUIFigure);
+            try
+                if ~isempty(app.VisOptionsApp) && ...
+                        ishandle(app.VisOptionsApp.VisOptionsDialogUIFigure)
+                    delete(app.VisOptionsApp.VisOptionsDialogUIFigure);
+                end
+            catch
             end
             delete(app.FlowProcessingUIFigure);  % close the app
-            close all;
+            close all force;
             FlowProcessing;                      % re-open it
         end
 
@@ -2298,7 +2440,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function FramesToUseValueChanged(app, ~)
 
             str = app.FramesToUse.Value;
-            ptRange = str2num(str); %#ok<ST2NM>
+            ptRange = str2num(str);
 
             % first we recalculate the angio, then show the result
             [app.magWeightVel, app.angio] = calc_angio(app.MAG(:,:,:,ptRange), app.v(:,:,:,:,ptRange), app.VENC);
@@ -2507,29 +2649,30 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.CalculateMap.Enable = 'on';
 
-            if app.isSegmentationLoaded
-                if app.isTimeResolvedSeg
-                    Vmag = app.aorta_seg.*squeeze(sqrt(sum(app.v.^2,4)));
-                    idx = find(mean(app.aorta_seg,4));
-                else
-                    currSeg = app.getCurrentSeg(app.TimeframeSpinner.Value);
-                    Vmag = repmat(currSeg,[1 1 1 app.nframes]).*squeeze(sqrt(sum(app.v.^2,4)));
-                    idx = find(sum(currSeg,4));
-                end
-                for t = 1:app.nframes
-                    tmp = Vmag(:,:,:,t);
-                    mean_velo(t) = mean(tmp(idx));
-                end
-                [~,app.time_peak] = find(mean_velo==max(mean_velo));
+            if app.isTimeResolvedSeg
+                Vmag = app.aorta_seg.*squeeze(sqrt(sum(app.v.^2,4)));
+                idx = find(mean(app.aorta_seg,4));
+            else
+                currSeg = app.getCurrentSeg(app.TimeframeSpinner.Value);
+                Vmag = repmat(currSeg,[1 1 1 app.nframes]).*squeeze(sqrt(sum(app.v.^2,4)));
+                idx = find(sum(currSeg,4));
             end
+            for t = 1:app.nframes
+                tmp = Vmag(:,:,:,t);
+                mean_velo(t) = mean(tmp(idx));
+            end
+            [~,app.time_peak] = find(mean_velo==max(mean_velo));
 
             app.PeaksystoleEditField.Value = num2str(app.time_peak);
             app.TimeframeSpinner.Value = app.time_peak;
 
             % view vectors
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
-            app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
-
+            if contains(app.VisOptionsDropDown.Value,'slice-wise')
+                app.VisOptionsApp.view_3Dpatch_checkbox.Value = 0;
+            else
+                app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
+            end
             colormap(app.VisualizationPlot, 'jet');
             clim(app.VisualizationPlot, [0 app.VENC/10]);
 
@@ -2901,7 +3044,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                ptRange = str2num(str); %#ok<ST2NM>
+                ptRange = str2num(str);
             end
             waveforms = waveforms(ptRange,:);
 
@@ -3143,7 +3286,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 [~, minIdx2] = min(abs(app.FullBranchDistance-out{2}));
                 ptRange = minIdx:minIdx2;
             else
-                ptRange = str2num(str); %#ok<ST2NM>
+                ptRange = str2num(str);
             end
 
             % save sheet with ptRange and distance
@@ -3348,6 +3491,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1) app.rotAngles(2)+10];
+            app.rotateOriAxis(app.oriAxis_View3D, [0 1 0], 10);
         end
 
         % Button pushed function: RotateRight
@@ -3363,6 +3507,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1) app.rotAngles(2)-10];
+            app.rotateOriAxis(app.oriAxis_View3D, [0 1 0], -10);
         end
 
         % Button pushed function: RotateDown
@@ -3378,6 +3523,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1)+10 app.rotAngles(2)];
+            app.rotateOriAxis(app.oriAxis_View3D, [1 0 0], 10);
         end
 
         % Button pushed function: RotateUp
@@ -3393,6 +3539,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1)-10 app.rotAngles(2)];
+            app.rotateOriAxis(app.oriAxis_View3D, [1 0 0], -10);
         end
 
         % Button pushed function: ResetRotation
@@ -3491,7 +3638,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             if value
                 % grab distances
-                ptRange = str2num(str); %#ok<ST2NM>
+                ptRange = str2num(str);
                 app.PWVPoints.Value = [num2str(app.FullBranchDistance(ptRange(1))) ': ' num2str(app.FullBranchDistance(ptRange(end)))];
                 app.PWVPointsLabel.Text = ['Vessel dist (mm) [' num2str(app.FullBranchDistance(ptRange(1))) ':' num2str(app.FullBranchDistance(ptRange(end))) ']'];
             else
@@ -3588,6 +3735,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.MapROIanalysis.Enable = 'on';
 
             end
+            app.visParams.minMap = str2double(app.VisOptionsApp.minMapEditField.Value);
+            app.visParams.maxMap = str2double(app.VisOptionsApp.maxMapEditField.Value);
             if ~contains(app.MapType.Value,'None')
                 app.MapTime.Enable = 'on';
                 viewMap(app);
@@ -3860,13 +4009,13 @@ classdef FlowProcessing < matlab.apps.AppBase
             % --- PRE-LOOP: render frame 1 at zero rotation to establish
             % stable limits BEFORE freezing them. axis tight is still active here.
             app.TimeframeSpinner.Value = 1;
-                updateVisualization(app);
+            updateVisualization(app);
             drawnow;
 
             % Capture the stable limits from the neutral render
-                    veclim_x = app.VisualizationPlot.XLim;
-                    veclim_y = app.VisualizationPlot.YLim;
-                    veclim_z = app.VisualizationPlot.ZLim;
+            veclim_x = app.VisualizationPlot.XLim;
+            veclim_y = app.VisualizationPlot.YLim;
+            veclim_z = app.VisualizationPlot.ZLim;
             maplim_x = app.MapPlot.XLim;
             maplim_y = app.MapPlot.YLim;
 
@@ -3874,9 +4023,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisualizationPlot.XLim = veclim_x;
             app.VisualizationPlot.YLim = veclim_y;
             app.VisualizationPlot.ZLim = veclim_z;
-                    app.VisualizationPlot.XLimMode = 'manual';
-                    app.VisualizationPlot.YLimMode = 'manual';
-                    app.VisualizationPlot.ZLimMode = 'manual';
+            app.VisualizationPlot.XLimMode = 'manual';
+            app.VisualizationPlot.YLimMode = 'manual';
+            app.VisualizationPlot.ZLimMode = 'manual';
             app.MapPlot.XLim = maplim_x;
             app.MapPlot.YLim = maplim_y;
             axis(app.VisualizationPlot, 'vis3d');   % lock aspect ratio for rotation
@@ -3894,11 +4043,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                 camorbit(app.VisualizationPlot, 4*ct_rotation, 0, [1 1 0]);
 
                 % Re-apply frozen limits (vis3d may relax them slightly)
-                    app.VisualizationPlot.XLim = veclim_x;
-                    app.VisualizationPlot.YLim = veclim_y;
-                    app.VisualizationPlot.ZLim = veclim_z;
-                    app.MapPlot.XLim = maplim_x;
-                    app.MapPlot.YLim = maplim_y;
+                app.VisualizationPlot.XLim = veclim_x;
+                app.VisualizationPlot.YLim = veclim_y;
+                app.VisualizationPlot.ZLim = veclim_z;
+                app.MapPlot.XLim = maplim_x;
+                app.MapPlot.YLim = maplim_y;
 
                 drawnow;
 
@@ -4709,8 +4858,17 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
+                    app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
+                    app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
+                    app.VisOptionsApp.PathlineLengthEditField.Enable = 'off';
+                    app.VisOptionsApp.PathlineReleaseLabel.Visible = 'off';
+                    app.VisOptionsApp.PathlineReleaseLabel.Enable = 'off';
+                    app.VisOptionsApp.PathlineReleaseEditField.Visible = 'off';
+                    app.VisOptionsApp.PathlineReleaseEditField.Enable = 'off';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'off';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'off';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Value = 0;
                     app.VisTypeDropDown.Value = 'Vectors';
                 case 'segmentation'
                     if ~isempty(app.sliceImg)
@@ -4730,6 +4888,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
+                    app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
+                    app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
+                    app.VisOptionsApp.PathlineLengthEditField.Enable = 'off';
+                    app.VisOptionsApp.PathlineReleaseLabel.Visible = 'off';
+                    app.VisOptionsApp.PathlineReleaseLabel.Enable = 'off';
+                    app.VisOptionsApp.PathlineReleaseEditField.Visible = 'off';
+                    app.VisOptionsApp.PathlineReleaseEditField.Enable = 'off';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
@@ -4755,9 +4921,18 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'on';
                     app.VisOptionsApp.VisPts.Visible = 'on';
                     app.VisOptionsApp.VisPts.Enable = 'on';
+                    app.VisOptionsApp.PathlineLengthLabel.Visible = 'on';
+                    app.VisOptionsApp.PathlineLengthLabel.Enable = 'on';
+                    app.VisOptionsApp.PathlineLengthEditField.Visible = 'on';
+                    app.VisOptionsApp.PathlineLengthEditField.Enable = 'on';
+                    app.VisOptionsApp.PathlineReleaseLabel.Visible = 'on';
+                    app.VisOptionsApp.PathlineReleaseLabel.Enable = 'on';
+                    app.VisOptionsApp.PathlineReleaseEditField.Visible = 'on';
+                    app.VisOptionsApp.PathlineReleaseEditField.Enable = 'on';
                     app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
+                    app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
             end
             app.isStreamsChanged.Value = 1;
@@ -4802,7 +4977,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             else
                 currSeg = app.segment;
-                keepSegs = 1;
             end
 
             clear tool
@@ -4818,8 +4992,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value) = h.getMaskOutput(1);
                 else
                     ctMask = 0;
-                    for ii = 1:length(keepSegs)
-                        if keepSegs(ii)
+                    for ii = 1:length(activeIdx)
+                        if activeIdx(ii)
                             ctMask = ctMask+1;
                             app.aorta_seg(:,:,:,ii) = h.getMaskOutput(ctMask);
                         end
@@ -5098,26 +5272,28 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.RotateLeft = uibutton(app.DVisualizationPanel, 'push');
             app.RotateLeft.ButtonPushedFcn = createCallbackFcn(app, @RotateLeftButtonPushed, true);
             app.RotateLeft.IconAlignment = 'center';
-            app.RotateLeft.VerticalAlignment = 'bottom';
+            app.RotateLeft.VerticalAlignment = 'center';
+            app.RotateLeft.HorizontalAlignment = 'center';
             app.RotateLeft.BackgroundColor = [1 1 1];
             app.RotateLeft.FontName = 'SansSerif';
             app.RotateLeft.FontSize = 24;
             app.RotateLeft.FontWeight = 'bold';
             app.RotateLeft.Tooltip = {'shortcut ''a'''};
-            app.RotateLeft.Position = [9 58 28 28];
+            app.RotateLeft.Position = [9 710-58 28 28];
             app.RotateLeft.Text = '<';
 
             % Create RotateRight
             app.RotateRight = uibutton(app.DVisualizationPanel, 'push');
             app.RotateRight.ButtonPushedFcn = createCallbackFcn(app, @RotateRightButtonPushed, true);
             app.RotateRight.IconAlignment = 'center';
-            app.RotateRight.VerticalAlignment = 'bottom';
+            app.RotateRight.VerticalAlignment = 'center';
+            app.RotateRight.HorizontalAlignment = 'center';
             app.RotateRight.BackgroundColor = [1 1 1];
             app.RotateRight.FontName = 'SansSerif';
             app.RotateRight.FontSize = 24;
             app.RotateRight.FontWeight = 'bold';
             app.RotateRight.Tooltip = {'shortcut ''d'''};
-            app.RotateRight.Position = [88 58 28 28];
+            app.RotateRight.Position = [88 710-58 28 28];
             app.RotateRight.Text = '>';
 
             % Create Rotate
@@ -5125,33 +5301,35 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.Rotate.HorizontalAlignment = 'center';
             app.Rotate.FontName = 'SansSerif';
             app.Rotate.FontSize = 16;
-            app.Rotate.Position = [36 61 53 22];
+            app.Rotate.Position = [36 710-58 53 22];
             app.Rotate.Text = 'Rotate';
 
             % Create RotateDown
             app.RotateDown = uibutton(app.DVisualizationPanel, 'push');
             app.RotateDown.ButtonPushedFcn = createCallbackFcn(app, @RotateDownButtonPushed, true);
             app.RotateDown.IconAlignment = 'center';
-            app.RotateDown.VerticalAlignment = 'bottom';
+            app.RotateDown.VerticalAlignment = 'center';
+            app.RotateDown.HorizontalAlignment = 'center';
             app.RotateDown.BackgroundColor = [1 1 1];
             app.RotateDown.FontName = 'SansSerif';
             app.RotateDown.FontSize = 24;
             app.RotateDown.FontWeight = 'bold';
             app.RotateDown.Tooltip = {'shortcut ''s'''};
-            app.RotateDown.Position = [49 33 28 28];
+            app.RotateDown.Position = [49 710-84 28 28];
             app.RotateDown.Text = '▼';
 
             % Create RotateUp
             app.RotateUp = uibutton(app.DVisualizationPanel, 'push');
             app.RotateUp.ButtonPushedFcn = createCallbackFcn(app, @RotateUpButtonPushed, true);
             app.RotateUp.IconAlignment = 'center';
-            app.RotateUp.VerticalAlignment = 'bottom';
+            app.RotateUp.VerticalAlignment = 'center';
+            app.RotateUp.HorizontalAlignment = 'center';
             app.RotateUp.BackgroundColor = [1 1 1];
             app.RotateUp.FontName = 'SansSerif';
             app.RotateUp.FontSize = 24;
             app.RotateUp.FontWeight = 'bold';
             app.RotateUp.Tooltip = {'shortcut ''w'''};
-            app.RotateUp.Position = [49 84 28 28];
+            app.RotateUp.Position = [49 710-33 28 28];
             app.RotateUp.Text = '▲';
 
             % Create ResetRotation
@@ -5161,7 +5339,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ResetRotation.FontName = 'SansSerif';
             app.ResetRotation.FontSize = 16;
             app.ResetRotation.Tooltip = {'Reset rotation to original view'; 'shortcut ''r'''};
-            app.ResetRotation.Position = [9 1 107 28];
+            app.ResetRotation.Position = [9 710-115 107 28];
             app.ResetRotation.Text = 'Reset rotation';
 
             % Create TimeframeSpinner_4Label

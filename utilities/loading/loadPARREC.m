@@ -116,16 +116,22 @@ if delayedReconFlag
             ori.label = 'sagittal';
             angulations = [angulations(2) angulations(1) angulations(3)]; % fh, ap, rl
             if strcmp('AP',phasedir)
-                ori.vxlabel = 'F-H';
+                ori.vxlabel = 'H-F';   % rows: Head(top)→Foot(bottom) in HFS
                 ori.vylabel = 'A-P';
             else    % phasedir == 'FH'
                 ori.vxlabel = 'A-P';
-                ori.vylabel = 'F-H';
+                ori.vylabel = 'H-F';   % cols become rows after swap: Head→Foot
                 angulations = [angulations(2) angulations(1) angulations(3)]; % ap, fh, rl
             end
             tmp = vx; vx = vz; vz = tmp; clear tmp;
             vx = -vx;
+            % Slice direction: determine from per-slice RL offcentre
+            rl_step = h3.tbl(2,22) - h3.tbl(1,22);
+            if rl_step < 0
+                ori.vzlabel = 'L-R';
+            else
             ori.vzlabel = 'R-L';
+            end
         case 3
             ori.label = 'coronal';
             angulations = [angulations(2) angulations(3) angulations(1)]; % fh, rl, ap
@@ -161,15 +167,22 @@ else
             ori.label = 'sagittal';
             angulations = [angulations(2) angulations(1) angulations(3)]; % fh, ap, rl
             if strcmp('AP',phasedir)
-                ori.vxlabel = 'F-H';
+                ori.vxlabel = 'H-F';   % rows: Head(top)→Foot(bottom) in HFS
                 ori.vylabel = 'A-P';
             else    % phasedir == 'FH'
                 ori.vxlabel = 'A-P';
-                ori.vylabel = 'F-H';
+                ori.vylabel = 'H-F';   % cols become rows after swap: Head→Foot
                 tmp = vx; vx = vy; vy = tmp; clear tmp;
                 angulations = [angulations(2) angulations(1) angulations(3)]; % ap, fh, rl
             end
-            ori.vzlabel = 'R-L';
+            % Slice direction: determine from per-slice RL offcentre
+            % RL+ = patient LEFT; if rl decreases (slice 1 left, slice N right) → L-R
+            rl_step = h3.tbl(2,22) - h3.tbl(1,22); % offcentre_rl step slice1→slice2
+            if rl_step < 0
+                ori.vzlabel = 'L-R'; % slices increase toward Right
+            else
+                ori.vzlabel = 'R-L'; % slices increase toward Left
+            end
             vx = -vx;
             vz = -vz;
         case 3
@@ -177,7 +190,7 @@ else
             angulations = [angulations(2) angulations(3) angulations(1)]; % fh, rl, ap
             vx = -vx;
             if strcmp('RL',phasedir)
-                ori.vxlabel = 'F-H';
+                ori.vxlabel = 'H-F';
                 ori.vylabel = 'R-L';
             else    % phasedir == 'FH'
                 ori.vxlabel = 'R-L';
@@ -188,6 +201,27 @@ else
     end
 end
 ori.angulations = angulations;
+
+%% Refine vzlabel for axial/coronal using actual slice stepping direction
+% and patient position (h3.position: HFS/FFS/HFP/FFP)
+if strcmp(ori.label,'axial')
+    % Axial: slices step in FH direction
+    % HFS/HFP: feet first → fh increases (feet=low, head=high) → 'F-H'
+    % FFS/FFP: head first → fh decreases → 'H-F'
+    if any(strncmpi(h3.position, {'HFS','HFP'}, 3))
+        ori.vzlabel = 'F-H';
+    else
+        ori.vzlabel = 'H-F';
+    end
+elseif strcmp(ori.label,'coronal')
+    % Coronal: slices step in AP direction - derive from per-slice AP offcentre
+    ap_step = h3.tbl(2,20) - h3.tbl(1,20); % offcentre_ap step
+    if ap_step > 0
+        ori.vzlabel = 'A-P'; % slices increase toward Posterior
+    else
+        ori.vzlabel = 'P-A'; % slices increase toward Anterior
+    end
+end
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
 clear vx vy vz

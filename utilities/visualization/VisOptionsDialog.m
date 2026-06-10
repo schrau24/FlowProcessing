@@ -45,6 +45,11 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         velocityVisEditFieldLabel       matlab.ui.control.Label
         view_3Dpatch_checkbox           matlab.ui.control.CheckBox
         view_3DSegpatch_checkbox        matlab.ui.control.CheckBox
+        view_orientation_checkbox       matlab.ui.control.CheckBox
+		PathlineLengthLabel             matlab.ui.control.Label
+        PathlineLengthEditField         matlab.ui.control.EditField
+        PathlineReleaseLabel            matlab.ui.control.Label
+        PathlineReleaseEditField        matlab.ui.control.EditField
     end
 
 
@@ -134,6 +139,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         function SubsampleSliderValueChanged(app, event)
             if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
+            app.CallingApp.isPathlinesChanged.Value = 1;
             updateVisualization(app.CallingApp);
         end
 
@@ -149,12 +155,34 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             updateVisualization(app.CallingApp);
         end
 
+        % Value changed function: view_orientation_checkbox
+        function view_orientation_checkboxChanged(app, event)
+            if ~app.callingAppValid(), return; end
+            updateVisualization(app.CallingApp);
+        end
+
         % Value changed function: VisPts
         function VisPtsValueChanged(app, ~)
             if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
             app.CallingApp.isPathlinesChanged.Value = 1;
             updateVisualization(app.CallingApp);
+        end
+
+		% Value changed function: PathlineLengthEditField
+        function PathlineLengthEditFieldValueChanged(app, ~)
+            app.CallingApp.isPathlinesChanged.Value = 1;
+            if strcmp(app.CallingApp.VisTypeDropDown.Value, 'Pathlines')
+                updateVisualization(app.CallingApp);
+            end
+        end
+
+        % Value changed function: PathlineReleaseEditField
+        function PathlineReleaseEditFieldValueChanged(app, ~)
+            app.CallingApp.isPathlinesChanged.Value = 1;
+            if strcmp(app.CallingApp.VisTypeDropDown.Value, 'Pathlines')
+                updateVisualization(app.CallingApp);
+            end
         end
 
         % Value changed function: LocationDropDown
@@ -444,6 +472,48 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts.Tooltip = {'Centerline point labels used for visualization. '};
             app.VisPts.Position = [73 56+162 70 22];
 
+            % Create PathlineLengthLabel
+            app.PathlineLengthLabel = uilabel(app.VisPlotPanel);
+            app.PathlineLengthLabel.HorizontalAlignment = 'right';
+            app.PathlineLengthLabel.FontName = 'SansSerif';
+            app.PathlineLengthLabel.FontSize = 10;
+            app.PathlineLengthLabel.Enable = 'off';
+            app.PathlineLengthLabel.Visible = 'off';
+            app.PathlineLengthLabel.Position = [3 34+162 70 22];
+            app.PathlineLengthLabel.Text = 'path length (s)';
+
+            % Create PathlineLengthEditField
+            app.PathlineLengthEditField = uieditfield(app.VisPlotPanel, 'text');
+            app.PathlineLengthEditField.ValueChangedFcn = createCallbackFcn(app, @PathlineLengthEditFieldValueChanged, true);
+            app.PathlineLengthEditField.FontName = 'SansSerif';
+            app.PathlineLengthEditField.FontSize = 12;
+            app.PathlineLengthEditField.Enable = 'off';
+            app.PathlineLengthEditField.Visible = 'off';
+            app.PathlineLengthEditField.Tooltip = {'Duration each particle is tracked (seconds). Leave blank to track for full cardiac cycle.'};
+            app.PathlineLengthEditField.Position = [73 34+162 70 22];
+            app.PathlineLengthEditField.Value = '';
+
+            % Create PathlineReleaseLabel
+            app.PathlineReleaseLabel = uilabel(app.VisPlotPanel);
+            app.PathlineReleaseLabel.HorizontalAlignment = 'right';
+            app.PathlineReleaseLabel.FontName = 'SansSerif';
+            app.PathlineReleaseLabel.FontSize = 10;
+            app.PathlineReleaseLabel.Enable = 'off';
+            app.PathlineReleaseLabel.Visible = 'off';
+            app.PathlineReleaseLabel.Position = [3 12+162 70 22];
+            app.PathlineReleaseLabel.Text = 'release frame';
+
+            % Create PathlineReleaseEditField
+            app.PathlineReleaseEditField = uieditfield(app.VisPlotPanel, 'text');
+            app.PathlineReleaseEditField.ValueChangedFcn = createCallbackFcn(app, @PathlineReleaseEditFieldValueChanged, true);
+            app.PathlineReleaseEditField.FontName = 'SansSerif';
+            app.PathlineReleaseEditField.FontSize = 12;
+            app.PathlineReleaseEditField.Enable = 'off';
+            app.PathlineReleaseEditField.Visible = 'off';
+            app.PathlineReleaseEditField.Tooltip = {'Cardiac frame at which particles are released (1 = start of cycle). Leave blank to release at all frames.'};
+            app.PathlineReleaseEditField.Position = [73 12+162 70 22];
+            app.PathlineReleaseEditField.Value = '1';
+
             % Create velocityVisEditFieldLabel_2
             app.velocityVisEditFieldLabel_2 = uilabel(app.VisPlotPanel);
             app.velocityVisEditFieldLabel_2.HorizontalAlignment = 'right';
@@ -451,6 +521,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.velocityVisEditFieldLabel_2.FontWeight = 'bold';
             app.velocityVisEditFieldLabel_2.Position = [73 52 54 22];
             app.velocityVisEditFieldLabel_2.Text = 'colorbar';
+            
+            % Create view_orientation_checkbox
+            app.view_orientation_checkbox = uicheckbox(app.VisPlotPanel);
+            app.view_orientation_checkbox.ValueChangedFcn = createCallbackFcn(app, @view_orientation_checkboxChanged, true);
+            app.view_orientation_checkbox.Tooltip = {'toggle viewing orientation marker'};
+            app.view_orientation_checkbox.Text = 'orientation marker';
+            app.view_orientation_checkbox.FontName = 'SansSerif';
+            app.view_orientation_checkbox.Position = [16 140 146 22];
 
             % Create LocationDropDownLabel
             app.LocationDropDownLabel = uilabel(app.VisPlotPanel);

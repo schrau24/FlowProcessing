@@ -881,6 +881,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 cmap = 'jet';
                 cbarLoc = 'bottom-left';
             else
+                if isempty(app.visParams.maxVel)
+                    app.visParams.maxVel = app.VENC/10;
+                end
                 scale      = [app.visParams.minVel, app.visParams.maxVel];
                 backgroundC = [1 1 1];
                 if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
@@ -1761,7 +1764,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                             % outVol is x×y×z×t — select the current frame
                             outImg = outVol(:,:,:,t);
                         case 'time-averaged'
-                            outImg = nanmean(outVol,4);
+                            outImg = mean(outVol,4,'omitnan');
                         case 'peak'
                             outImg = max(outVol,[],4,'omitnan');
                     end
@@ -1769,7 +1772,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if isSliceWise
                         outImg = outImg(:,:,sl); smthMask = currSeg(:,:,sl);
                     elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                        outImg = nanmean(outImg,3); smthMask = max(currSeg,[],3,'omitnan');
+                        outImg = mean(outImg,3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
                     else          % app.VisOptions.MapProjection.Value = 'max'
                         outImg = max(outImg,[],3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
                     end
@@ -2277,6 +2280,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
                 end
                 app.TimeframeSpinner.Value = app.time_peak;
+                app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
                 updateVisualization(app);
                 viewMap(app);
             catch err
@@ -4092,103 +4096,247 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: MapROIanalysis
         function MapROIanalysisPushed(app, ~)
+            % turn off smoothing (it resizes outImg, breaking idx alignment)
+            app.VisOptionsApp.smoothMap_checkbox.Value = 0;
+            viewMap(app);
             clc; close(figure(700));
             choice = 2;
             while choice == 2
                 close(figure(700));
                 disp('Draw ROI in map image to check results')
                 app.MapPlot.Toolbar.Visible = 'off';
-                h = drawpolygon(app.MapPlot,'color',app.VisOptionsApp.TextcolorDropDown_2.Value,'FaceAlpha',0);
+                h = drawpolygon(app.MapPlot,'color', ...
+                    app.VisOptionsApp.TextcolorDropDown_2.Value,'FaceAlpha',0);
                 BW = createMask(h); idx = find(BW);
-
-                % first save image with current ROI and time frame
                 ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
-                % Turn screenshot into image
                 im = frame2im(ff);
                 app.MapPlot.Toolbar.Visible = 'on';
-
-                % save state
                 saveFrame = app.TimeframeSpinner.Value;
 
-                % loop through all 2D frames with ROI, report summary statistics
-                map_var = zeros(length(idx),app.nframes);
-                for t = 1:app.nframes
-                    app.TimeframeSpinner.Value = t;
-                    [outImg, ~, ~] = viewMap(app);
-                    map_var(:,t) = outImg(idx);
-                end
+                % Pre-compute map for all frames — avoids calling viewMap
+                % (which re-renders everything) once per frame.
+                map_var = app.computeMapROI(idx);
 
-                switch app.MapType.Value
-                    case 'peak velocity'
-                        paramString = 'peak velocity (cm/s)';
-                        saveString = 'peak_velocity';
-                    case 'mean velocity'
-                        paramString = 'mean velocity (cm/s)';
-                        saveString = 'mean_velocity';
-                    case 'kinetic energy'
-                        paramString = 'Max KE (\muJ)';
-                        saveString = 'KE';
-                    case 'energy loss'
-                        paramString = 'EL (mW)';
-                        saveString = 'EL';
-                    case 'vorticity'
-                        paramString = 'vorticity (rad)';
-                        saveString = 'vorticity';
-                end
-
-                % make image
-                card_time = (0:app.nframes-1)*app.timeres;
-                fig = figure(700); clf;
-                set(fig,'Name','ROI analysis')
-                set(fig,'position',[2    42   958   684])
-                subplot(121);
-                image(im); axis off;
-                subplot(122);
-                plot(card_time,mean(map_var,1),'*-k','linewidth',2)
-                hold on;
-                plot(card_time,max(map_var,[],1),'square-b','linewidth',2)
-                xlabel('cardiac time (ms)'); ylabel(paramString); box off;
-                set(gca,'fontsize',16)
-                legend('ROI average', 'ROI max')
-                hold off;
-                set(fig,'color', 'w')
-                drawnow;
+                card_time = (0:app.nframes-1) * app.timeres;
+                [fig, paramString, saveString] = app.plotROIresult( ...
+                    700, im, card_time, map_var, app.MapType.Value);
 
                 app.TimeframeSpinner.Value = saveFrame;
-
-                % check if user wants to save
                 choice = choosedialog_2;
 
                 if choice == 1
-                    savePrefix = saveString;
-                    prompt = {'save name:'};
-                    dlgtitle = 'set save name ROI analysis';
-                    dims = [1 50];
-                    definput = {'vessel'};
-                    answer = inputdlg(prompt,dlgtitle,dims,definput);
-                    savePrefix = strcat(answer{1},'_',savePrefix);
+                    prompt = {'save name:'}; dims = [1 50];
+                    answer = inputdlg(prompt,'set save name ROI analysis',dims,{'vessel'});
+                    savePrefix = strcat(answer{1},'_',saveString);
+                    saveFolder = fullfile(app.directory,'map_results');
+                    mkdir(saveFolder);
+                    saveName = fullfile(saveFolder,'mapROI_results');
+                    tbl = array2table(cat(2,card_time', ...
+                        mean(map_var,1,'omitnan')',max(map_var,[],1,'omitnan')'));
+                    tbl.Properties.VariableNames = ...
+                        ["cardiac time(ms)","ROI_average","ROI_max"];
+                    writetable(tbl,[saveName '.xlsx'], ...
+                        'Sheet',savePrefix,'WriteMode','overwritesheet');
+                    imwrite(frame2im(getframe(fig)), ...
+                        [saveName '_' savePrefix '.tiff']);
 
-                    saveFolder = fullfile(app.directory,'map_results'); mkdir(saveFolder);
-                    saveName =  fullfile(saveFolder,'mapROI_results');
-
-                    % save variable
-                    tbl = array2table(cat(2,card_time',mean(map_var,1)',max(map_var,[],1)'));
-                    tbl.Properties.VariableNames = ["cardiac time(ms)","ROI_average","ROI_max"];
-                    writetable(tbl,[saveName '.xlsx'],'Sheet',savePrefix,'WriteMode','overwritesheet');
-
-                    imgData = frame2im(getframe(fig));
-                    imwrite(imgData, [saveName '_' savePrefix '.tiff']);
-
-                    % inform of the saving
-                    msgbox(['results saved to ' saveName '.xlsx'], 'Saving complete','replace')
+                    answer2 = questdlg( ...
+                        'Re-use ROI for other params and save results?', ...
+                        'Re-use Map ROI','Yes','No','Yes');
+                    if strcmp(answer2,'Yes')
+                        mapTypes = {'peak velocity','mean velocity', ...
+                                    'kinetic energy','energy loss','vorticity'};
+                        mapTypes(contains(mapTypes,app.MapType.Value)) = [];
+                        % Save user's current map scale to restore at the end
+                        savedMinMap = app.visParams.minMap;
+                        savedMaxMap = app.visParams.maxMap;
+                        for mt = 1:length(mapTypes)
+                            app.MapType.Value = mapTypes{mt};
+                            % Apply the default scale for this map type
+                            [defMin, defMax] = app.defaultMapScale(mapTypes{mt});
+                            app.visParams.minMap = defMin;
+                            app.visParams.maxMap = defMax;
+                            app.VisOptionsApp.minMapEditField.Value = num2str(defMin);
+                            app.VisOptionsApp.maxMapEditField.Value = num2str(defMax);
+                            % Render the new map type so the screenshot reflects it
+                            viewMap(app);
+                            drawnow;
+                            ff2 = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
+                            im2 = frame2im(ff2);
+                            map_var2 = app.computeMapROI(idx);
+                            [fig2,~,ss2] = app.plotROIresult( ...
+                                700,im2,card_time,map_var2,mapTypes{mt});
+                            sp2 = strcat(answer{1},'_',ss2);
+                            tbl2 = array2table(cat(2,card_time', ...
+                                mean(map_var2,1,'omitnan')', ...
+                                max(map_var2,[],1,'omitnan')'));
+                            tbl2.Properties.VariableNames = ...
+                                ["cardiac time(ms)","ROI_average","ROI_max"];
+                            writetable(tbl2,[saveName '.xlsx'], ...
+                                'Sheet',sp2,'WriteMode','overwritesheet');
+                            imwrite(frame2im(getframe(fig2)), ...
+                                [saveName '_' sp2 '.tiff']);
+                        end
+                        % Restore user's original scale
+                        app.visParams.minMap = savedMinMap;
+                        app.visParams.maxMap = savedMaxMap;
+                        app.VisOptionsApp.minMapEditField.Value = num2str(savedMinMap);
+                        app.VisOptionsApp.maxMapEditField.Value = num2str(savedMaxMap);
+                    end
+                    msgbox(['results saved to ' saveName '.xlsx'], ...
+                        'Saving complete','replace');
                     break;
                 elseif choice == 0
                     close(figure(700));
                     disp('ROI analysis cancelled')
                 end
             end
-
         end
+
+        % -----------------------------------------------------------------
+        % HELPER: return the default [min, max] scale for each map type.
+        % Matches the scaletmp values defined inside viewMap.
+        % -----------------------------------------------------------------
+        function [minVal, maxVal] = defaultMapScale(app, mapType)
+            switch mapType
+                case 'wall shear stress';  minVal = 0;      maxVal = 4;
+                case 'peak velocity';      minVal = 0;      maxVal = round(app.VENC/10);
+                case 'mean velocity';      minVal = 0;      maxVal = round(app.VENC/50);
+                case 'kinetic energy';     minVal = 0;      maxVal = 20;
+                case 'energy loss';        minVal = -0.001; maxVal = 4;
+                case 'vorticity';          minVal = 0;      maxVal = 250;
+                otherwise;                minVal = 0;      maxVal = 1;
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % HELPER: pre-compute 2D projected map values at ROI pixels for
+        % all timeframes without re-rendering the axis each iteration.
+        % -----------------------------------------------------------------
+        function map_var = computeMapROI(app, idx)
+            nf = app.nframes;
+            t0 = app.TimeframeSpinner.Value;
+
+            % Rotate velocity once (rotation fixed for all frames)
+            [~, currV_rot1, ~] = app.rotateVol3D( ...
+                app.segment, app.v(:,:,:,:,1)/10, ...
+                app.MAG(:,:,:,1), app.rotAngles2);
+            sz_full = size(currV_rot1, 1:3);
+
+            % Rotate segmentation
+            currSeg0 = app.getCurrentSeg(t0);
+            tmp = imrotate3(double(currSeg0),app.rotAngles2(2),[0 -1 0],'nearest');
+            tmp = imrotate3(tmp,             app.rotAngles2(1),[-1 0 0],'nearest');
+            currSeg = logical(imrotate3(tmp, app.rotAngles2(3),[0  0 1],'nearest'));
+            if ~isequal(sz_full, size(currSeg))
+                pad = false(sz_full);
+                r=min(sz_full(1),size(currSeg,1));
+                c=min(sz_full(2),size(currSeg,2));
+                s=min(sz_full(3),size(currSeg,3));
+                pad(1:r,1:c,1:s)=currSeg(1:r,1:c,1:s);
+                currSeg=pad;
+            end
+            if app.VisOptionsApp.mask_erosion_checkbox.Value
+                currSeg = mask_erosion(currSeg,0);
+            end
+
+            % Build rotated velocity for all frames
+            if contains(app.MapTime.Value,'resolved')
+                currV = zeros([sz_full,3,nf],'like',app.v);
+                for tt = 1:nf
+                    [~,vtt,~] = app.rotateVol3D( ...
+                        app.segment,app.v(:,:,:,:,tt)/10, ...
+                        app.MAG(:,:,:,1),app.rotAngles2);
+                    currV(:,:,:,:,tt) = vtt;
+                end
+            else
+                currV = repmat(currV_rot1,[1 1 1 1 nf]);
+            end
+            vx = currSeg.*currV(:,:,:,1,:);
+            vy = currSeg.*currV(:,:,:,2,:);
+            vz = currSeg.*currV(:,:,:,3,:);
+
+            % Compute 4D outVol for all frames at once
+            switch app.MapType.Value
+                case {'peak velocity','mean velocity'}
+                    outVol = squeeze(currSeg.*sqrt(vx.^2+vy.^2+vz.^2));
+                case 'kinetic energy'
+                    rho=1.060; vv=prod(app.pixdim/1000)*1000;
+                    vel=(vx/100).^2+(vy/100).^2+(vz/100).^2;
+                    outVol=squeeze(1e6*0.5*rho*vv*currSeg.*vel);
+                case 'energy loss'
+                    v1=squeeze(vx);v2=squeeze(vy);v3=squeeze(vz);
+                    [v11,v12,v13]=gradient(v1);
+                    [v21,v22,v23]=gradient(v2);
+                    [v31,v32,v33]=gradient(v3);
+                    div=zeros(size(v1));
+                    for tt=1:nf
+                        div(:,:,:,tt)=divergence(v1(:,:,:,tt),v2(:,:,:,tt),v3(:,:,:,tt));
+                    end
+                    gV={v11,v12,v13;v21,v22,v23;v31,v32,v33};
+                    th=0;
+                    for ii=1:3; for jj=1:3
+                        d=double(ii==jj);
+                        th=th+(gV{ii,jj}+gV{jj,ii}-(2/3)*div.*d).^2;
+                    end; end
+                    outVol=squeeze(currSeg.*0.004.*(th/2)*prod(app.pixdim)/1000);
+                case 'vorticity'
+                    px=app.pixdim./1000;
+                    [X,Y,Z]=meshgrid((1:sz_full(2))*px(2), ...
+                                     (1:sz_full(1))*px(1), ...
+                                     (1:sz_full(3))*px(3));
+                    vxs=squeeze(vx)/100; vys=squeeze(vy)/100; vzs=squeeze(vz)/100;
+                    cx=zeros(size(vxs));cy=cx;cz=cx;
+                    for tt=1:nf
+                        [cx(:,:,:,tt),cy(:,:,:,tt),cz(:,:,:,tt)]=...
+                            curl(X,Y,Z,vxs(:,:,:,tt),vys(:,:,:,tt),vzs(:,:,:,tt));
+                    end
+                    outVol=squeeze(currSeg.*sqrt(cx.^2+cy.^2+cz.^2));
+                otherwise
+                    outVol=zeros([sz_full,nf]);
+            end
+            outVol(repmat(~currSeg,[1 1 1 nf]))=NaN;
+
+            % Project and extract ROI values
+            isSW = contains(app.VisOptionsDropDown.Value,'slice-wise');
+            map_var = zeros(length(idx),nf);
+            for t = 1:nf
+                vol_t = outVol(:,:,:,t);
+                if isSW
+                    img_t = vol_t(:,:,app.SliceSpinner_2.Value);
+                elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean') || contains(app.MapType.Value, 'mean velocity')
+                    img_t = mean(vol_t,3,'omitnan');
+                else
+                    img_t = max(vol_t,[],3,'omitnan');
+                end
+                map_var(:,t) = img_t(idx);
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % HELPER: plot ROI waveform result, return figure + label strings
+        % -----------------------------------------------------------------
+        function [fig, paramString, saveString] = plotROIresult( ...
+                ~, figNum, im, card_time, map_var, mapType)
+            switch mapType
+                case 'peak velocity';   paramString='peak velocity (cm/s)'; saveString='peak_velocity';
+                case 'mean velocity';   paramString='mean velocity (cm/s)'; saveString='mean_velocity';
+                case 'kinetic energy';  paramString='Max KE (\muJ)';        saveString='KE';
+                case 'energy loss';     paramString='EL (mW)';              saveString='EL';
+                case 'vorticity';       paramString='vorticity (rad)';      saveString='vorticity';
+                otherwise;              paramString=mapType;                 saveString=mapType;
+            end
+            fig=figure(figNum); clf;
+            set(fig,'Name','ROI analysis','position',[2 42 958 684],'color','w');
+            subplot(121); image(im); axis off;
+            subplot(122);
+            plot(card_time,mean(map_var,1,'omitnan'),'*-k','linewidth',2); hold on;
+            plot(card_time,max(map_var,[],1,'omitnan'),'square-b','linewidth',2);
+            xlabel('cardiac time (ms)'); ylabel(paramString);
+            legend('ROI average','ROI max');
+            box off; set(gca,'fontsize',16); hold off; drawnow;
+        end
+
 
         % Button pushed function: MapVolumetricanalysis
         function MapVolumetricanalysisPushed(app,~)

@@ -4,7 +4,7 @@ function streamsOut = calculateStreamlines(currSeg, currV, subsample, pixdim, mi
 nframes = size(currV, 5);
 
 % bins for alpha values and corresponding patches, to max velocity value
-edges  = [0  0.3  0.6  1.0] * maxVel;
+5.13edges  = [0  0.3  0.6  1.0] * maxVel;
 alphas = [0.2  0.5  0.9];
 nbins  = numel(alphas);
 Xb = cell(nbins,nframes); Yb = cell(nbins,nframes);

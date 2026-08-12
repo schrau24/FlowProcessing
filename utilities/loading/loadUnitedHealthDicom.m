@@ -1,0 +1,266 @@
+function [nframes, res, fov, pixdim, timeres, v, MAG, magWeightVel, angio, vMean, VENC, ori] = ...
+    loadUnitedHealthDicom(directory)
+
+warning('off','all');
+
+%%
+disp('Loading data')
+
+% subfolders
+subfolders = dir(directory); subfolders = subfolders(3:end);
+
+% if only 2 subfolders, we check if they are 'Mag' and 'Phase', then update
+% subfolder names appropriately
+if length(subfolders) == 2
+    if any(contains({subfolders.name}, 'mag')) || any(contains({subfolders.name}, 'Mag')) && any(contains({subfolders.name}, 'Phase'))
+        if find(contains({subfolders.name},'Phase')) == 1
+            subfolders = subfolders([2 1]);
+        end
+        subsubfolders = dir(fullfile(directory,'Phase')); subsubfolders = subsubfolders(3:end);
+        subfolders(2).name = fullfile('Phase',subsubfolders(1).name);
+        subfolders(3).name = fullfile('Phase',subsubfolders(2).name);
+        subfolders(4).name = fullfile('Phase',subsubfolders(3).name);
+    end
+end
+isEnhancedDicom = 0; vCount = 0;
+for ii = 1:4
+    files = dir(fullfile(directory,subfolders(ii).name)); files = files(3:end);
+    if files(1).isdir && length(files) == 1
+        files = dir(fullfile(files(1).folder,files(1).name)); files = files(3:end);
+    end
+    info = dicominfo(fullfile(files(end).folder,files(end).name));
+    tmp = dicomCollection(fullfile(directory,subfolders(ii).name));
+    % need to sort to keep in order!
+    tmp{1,'Filenames'}{1} = sort(tmp{1,'Filenames'}{1});
+    % if the tmp table has more than one row, we have enhanced dicoms,
+    % which have different headers and data format to sort through
+    if ii == 1
+        if size(tmp,1) > 1 || length(files) == 1
+            isEnhancedDicom = 1;
+            if length(files) > 1
+                nslices = size(tmp,1);
+                nframes = tmp{1,'Frames'};
+                timeres = info.CardiacRRIntervalSpecified/nframes;
+                pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
+                    info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
+            else
+                % loop through frame items and store triggers
+                % and slices
+                count = 0; nTotalImgs = tmp{1,'Frames'}; pcaFlag = 0;
+                for nn = nTotalImgs-100:nTotalImgs
+                    count = count + 1;
+                    eval(sprintf('aa=info.PerFrameFunctionalGroupsSequence.Item_%i;',nn))
+                    tt(count) = aa.CardiacSynchronizationSequence.Item_1.NominalCardiacTriggerDelayTime;
+                    IOP = aa.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
+                    IPP = aa.PlanePositionSequence.Item_1.ImagePositionPatient;
+                    R = IOP(1:3);
+                    C = IOP(4:6);
+                    normal = cross(R, C);
+                    calculatedSliceLocation = dot(IPP, normal);
+                    sl_loc(count) = calculatedSliceLocation;
+                    if strcmp(aa.Private_2005_140f.Item_1.Private_2005_1011,'M')
+                        pcaFlag = 1;
+                    end
+                end
+                tt = unique(tt); sl_loc = unique(sl_loc);
+                nframes = length(tt);               % number of reconstructed frames
+                timeres = mean(diff(tt));           % temporal resolution, in ms
+                nslices = tmp{1,'Frames'}/nframes;
+                if pcaFlag; nslices = nslices/2; end
+                pixdim =[info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;...
+                    mean(diff(sl_loc))]';
+            end
+        else
+            count = 0;
+            for nn = 1:length(files)
+                count = count + 1;
+                aa = dicominfo(fullfile(files(nn).folder,files(nn).name));
+                tt(count) = aa.TriggerTime;
+                sl_loc(count) = aa.SliceLocation;
+            end
+            tt = unique(tt); sl_loc = unique(sl_loc);
+            nframes = length(tt);               % number of reconstructed frames
+            timeres = mean(diff(tt));           % temporal resolution, in ms
+            nslices = length(files)/nframes;
+            pixdim = [info.PixelSpacing(1) info.PixelSpacing(2) mean(diff(sl_loc))];
+        end
+        res = [tmp{1,'Rows'} tmp{1,'Columns'} nslices];
+        fov = pixdim.*res/10;                       % Field of view in cm
+    end
+
+    if isEnhancedDicom; img_out = zeros([res,nframes]); end
+    for table_row = 1:size(tmp,1)
+        try
+            [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
+        catch
+            try
+                [img, spatial, dim] = dicomreadVolume(fullfile(subjectFolder,f_4Dflow(ii).name));
+            catch
+                [img, spatial, dim] = dicomreadVolume(fullfile(files(end).folder,files(end).name));
+            end
+        end
+        if isEnhancedDicom
+            try
+                if length(files)==1
+                    if size(img,4) ~= nslices*nframes
+                        img = img(:,:,:,1:nslices*nframes);
+                    end
+                    img_out = double(reshape(img,[res(1:3) nframes]));
+                end
+            catch
+                img_out(:,:,table_row,:) = double(img);
+            end
+        else
+            img_out = double(permute(reshape(img,[res(1:2) nframes res(3)]),[1 2 4 3]));
+        end
+    end
+
+    isMag = 0;
+    if isEnhancedDicom
+        isMag = contains(info.ComplexImageComponent,'MAGNITUDE');
+    else
+        isMag = contains(info.ImageType,'\M\');
+    end
+    if isMag
+        MAG = img_out;
+        MAG = MAG/max(abs(MAG(:)));
+    else            % '\P\ or 'PHASE'
+        vCount = vCount+1; vDir = [];
+        % velocity info
+        if isEnhancedDicom
+            img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
+                info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleIntercept;
+            dirs = {'rl','ap','fh'};    % convention for HFS scans
+            dcmorient = IOP;
+            rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
+            colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
+            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+                tmpOri = 'Tra';
+            elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
+                tmpOri = 'Cor';
+            elseif strcmp(rowDir,'ap') && strcmp(colDir,'fh')
+                tmpOri = 'Sag';
+            else
+                warning('unknown image orientation, assuming transversal');
+                tmpOri = 'Tra';
+            end
+
+            % the venc is determined differently for different scanner
+            % types
+            % https://dicom.nema.org/dicom/supps/sup49_30.pdf
+            VENC = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingMaximumValue * 10;    % in mm/s
+            tmpVDir = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingDirection;
+            switch tmpOri
+                case 'Tra'
+                    dirs = {'rl','ap','through'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Cor'
+                    dirs = {'rl','through','fh'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Sag'
+                    dirs = {'through','ap','fh'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+            end
+
+        else
+            img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
+            dirs = {'rl','ap','fh'};    % convention for HFS scans
+            dcmorient = info.ImageOrientationPatient;
+            rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
+            colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
+            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+                tmpOri = 'Tra';
+            elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
+                tmpOri = 'Cor';
+            elseif strcmp(rowDir,'ap') && strcmp(colDir,'fh')
+                tmpOri = 'Sag';
+            else
+                warning('unknown image orientation, assuming transversal');
+                tmpOri = 'Tra';
+            end
+            tmpVDir = info.VelocityEncodingDirection;
+            switch tmpOri
+                case 'Tra'
+                    dirs = {'rl','ap','through'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Cor'
+                    dirs = {'rl','through','fh'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+                case 'Sag'
+                    dirs = {'through','ap','fh'};
+                    vDir = dirs{find(abs(tmpVDir)>0.6)};
+            end
+
+            VENC = info.VelocityEncodingMaximumValue*10;              % venc, in mm/s
+        end
+
+        switch tmpOri
+            case 'Tra'
+                switch vDir
+                    case 'through'
+                        vz = img_out*10;
+                    case 'rl'
+                        vy = img_out*10;
+                    case 'ap'
+                        vx = img_out*10;
+                end
+            case 'Cor'
+                switch vDir
+                    case 'through'
+                        vz = img_out*10;
+                    case 'ap'
+                        vy = img_out*10;
+                    case 'fh'
+                        vx = img_out*10;
+                end
+            case 'Sag'
+                switch vDir
+                    case 'through'
+                        vz = img_out*10;
+                    case 'fh'
+                        vx = img_out*10;
+                    case 'ap'
+                        vy = img_out*10;
+                end
+        end
+    end
+end
+
+%% manually change velocity directions depending on scan orientations
+
+% velocity directions correspond to the following:
+% vx: in-plane up-down
+% vy: in-plane right-left
+% vz: through-plane
+switch tmpOri
+    case 'Tra'
+        ori.label = 'axial';
+        ori.vxlabel = 'A-P';
+        ori.vylabel = 'R-L';
+        ori.vzlabel = 'F-H';
+    case 'Sag'
+        ori.label = 'sagittal';
+        ori.vxlabel = 'F-H';
+        ori.vylabel = 'A-P';
+        ori.vzlabel = 'R-L';
+    case 'Cor'
+        ori.label = 'coronal';
+        ori.vxlabel = 'H-F';
+        ori.vylabel = 'R-L';
+        ori.vzlabel = 'A-P';
+end
+
+%%
+v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
+clear vx vy vz
+% flip z direction
+% v = flip(v,3);
+
+% take the means
+vMean = mean(v,5);
+MAG = MAG./max(MAG(:));
+
+[magWeightVel, angio] = calc_angio(MAG, v, VENC);
+
+disp('Load Data finished');
+return

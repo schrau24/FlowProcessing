@@ -1934,7 +1934,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
 
-            list = {'Philips .rec','Philips dicom', 'mrStruct .mat','Siemens dicom'};
+            list = {'Philips .rec','Philips dicom', 'mrStruct .mat','Siemens dicom','GE dicom','United Health dicom'};
             [indx,tf] = listdlg('PromptString',{'4D flow file type',...
                 'Only one file can be selected',''},...
                 'SelectionMode','single','ListString',list);
@@ -1973,6 +1973,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                         app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadGEDicom(directory);
+
+                case 'United Health dicom'
+                    directory = uigetdir('Select parent United Health dicom directory (with 4 subfolders)');
+                    % quick check that all directories exist
+                    if length(dir(directory)) ~= 6 % inclues . and ..
+                        error('directory does not contain 4 subfolders (with United Health dicoms)');
+                    end
+                    [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadUnitedHealthDicom(directory);
             end
             app.directory = directory;
 

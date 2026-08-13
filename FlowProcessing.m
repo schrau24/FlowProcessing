@@ -112,8 +112,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         FlowandPulseWaveVelocityTab     matlab.ui.container.Tab
         PlaneWidth                      matlab.ui.control.EditField
         PlanewidthmmLabel               matlab.ui.control.Label
-        SplineSpacingSliderLabel        matlab.ui.control.Label
-        SplineSpacingSlider             matlab.ui.control.Slider
         findBestFit_checkbox            matlab.ui.control.CheckBox
         R2Display                       matlab.ui.control.EditField
         PWVDisplayTitle_2               matlab.ui.control.Label
@@ -2823,31 +2821,13 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             tmpBranch = flipud(app.branchList(idx,1:3));
 
-            % fit and extract the spline plus normals for this centerline
-            % user choice points to do spline fit along centerline, only if
-            % branch is long enough
-            if size(tmpBranch,1) > 25
-                percBranchLengthSpline = 10;     % the target distance (%) between chosen points for fit
-                ptSkip = round(linspace(1,size(tmpBranch,1),round(size(tmpBranch,1)*percBranchLengthSpline/100)));
-                curve_long = cscvn(tmpBranch(ptSkip,:)');
-            else
-                curve_long = cscvn(tmpBranch(:,:)');
-            end
-            tlong = linspace(0,curve_long.breaks(end),size(tmpBranch,1));
-
-            % the final centerline
-            app.branchActual = fnval(curve_long, tlong);
-            app.branchActual = app.branchActual';
-
-            % and the tangent vector
-            Tangent_V = fnval(fnder(curve_long), tlong);
-            Tangent_V = Tangent_V';
-            Tangent_V = normalize(Tangent_V,2,'norm');
+            % Initial spline fit at default smoothing
+            planeWidth = round(str2double(app.PlaneWidth.Value)/mean(app.pixdim)/2);
+            [app.branchActual, Tangent_V] = app.fitCenterlineSpline(tmpBranch, 10);
 
             reset3DSegmentationAndCenterline(app);
-            hline2 = line(app.View3D_2,app.branchActual(:,2),app.branchActual(:,1),app.branchActual(:,3),...
+            line(app.View3D_2, app.branchActual(:,2), app.branchActual(:,1), app.branchActual(:,3), ...
                 'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
-            planeWidth = round(str2double(app.PlaneWidth.Value)/mean(app.pixdim)/2);
             viewPlanesIn3D(app.View3D_2, Tangent_V, planeWidth, app.branchActual);
 
             choice = choosedialog;
@@ -2858,180 +2838,396 @@ classdef FlowProcessing < matlab.apps.AppBase
                     reset3DSegmentationAndCenterline(app);
                     return;
 
+                case 3  % pick start/end points, then tune and calculate
+                    currSeg_pick = app.getCurrentSeg(app.SegTimeframeSpinner.Value);
+                    currSeg_sm   = smooth3(double(currSeg_pick));
+
+                    % Build figure matching reset3DSegmentationAndCenterline style
+                    fig_pick = figure('Name','Pick centerline: click START then END, press Enter when done', ...
+                        'Color','w', 'NumberTitle','off');
+                    ax_pick = axes(fig_pick);
+                    hold(ax_pick,'on');
+
+                    hpatch_pick = patch(ax_pick, isosurface(currSeg_sm, 0.5), 'FaceAlpha', 0.20);
+                    reducepatch(hpatch_pick, 0.6);
+                    set(hpatch_pick, 'FaceColor',[0.7 0.7 0.7], 'EdgeColor','none', 'PickableParts','none');
+
+                    axis(ax_pick,'vis3d','off');
+                    colormap(ax_pick,'colorcube');
+                    camlight(ax_pick); lighting(ax_pick,'gouraud');
+                    view(ax_pick, [0 0 -1]);
+                    daspect(ax_pick, [1 1 1]);
+                    camorbit(ax_pick, app.rotAngles(2), app.rotAngles(1), [1 1 0]);
+                    title(ax_pick, 'Building skeleton...');
+                    drawnow;
+
+                    % Build skeleton first so we can snap clicks to it immediately
+                    skel = bwskel(logical(currSeg_pick));
+                    [idx_x, idx_y, idx_z] = ind2sub(size(skel), find(skel));
+                    skel_pts = [idx_x, idx_y, idx_z];
+
+                    if isempty(skel_pts)
+                        close(fig_pick);
+                        msgbox('Skeleton is empty — try a larger/smoother segmentation.','Error','error');
+                        return;
+                    end
+
+                    % Collect clicks one at a time using ax.CurrentPoint for 3D snapping.
+                    % ax.CurrentPoint is a 2x3 matrix [near; far] in TRUE 3D data
+                    % coordinates, updated on every click regardless of camorbit rotation.
+                    % We find the skeleton point with minimum distance to this pick ray.
+                    disp('Click START point, then END point...');
+                    clicks_idx = zeros(1,2);
+                    hClickPts = gobjects(2,1);
+                    clr        = [0 1 1; 1 0 1];   % cyan = start, magenta = end
+
+                    % skel_pts is [row col slice] = [plot-Y plot-X plot-Z]
+                    % convert to plot-space for ray distance: [X Y Z] = [col row slice]
+                    skel_XYZ = [skel_pts(:,2), skel_pts(:,1), skel_pts(:,3)];
+
+                    for nClick = 1:2
+                        if nClick == 1
+                            title(ax_pick, 'Click START point (cyan)...');
+                        else
+                            title(ax_pick, 'Click END point (magenta)...');
+                        end
+                        drawnow;
+
+                        % ginput(1) blocks until the user clicks; we discard its
+                        % 2D return values and use ax.CurrentPoint instead.
+                        ginput(1);
+                        cp = ax_pick.CurrentPoint;   % [2 x 3]: near and far plane points
+
+                        % Ray from near to far in 3D data (plot) coordinates
+                        ray_origin = cp(1,:);              % [X Y Z] of near point
+                        ray_dir    = cp(2,:) - cp(1,:);    % direction vector
+
+                        % Find skeleton point with minimum distance to this ray
+                        % dist = ||(p - o) - ((p-o)·d/|d|²)·d||
+                        diff_pts = skel_XYZ - ray_origin;
+                        t_vals   = (diff_pts * ray_dir') / (ray_dir * ray_dir');
+                        closest  = ray_origin + t_vals .* ray_dir;
+                        dist3d   = sqrt(sum((skel_XYZ - closest).^2, 2));
+                        [~, nearest] = min(dist3d);
+                        clicks_idx(nClick) = nearest;
+
+                        % Show snapped marker at its true 3D position
+                        sp = skel_pts(nearest,:);   % [row, col, slice]
+                        hClickPts(nClick) = scatter3(ax_pick, ...
+                            sp(2), sp(1), sp(3), ...   % [col, row, slice] = [X, Y, Z]
+                            120, clr(nClick,:), 'filled', 'MarkerEdgeColor','k');
+                        drawnow;
+                    end
+
+                    start_idx = clicks_idx(1);
+                    end_idx   = clicks_idx(2);
+
+                    % Build graph over skeleton voxels
+                    offsets = [];
+                    for dx = -1:1;
+                        for dy = -1:1;
+                            for dz = -1:1
+                                if ~(dx==0 && dy==0 && dz==0)
+                                    offsets = [offsets; dx dy dz]; %#ok<AGROW>
+                                end
+                            end
+                        end
+                    end
+
+                    lin_idx  = sub2ind(size(skel), skel_pts(:,1), skel_pts(:,2), skel_pts(:,3));
+                    node_map = containers.Map(lin_idx, 1:length(lin_idx));
+                    edges_i = []; edges_j = []; weights = [];
+                    for i = 1:length(lin_idx)
+                        pt = skel_pts(i,:);
+                        for k = 1:size(offsets,1)
+                            nb = pt + offsets(k,:);
+                            if all(nb >= 1) && nb(1)<=size(skel,1) && ...
+                                    nb(2)<=size(skel,2) && nb(3)<=size(skel,3)
+                                if skel(nb(1),nb(2),nb(3))
+                                    n_lin = sub2ind(size(skel),nb(1),nb(2),nb(3));
+                                    if isKey(node_map, n_lin)
+                                        edges_i(end+1) = i;    %#ok<AGROW>
+                                        edges_j(end+1) = node_map(n_lin); %#ok<AGROW>
+                                        weights(end+1) = norm(offsets(k,:)); %#ok<AGROW>
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    G = graph(edges_i, edges_j, weights);
+                    path_nodes  = shortestpath(G, start_idx, end_idx);
+                    centerline  = skel_pts(path_nodes, :);
+
+                    if isempty(centerline) || size(centerline,1) < 3
+                        close(fig_pick);
+                        msgbox('Could not find a path between points — try different locations.','Error','error');
+                        return;
+                    end
+
+                    % Smooth via spline then let user tune interactively
+                    [app.branchActual, Tangent_V] = app.fitCenterlineSpline(centerline, 10);
+                    [app.branchActual, Tangent_V, accepted] = ...
+                        app.tuneSplineInteractive(centerline, app.branchActual, Tangent_V, planeWidth);
+
+                    if ~accepted
+                        close(fig_pick);
+                        reset3DSegmentationAndCenterline(app);
+                        return;
+                    end
+                    close(fig_pick);
+
+                    % Update the 3D view then run flow calculation
+                    reset3DSegmentationAndCenterline(app);
+                    line(app.View3D_2, app.branchActual(:,2), app.branchActual(:,1), app.branchActual(:,3), ...
+                        'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
+                    app.runFlowCalculation(Tangent_V, planeWidth);
+                    return;
+
                 case 1
-
-                    clc;
-                    % now we've found the centerline:
-                    % 1. calculate aorta segmentation (if not already available
-                    % 2. perform non-rigid registration to get time-resolved aortic
-                    % segmentation
-                    % 3. calculate flow
-
-                    % calculate aorta segmentation, if not already available
-                    if ~app.isSegmentationLoaded   % create a new aorta_seg
-                        x = round(app.branchActual(:,1));
-                        y = round(app.branchActual(:,2));
-                        z = round(app.branchActual(:,3));
-                        index = sub2ind(size(app.segment),x,y,z);
-                        g = zeros(size(app.segment));
-                        g(index) = 1;
-
-                        se = strel('sphere',4);
-                        gg = imdilate(g,se);
-
-                        app.aorta_seg = smooth3(gg);
+                    % Let user tune the smoothing before committing
+                    [app.branchActual, Tangent_V, accepted] = ...
+                        app.tuneSplineInteractive(tmpBranch, app.branchActual, Tangent_V, planeWidth);
+                    if ~accepted
+                        reset3DSegmentationAndCenterline(app);
+                        return;
                     end
-
-                    % spot to create timeresolved segmentation, or use
-                    % what was already loaded
-                    if app.isTimeResolvedSeg
-                        aortaSeg_timeResolved = app.aorta_seg;
-                    else
-                        aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
-                        currSeg = app.getCurrentSeg(1); % frame-independent static seg
-                        if ~app.isSegmentationLoaded
-                            currSeg = app.segment;
-                        end
-                        for j = 1:app.nframes
-                            aortaSeg_timeResolved(:,:,:,j) = currSeg;
-                        end
-                    end
-
-                    % Calculate flow over whole aorta
-                    displayWaitBar = true;
-                    planeWidth = round(str2double(app.PlaneWidth.Value)/mean(app.pixdim)/2);
-                    [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
-                        params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
-                        app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
-                    app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
-
-                    % flows are calculated, so we can enable 'Display Distance'
-                    % and 'Parameter Drop Down'
-                    app.DisplayDistanceCheckbox.Enable = true;
-                    app.DisplayDistanceCheckbox.Visible = 'on';
-                    app.ParameterDropDown.Enable = true;
-                    app.ParameterDropDown.Visible = 'on';
-                    app.ParameterLabel.Visible = 'on';
-                    % calculate distance
-                    branch = app.branchActual;
-                    vox = mean(app.pixdim);
-                    for i=2:size(branch,1)
-                        dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
-                    end
-                    app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
-                    if app.DisplayDistanceCheckbox.Value
-                        app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
-                            num2str(app.FullBranchDistance(length(branch)))];
-                        app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
-                            num2str(app.FullBranchDistance(length(branch))) ']'];
-                    else
-                        app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
-                        app.PWVPointsLabel.Text = ['PWV Points [5:' num2str(length(app.branchActual)) ']'];
-                    end
-                    % immediately calculate PWV
-                    CalculatePWVButtonPushed(app, []);
-
-                    % view the flows at each centerline point, and plot the waveforms
-                    view3D_wParams(app);
-                    plotWaveforms(app);
-
-                    % update maps tab, send spaced initial centerline points to maps tab
-                    app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
-                    app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
-                    app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
-                case 2  % go into update_centerline code for manual adjustments
-                    app.SplineSpacingSlider.Visible = 'on';
-                    app.SplineSpacingSliderLabel.Visible = 'on';
-                    if app.isTimeResolvedSeg
-                        data = app.aorta_seg(:,:,:,app.time_peak);
-                    else
-                        data = app.aorta_seg;
-                    end
-                    [app.branchActual, Tangent_V] = update_centerline(data, app.branchActual, planeWidth, app);
-
-                    clc;
-                    % now we've found the centerline:
-                    % 1. calculate aorta segmentation (if not already available
-                    % 2. perform non-rigid registration to get time-resolved aortic
-                    % segmentation
-                    % 3. calculate flow
-
-                    % calculate aorta segmentation, if not already available
-                    if ~app.isSegmentationLoaded   % create a new aorta_seg
-                        x = round(app.branchActual(:,1));
-                        y = round(app.branchActual(:,2));
-                        z = round(app.branchActual(:,3));
-                        index = sub2ind(size(app.segment),x,y,z);
-                        g = zeros(size(app.segment));
-                        g(index) = 1;
-
-                        se = strel('sphere',4);
-                        gg = imdilate(g,se);
-
-                        app.aorta_seg = smooth3(gg);
-                    end
-
-                    % spot to create timeresolved segmentation, or use
-                    % what was already loaded
-                    if app.isTimeResolvedSeg
-                        aortaSeg_timeResolved = app.aorta_seg;
-                    else
-                        aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
-                        currSeg = app.getCurrentSeg(1); % frame-independent static seg
-                        if ~app.isSegmentationLoaded
-                            currSeg = app.segment;
-                        end
-                        for j = 1:app.nframes
-                            aortaSeg_timeResolved(:,:,:,j) = currSeg;
-                        end
-                    end
-
-                    % Calculate flow over whole aorta
-                    displayWaitBar = true;
-                    [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
-                        params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, aortaSeg_timeResolved, app.isSegmentationLoaded,...
-                        app.isTimeResolvedSeg, Tangent_V, planeWidth, displayWaitBar);
-                    app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
-
-                    % flows are calculated, so we can enable 'Display Distance'
-                    % and 'Parameter Drop Down'
-                    app.DisplayDistanceCheckbox.Enable = true;
-                    app.DisplayDistanceCheckbox.Visible = 'on';
-                    app.ParameterDropDown.Enable = true;
-                    app.ParameterDropDown.Visible = 'on';
-                    app.ParameterLabel.Visible = 'on';
-                    % calculate distance
-                    branch = app.branchActual;
-                    vox = mean(app.pixdim);
-                    for i=2:size(branch,1)
-                        dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
-                    end
-                    app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
-                    if app.DisplayDistanceCheckbox.Value
-                        % immediately calculate PWV
-                        app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
-                            num2str(app.FullBranchDistance(length(branch)))];
-                        app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
-                            num2str(app.FullBranchDistance(length(branch))) ']'];
-                    else
-                        % immediately calculate PWV
-                        app.PWVPoints.Value = ['1: ' num2str(length(app.branchActual))];
-                        app.PWVPointsLabel.Text = ['PWV Points [1:' num2str(length(app.branchActual)) ']'];
-                    end
-                    CalculatePWVButtonPushed(app, []);
-
-                    % view the flows at each centerline point, and plot the waveforms
-                    view3D_wParams(app);
-                    plotWaveforms(app);
-
-                    % update maps tab, send spaced initial centerline points to maps tab
-                    app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
-                    app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
-                    app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
-                    app.SplineSpacingSlider.Visible = 'off';
-                    app.SplineSpacingSliderLabel.Visible = 'off';
+                    app.runFlowCalculation(Tangent_V, planeWidth);
+                    return;
             end
         end
+
+        % -----------------------------------------------------------------
+        % HELPER: fit a cubic spline to raw branch points.
+        % percSpacing controls how many knots are used (1=dense, 50=coarse).
+        % -----------------------------------------------------------------
+        function [branchOut, tangentOut] = fitCenterlineSpline(app, rawPts, percSpacing) %#ok<INUSL>
+            if size(rawPts,1) > 25 && percSpacing < 100
+                nKnots = max(2, round(size(rawPts,1) * percSpacing / 100));
+                ptSkip = round(linspace(1, size(rawPts,1), nKnots));
+                curve  = cscvn(rawPts(ptSkip,:)');
+            else
+                curve  = cscvn(rawPts');
+            end
+            t        = linspace(0, curve.breaks(end), size(rawPts,1));
+            branchOut  = fnval(curve, t)';
+            tangentOut = normalize(fnval(fnder(curve), t)', 2, 'norm');
+        end
+
+        % -----------------------------------------------------------------
+        % INTERACTIVE SPLINE TUNER
+        % Shows the 3D surface, spline fit, and cross-sectional planes.
+        % The user moves a slider to adjust smoothing and clicks Accept.
+        % Returns the accepted branchActual, Tangent_V, and a flag.
+        % -----------------------------------------------------------------
+        function [branchOut, tangentOut, accepted] = ...
+                tuneSplineInteractive(app, rawPts, branchIn, tangentIn, planeWidth)
+
+            branchOut  = branchIn;
+            tangentOut = tangentIn;
+            accepted   = false;
+
+            currSeg = app.getCurrentSeg(1);
+
+            % --- build figure -------------------------------------------
+            fig = figure('Name', 'Adjust spline smoothing — then Accept or Cancel', ...
+                'Color','w', 'NumberTitle','off', ...
+                'Position', [100 100 900 780]);
+
+            % 3D axes — slightly taller to make room for two sliders
+            ax3d = axes(fig, 'Units','normalized', 'Position',[0.05 0.22 0.90 0.75]);
+            hold(ax3d,'on');
+
+            % Segmentation surface (background, static)
+            hSurf = patch(ax3d, isosurface(smooth3(double(currSeg)), 0.5));
+            isonormals(smooth3(double(currSeg)), hSurf);
+            hSurf.FaceColor = [0.7 0.7 0.7];
+            hSurf.EdgeColor = 'none';
+            hSurf.FaceAlpha = 0.15;
+            hSurf.PickableParts = 'none';
+
+            % Centerline line (updated on slider change)
+            hLine  = plot3(ax3d, branchIn(:,2), branchIn(:,1), branchIn(:,3), 'g-', 'LineWidth', 2.5);
+            hStart = scatter3(ax3d, branchIn(1,2),   branchIn(1,1),   branchIn(1,3),   80,'c','filled');
+            hEnd   = scatter3(ax3d, branchIn(end,2), branchIn(end,1), branchIn(end,3), 80,'m','filled');
+
+            daspect(ax3d,[1 1 1]); axis(ax3d,'tight','off');
+            camlight(ax3d); lighting(ax3d,'gouraud');
+            view(ax3d,[0 0 -1]);
+            camorbit(ax3d,app.rotAngles(2),app.rotAngles(1),[1 1 0]);
+            legend(ax3d, {'Surface','Centerline','Start','End'}, 'Location','best');
+            title(ax3d, 'Adjust sliders, then click Accept');
+
+            % --- slider row 1: smoothing --------------------------------
+            uicontrol(fig, 'Style','text', 'Units','normalized', ...
+                'Position',[0.05 0.14 0.20 0.05], 'String','Smoothing (%):', ...
+                'FontSize',12, 'BackgroundColor','w', 'HorizontalAlignment','right');
+            curSmooth = 10;
+            hSliderSmooth = uicontrol(fig, 'Style','slider', 'Units','normalized', ...
+                'Position',[0.26 0.14 0.50 0.05], ...
+                'Min',1, 'Max',50, 'Value',curSmooth, 'SliderStep',[1/49, 5/49]);
+            hSmoothLbl = uicontrol(fig, 'Style','text', 'Units','normalized', ...
+                'Position',[0.77 0.14 0.10 0.05], ...
+                'String',sprintf('%d%%', curSmooth), 'FontSize',12, 'BackgroundColor','w');
+
+            % --- slider row 2: plane spacing ----------------------------
+            uicontrol(fig, 'Style','text', 'Units','normalized', ...
+                'Position',[0.05 0.07 0.20 0.05], 'String','Plane spacing:', ...
+                'FontSize',12, 'BackgroundColor','w', 'HorizontalAlignment','right');
+            curStep = 5;
+            hSliderStep = uicontrol(fig, 'Style','slider', 'Units','normalized', ...
+                'Position',[0.26 0.07 0.50 0.05], ...
+                'Min',1, 'Max',20, 'Value',curStep, 'SliderStep',[1/19, 3/19]);
+            hStepLbl = uicontrol(fig, 'Style','text', 'Units','normalized', ...
+                'Position',[0.77 0.07 0.10 0.05], ...
+                'String',sprintf('every %d', curStep), 'FontSize',12, 'BackgroundColor','w');
+
+            % --- Accept / Cancel buttons --------------------------------
+            hAccept = uicontrol(fig, 'Style','pushbutton', 'Units','normalized', ...
+                'Position',[0.60 0.01 0.18 0.06], 'String','Accept', ...
+                'FontSize',14, 'FontWeight','bold', 'BackgroundColor',[0.3 0.8 0.3]);
+            hCancel = uicontrol(fig, 'Style','pushbutton', 'Units','normalized', ...
+                'Position',[0.80 0.01 0.15 0.06], 'String','Cancel', ...
+                'FontSize',14, 'BackgroundColor',[0.9 0.4 0.4]);
+
+            % State
+            state.branch       = branchIn;
+            state.tangent      = tangentIn;
+            state.accepted     = false;
+            state.planeHandles = gobjects(0);
+
+            % Draw initial planes
+            state = redrawPlanes(state, branchIn, tangentIn, curStep);
+            legend(ax3d, {'Surface','Centerline','Start','End'}, 'Location','best');
+
+            % Callbacks
+            hSliderSmooth.Callback = @(src,~) onSmoothChanged(src);
+            hSliderStep.Callback   = @(src,~) onStepChanged(src);
+            hAccept.Callback       = @(~,~)   setDone(true);
+            hCancel.Callback       = @(~,~)   setDone(false);
+
+            function onSmoothChanged(src)
+                perc = round(src.Value);
+                hSmoothLbl.String = sprintf('%d%%', perc);
+                [b, tv] = app.fitCenterlineSpline(rawPts, perc);
+                state.branch  = b;
+                state.tangent = tv;
+                set(hLine, 'XData',b(:,2), 'YData',b(:,1), 'ZData',b(:,3));
+                set(hStart,'XData',b(1,2),   'YData',b(1,1),   'ZData',b(1,3));
+                set(hEnd,  'XData',b(end,2), 'YData',b(end,1), 'ZData',b(end,3));
+                state = redrawPlanes(state, b, tv, round(hSliderStep.Value));
+                legend(ax3d, {'Surface','Centerline','Start','End'}, 'Location','best');
+                drawnow;
+                end
+
+            function onStepChanged(src)
+                step = round(src.Value);
+                hStepLbl.String = sprintf('every %d', step);
+                state = redrawPlanes(state, state.branch, state.tangent, step);
+                legend(ax3d, {'Surface','Centerline','Start','End'}, 'Location','best');
+                drawnow;
+            end
+
+            function st = redrawPlanes(st, b, tv, step)
+                if ~isempty(st.planeHandles)
+                    delete(st.planeHandles(isvalid(st.planeHandles)));
+                end
+                childBefore = ax3d.Children;
+                viewPlanesIn3D(ax3d, tv, planeWidth, b, step);
+                st.planeHandles = setdiff(ax3d.Children, childBefore);
+            end
+
+            function setDone(ok)
+                state.accepted = ok;
+                uiresume(fig);
+            end
+
+            uiwait(fig);
+
+            if ishandle(fig)
+                branchOut  = state.branch;
+                tangentOut = state.tangent;
+                accepted   = state.accepted;
+                close(fig);
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % HELPER: run flow calculation after centerline is finalised.
+        % Shared by case 1 (accept) and case 3 (point-picked centerline).
+        % -----------------------------------------------------------------
+        function runFlowCalculation(app, Tangent_V, planeWidth)
+            clc;
+            % calculate aorta segmentation, if not already available
+            if ~app.isSegmentationLoaded
+                x = round(app.branchActual(:,1));
+                y = round(app.branchActual(:,2));
+                z = round(app.branchActual(:,3));
+                index = sub2ind(size(app.segment),x,y,z);
+                g = zeros(size(app.segment));
+                g(index) = 1;
+
+                se = strel('sphere',4);
+                app.aorta_seg = smooth3(imdilate(g,se));
+            end
+
+            % Build time-resolved segmentation
+            if app.isTimeResolvedSeg
+                aortaSeg_timeResolved = app.aorta_seg;
+            else
+                aortaSeg_timeResolved = zeros([size(app.angio) app.nframes]);
+                currSeg = app.getCurrentSeg(1);
+                if ~app.isSegmentationLoaded
+                    currSeg = app.segment;
+                end
+                for j = 1:app.nframes
+                    aortaSeg_timeResolved(:,:,:,j) = currSeg;
+                end
+            end
+
+            % Calculate flow
+            displayWaitBar = true;
+            [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
+                params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, ...
+                aortaSeg_timeResolved, app.isSegmentationLoaded, app.isTimeResolvedSeg, ...
+                Tangent_V, planeWidth, displayWaitBar);
+            app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
+
+            % Enable flow-dependent UI
+            app.DisplayDistanceCheckbox.Enable = true;
+            app.DisplayDistanceCheckbox.Visible = 'on';
+            app.ParameterDropDown.Enable = true;
+            app.ParameterDropDown.Visible = 'on';
+            app.ParameterLabel.Visible = 'on';
+
+            % Calculate cumulative distance along centerline
+            branch = app.branchActual;
+            vox = mean(app.pixdim);
+            dist_vec = zeros(1, size(branch,1)-1);
+            for i=2:size(branch,1)
+                dist_vec(i-1) = norm(branch(i,:)-branch(i-1,:))*vox;
+            end
+            app.FullBranchDistance = round([0 cumsum(dist_vec)],1);
+            if app.DisplayDistanceCheckbox.Value
+                app.PWVPoints.Value = [num2str(app.FullBranchDistance(1)) ': ' ...
+                    num2str(app.FullBranchDistance(length(branch)))];
+                app.PWVPointsLabel.Text = ['PWV dist (mm) [' num2str(app.FullBranchDistance(1)) ':' ...
+                    num2str(app.FullBranchDistance(length(branch))) ']'];
+            else
+                app.PWVPoints.Value = ['5: ' num2str(length(app.branchActual)-4)];
+                app.PWVPointsLabel.Text = ['PWV Points [5:' num2str(length(app.branchActual)) ']'];
+            end
+            CalculatePWVButtonPushed(app, []);
+
+            % View results
+            view3D_wParams(app);
+            plotWaveforms(app);
+
+            % Update maps tab
+            app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+            app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
+            app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
+        end
+
 
         % Button pushed function: PlotWaveformsButton
         function PlotWaveformsButtonPushed(app, ~)
@@ -4154,7 +4350,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                         'Re-use Map ROI','Yes','No','Yes');
                     if strcmp(answer2,'Yes')
                         mapTypes = {'peak velocity','mean velocity', ...
-                                    'kinetic energy','energy loss','vorticity'};
+                            'kinetic energy','energy loss','vorticity'};
                         mapTypes(contains(mapTypes,app.MapType.Value)) = [];
                         % Save user's current map scale to restore at the end
                         savedMinMap = app.visParams.minMap;
@@ -4285,15 +4481,15 @@ classdef FlowProcessing < matlab.apps.AppBase
                     gV={v11,v12,v13;v21,v22,v23;v31,v32,v33};
                     th=0;
                     for ii=1:3; for jj=1:3
-                        d=double(ii==jj);
-                        th=th+(gV{ii,jj}+gV{jj,ii}-(2/3)*div.*d).^2;
+                            d=double(ii==jj);
+                            th=th+(gV{ii,jj}+gV{jj,ii}-(2/3)*div.*d).^2;
                     end; end
-                    outVol=squeeze(currSeg.*0.004.*(th/2)*prod(app.pixdim)/1000);
+                outVol=squeeze(currSeg.*0.004.*(th/2)*prod(app.pixdim)/1000);
                 case 'vorticity'
                     px=app.pixdim./1000;
                     [X,Y,Z]=meshgrid((1:sz_full(2))*px(2), ...
-                                     (1:sz_full(1))*px(1), ...
-                                     (1:sz_full(3))*px(3));
+                        (1:sz_full(1))*px(1), ...
+                        (1:sz_full(3))*px(3));
                     vxs=squeeze(vx)/100; vys=squeeze(vy)/100; vzs=squeeze(vz)/100;
                     cx=zeros(size(vxs));cy=cx;cz=cx;
                     for tt=1:nf
@@ -6213,27 +6409,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PlaneWidth.Tooltip = {'Width for flow contour planes'; '(between 5 and 100 mm)'};
             app.PlaneWidth.Position = [1030 697 48 23];
             app.PlaneWidth.Value = '50';
-
-            % Create SplineSpacingSliderLabel
-            app.SplineSpacingSliderLabel = uilabel(app.FlowandPulseWaveVelocityTab);
-            app.SplineSpacingSliderLabel.HorizontalAlignment = 'right';
-            app.SplineSpacingSliderLabel.FontName = 'SansSerif';
-            app.SplineSpacingSliderLabel.FontSize = 14;
-            app.SplineSpacingSliderLabel.Position = [855 664 175 22];
-            app.SplineSpacingSliderLabel.Text = 'Spline fit point spacing (%)';
-            app.SplineSpacingSliderLabel.Visible = 'off';
-
-            % Create SplineSpacingSlider
-            app.SplineSpacingSlider = uislider(app.FlowandPulseWaveVelocityTab);
-            app.SplineSpacingSlider.Limits = [1 50];
-            app.SplineSpacingSlider.MajorTicks = [1 10 20 30 40 50];
-            app.SplineSpacingSlider.MinorTicks = 5:5:45;
-            app.SplineSpacingSlider.FontName = 'SansSerif';
-            app.SplineSpacingSlider.FontSize = 16;
-            app.SplineSpacingSlider.Tooltip = {'% point spacing for fitting spline to centerline'; '(1-100%)'};
-            app.SplineSpacingSlider.Position = [1040 674 155 3];
-            app.SplineSpacingSlider.Value = 10;
-            app.SplineSpacingSlider.Visible = 'off';
 
             % Create WaveformsDisplay
             app.WaveformsDisplay = uiaxes(app.FlowandPulseWaveVelocityTab);

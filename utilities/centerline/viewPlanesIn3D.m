@@ -1,4 +1,8 @@
-function viewPlanesIn3D(ax, Tangent_V, planeWidth, branchActual)
+function viewPlanesIn3D(ax, Tangent_V, planeWidth, branchActual, step)
+% step: plot every N-th plane (default 5)
+if nargin < 5 || isempty(step)
+    step = 5;
+end
 
 % This will find a normalized vector perpendicular to the tangent vector
 [~,idx_max] = max(abs(Tangent_V),[],2);
@@ -88,7 +92,7 @@ Planes(:,:,3) = [z_full(:,1),z_full(:,width),z_full(:,end),z_full(:,end-width+1)
 
 %%
 hold(ax,'on')
-for k = 1:5:size(Planes,1)  % hard-coded to 1 in every 5 planes
+for k = 1:step:size(Planes,1)
     fill3(ax,Planes(k,:,2)',Planes(k,:,1)',Planes(k,:,3)','k', ...
         'EdgeColor','k','FaceAlpha',0.6,'PickableParts','none');
 end

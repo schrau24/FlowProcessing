@@ -1,5 +1,5 @@
 function [nframes, res, fov, pixdim, timeres, v, MAG, magWeightVel, angio, vMean, VENC, ori] = ...
-    loadUnitedHealthDicom(directory)
+    loadUnitedImagingDicom(directory)
 
 warning('off','all');
 
@@ -168,7 +168,7 @@ for ii = 1:4
             dcmorient = info.ImageOrientationPatient;
             rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
             colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
-            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+            if strcmp(rowDir,'ap') && strcmp(colDir,'rl')
                 tmpOri = 'Tra';
             elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
                 tmpOri = 'Cor';
@@ -179,19 +179,21 @@ for ii = 1:4
                 tmpOri = 'Tra';
             end
             tmpVDir = info.VelocityEncodingDirection;
+            idx = find(abs(tmpVDir)>0.6);
+            % check if v needs to be flipped 
+            flipV = 1; if tmpVDir(idx) < 0; flipV = -1; end
+            img_out = flipV*img_out;
             switch tmpOri
                 case 'Tra'
                     dirs = {'rl','ap','through'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Cor'
                     dirs = {'rl','through','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Sag'
                     dirs = {'through','ap','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
             end
-
+            vDir = dirs{idx};
             VENC = info.VelocityEncodingMaximumValue*10;              % venc, in mm/s
+            fprintf('velocity direction = %s, flip velocity = %i\n',vDir,flipV)
         end
 
         switch tmpOri
@@ -253,8 +255,6 @@ end
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
 clear vx vy vz
-% flip z direction
-% v = flip(v,3);
 
 % take the means
 vMean = mean(v,5);

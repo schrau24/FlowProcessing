@@ -1932,7 +1932,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         function LoadDataButtonPushed(app, ~)
             clc;
 
-            list = {'Philips .rec','Philips dicom', 'mrStruct .mat','Siemens dicom','GE dicom','United Health dicom'};
+            list = {'Philips .rec','Philips dicom', 'mrStruct .mat','Siemens dicom','GE dicom','United Imaging dicom'};
             [indx,tf] = listdlg('PromptString',{'4D flow file type',...
                 'Only one file can be selected',''},...
                 'SelectionMode','single','ListString',list);
@@ -1972,14 +1972,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
                         app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadGEDicom(directory);
 
-                case 'United Health dicom'
-                    directory = uigetdir('Select parent United Health dicom directory (with 4 subfolders)');
+                case 'United Imaging dicom'
+                    directory = uigetdir('Select parent United Imaging dicom directory (with 4 subfolders)');
                     % quick check that all directories exist
                     if length(dir(directory)) ~= 6 % inclues . and ..
-                        error('directory does not contain 4 subfolders (with United Health dicoms)');
+                        error('directory does not contain 4 subfolders (with United Imaging dicoms)');
                     end
                     [app.nframes, app.res, app.fov, app.pixdim, app.timeres, app.v, app.MAG, ...
-                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadUnitedHealthDicom(directory);
+                        app.magWeightVel, app.angio, app.vMean, app.VENC, app.ori] = loadUnitedImagingDicom(directory);
             end
             app.directory = directory;
 

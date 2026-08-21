@@ -47,8 +47,8 @@ switch mrStruct.orient
 
     case 'sag'
         ori.label   = 'sagittal';
-%         vy = -vy;
-%         vz = -vz;
+        vy = -vy;
+        vz = -vz;
         ori.vxlabel = 'H-F';
         ori.vylabel = 'A-P';
         ori.vzlabel = 'L-R';

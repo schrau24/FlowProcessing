@@ -1,4 +1,4 @@
-function [data, header] = readrec_V4_2(filename, varargin)
+function [data, header] = readrec_V4_2(filename, delayedReconFlag, varargin)
 % [data, header] = readrec_V4_2(filename[, 'quiet'][, 'par'])
 %
 %  This will read in a par/rec file from the Philips scanner.
@@ -112,7 +112,11 @@ A = header.tbl;
 %        typeind = 6; %??need to check this
 %    end
 %else
-typeind = 5;
+if delayedReconFlag
+    typeind = 6;
+else
+    typeind = 5;
+end
 %end
 
 % Number of types of scans:  0 = Magnitude, 1 = Real, 2 = Imaginary,
@@ -122,12 +126,7 @@ dynamics = unique(A(:,3));
 echoes =   unique(A(:,2));
 phases =   unique(A(:,4));
 
-% if 'sequence' param has both 2 and 4, this is a Philips parrec export, we
-% don't want seq==4 (PCMRA)
 idxToSkip = [];
-if sum(unique(A(:,6)) == [2; 4]) == 2
-    idxToSkip = find(A(:,6) == 4);
-end
 
 if (header.par_version > 4)
     bdir = unique(A(:,43));

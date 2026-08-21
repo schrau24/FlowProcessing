@@ -9,7 +9,7 @@ disp('Loading data')
 % subfolders
 subfolders = dir(directory); subfolders = subfolders(3:end);
 
-isEnhancedDicom = 0;
+isEnhancedDicom = 0; vCount = 0;
 for ii = 1:4
     files = dir(fullfile(directory,subfolders(ii).name)); files = files(3:end);
     if files(1).isdir && length(files) == 1
@@ -23,12 +23,12 @@ for ii = 1:4
         if size(tmp,1) > 1 || length(files) == 1
             isEnhancedDicom = 1;
             if length(files) > 1
-            nslices = size(tmp,1);
-            nframes = tmp{1,'Frames'};
-            timeres = info.CardiacRRIntervalSpecified/nframes;
-            pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
-                info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
-        else
+                nslices = size(tmp,1);
+                nframes = tmp{1,'Frames'};
+                timeres = info.CardiacRRIntervalSpecified/nframes;
+                pixdim = [info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing; ...
+                    info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.SliceThickness]';
+            else
                 % loop through frame items and store triggers
                 % and slices
                 count = 0; nTotalImgs = tmp{1,'Frames'}; pcaFlag = 0;
@@ -50,14 +50,14 @@ for ii = 1:4
                 tt = unique(tt); sl_loc = unique(sl_loc);
                 nframes = length(tt);               % number of reconstructed frames
                 timeres = mean(diff(tt));           % temporal resolution, in ms
-            nslices = tmp{1,'Frames'}/nframes;
+                nslices = tmp{1,'Frames'}/nframes;
                 if pcaFlag; nslices = nslices/2; end
                 pixdim =[info.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;...
                     mean(diff(sl_loc))]';
             end
         else
             count = 0;
-            for nn = round(length(files)/2):length(files)
+            for nn = 1:length(files)
                 count = count + 1;
                 aa = dicominfo(fullfile(files(nn).folder,files(nn).name));
                 tt(count) = aa.TriggerTime;
@@ -72,7 +72,7 @@ for ii = 1:4
         res = [tmp{1,'Rows'} tmp{1,'Columns'} nslices];
         fov = pixdim.*res/10;                       % Field of view in cm
     end
-    
+
     if isEnhancedDicom; img_out = zeros([res,nframes]); end
     for table_row = 1:size(tmp,1)
         [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
@@ -82,7 +82,7 @@ for ii = 1:4
             img_out = double(permute(reshape(img,[res(1:2) nframes res(3)]),[1 2 4 3]));
         end
     end
-    
+
     isMag = 0;
     if isEnhancedDicom
         isMag = contains(info.ComplexImageComponent,'MAGNITUDE');
@@ -92,9 +92,8 @@ for ii = 1:4
     if isMag
         MAG = img_out;
         MAG = MAG/max(abs(MAG(:)));
-        % flip z direction
-        MAG = flip(MAG,3);
     else            % '\P\ or 'PHASE'
+        vCount = vCount+1;
         % velocity info
         if isEnhancedDicom
             img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
@@ -103,7 +102,7 @@ for ii = 1:4
             dcmorient = info.PerFrameFunctionalGroupsSequence.Item_1.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
             rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
             colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
-            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+            if strcmp(rowDir,'ap') && strcmp(colDir,'rl')
                 tmpOri = 'Tra';
             elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
                 tmpOri = 'Cor';
@@ -119,30 +118,30 @@ for ii = 1:4
             % https://dicom.nema.org/dicom/supps/sup49_30.pdf
             VENC = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingMaximumValue * 10;    % in mm/s
             tmpVDir = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingDirection;
+            idx = find(abs(tmpVDir)>0.6);
             switch tmpOri
                 case 'Tra'
                     dirs = {'rl','ap','through'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Cor'
                     dirs = {'rl','through','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Sag'
                     dirs = {'through','ap','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
             end
-            
+            vDir = dirs{idx};
+            fprintf('velocity direction = %s\n',vDir)
         else
             img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
+            % Always read IOP — standard field available in all DICOM files
+            dcmorient = info.ImageOrientationPatient;
             try
                 vInfo = info.Private_0051_1014;
                 tmpOri = info.Private_0051_100e;
             catch
                 vInfo = info.Private_0021_1129;
-                dirs = {'rl','ap','fh'};    % convention for HFS scans
-                dcmorient = info.ImageOrientationPatient;
+                dirs   = {'rl','ap','fh'};
                 rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
                 colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
-                if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+                if strcmp(rowDir,'ap') && strcmp(colDir,'rl')
                     tmpOri = 'Tra';
                 elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
                     tmpOri = 'Cor';
@@ -191,40 +190,35 @@ for ii = 1:4
     end
 end
 
-%% manually change velocity directions depending on scan orientations
-
 % velocity directions correspond to the following:
 % vx: in-plane up-down
 % vy: in-plane right-left
 % vz: through-plane
-switch tmpOri % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
+switch tmpOri
     case 'Tra'
         ori.label = 'axial';
-        ori.vxlabel = 'R-L';
-        ori.vylabel = 'A-P';
-        ori.vzlabel = 'F-H';
         vz = -vz;
     case 'Sag'
         ori.label = 'sagittal';
         vx = -vx;
         vz = -vz;
-        ori.vxlabel = 'F-H';
-        ori.vylabel = 'A-P';
-        ori.vzlabel = 'R-L';
     case 'Cor'
         ori.label = 'coronal';
         vx = -vx;
         vz = -vz;
-        ori.vxlabel = 'F-H';
-        ori.vylabel = 'R-L';
-        ori.vzlabel = 'A-P';
 end
 
+%% Orientation labels from actual IOP direction cosines (sign-correct)
+ori.label = lower(tmpOri);
+switch tmpOri
+    case 'Tra'; ori.label = 'axial';
+    case 'Sag'; ori.label = 'sagittal';
+    case 'Cor'; ori.label = 'coronal';
+end
+ori = dicomOrientToLabels(dcmorient, ori);
 %%
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
 clear vx vy vz
-% flip z direction
-v = flip(v,3);
 
 % take the means
 vMean = mean(v,5);

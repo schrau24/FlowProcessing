@@ -204,7 +204,9 @@ classdef FlowProcessing < matlab.apps.AppBase
         flowPerHeartCycle_vol;      % resulting flow over the cardiac cycle in the aorta_seg voluem
         flowPulsatile_vol;          % pulsatile flow waveforms in the aorta_seg volume
         contours;                   % the output contours calculated over the centerline, may be time-resolved
-        tangent_V;                  % the output tangent vectors calculated over the centerline, for visualization
+        tangent_V;                  % in-plane perpendicular vector (V2) from params_timeResolved
+        vesselTangent = [];         % true vessel tangent = plane normal, from fitCenterlineSpline
+        contourCoords = struct();   % x_full/y_full/z_full plane coords from params_timeResolved
 
         h1;                         % handle for first unwrap imagesc
         h2;                         % handle for second unwrap imagesc
@@ -391,7 +393,6 @@ classdef FlowProcessing < matlab.apps.AppBase
             c = prism(size(app.aorta_seg,4));
             if (app.isSegmentationLoaded)
                 if app.isTimeResolvedSeg
-                    % Time-resolved: show only the current timeframe as a single surface
                     if app.maskHandles{1}.Value
                         aa = smooth3(app.aorta_seg(:,:,:,app.SegTimeframeSpinner.Value));
                         hold(app.View3D,'on')
@@ -400,7 +401,6 @@ classdef FlowProcessing < matlab.apps.AppBase
                         reducepatch(app.patchMasks{1}, 0.6);
                     end
                 else
-                    % Static multi-mask: draw each active mask as its own coloured surface
                     for ii = 1:size(app.aorta_seg, 4)
                         if app.maskHandles{ii}.Value
                             aa = smooth3(app.aorta_seg(:,:,:,ii));
@@ -412,40 +412,50 @@ classdef FlowProcessing < matlab.apps.AppBase
                     end
                 end
             else
-                % No manual segmentation – use the auto-threshold segment.
-                % Compute isosurface locally in voxel index space to match
-                % the voxel-space xlim/ylim set below.
-                % NOTE: do NOT use segIsoFV here – that cache stores mm-scaled
-                % vertices for updateVisualization and must not be mixed with
-                % the voxel-space coordinates used by View3D.
                 ss = smooth3(app.segment);
                 app.hpatch1 = patch(app.View3D, isosurface(ss, 0.5), ...
                     'FaceColor','red','EdgeColor','none','FaceAlpha',0.35);
                 reducepatch(app.hpatch1 ,0.6);
             end
-            hold(app.View3D,'off')
+            hold(app.View3D,'off');
 
             % Make it all look good
             camlight(app.View3D);
             lighting(app.View3D,'gouraud');
             lightangle(app.View3D,0,0);
             view(app.View3D, [0 0 -1]);
-            daspect(app.View3D,[1 1 1])
-            m_xstart = 1; m_ystart = 1; m_zstart = 1;
-            m_xstop = size(app.segment,1); m_ystop = size(app.segment,2); m_zstop = size(app.segment,3);
-            xlim(app.View3D,[m_ystart m_ystop]);
-            ylim(app.View3D,[m_xstart m_xstop]);
+            % DataAspectRatio: [X Y Z] = [col=dim2, row=dim1, slice=dim3]
+            daspect(app.View3D, [app.pixdim(2), app.pixdim(1), app.pixdim(3)]);
             axis(app.View3D,'off');
+
+            % Compute volume extents in physical mm (plot space is voxel indices
+            % but daspect scales them, so limits must still be in voxel units).
+            % Use the largest half-extent across all three axes so nothing clips.
+            nRow = size(app.segment,1);
+            nCol = size(app.segment,2);
+            nSli = size(app.segment,3);
+            cx = nCol/2;  cy = nRow/2;  cz = nSli/2;
+
+            % Half-extents in physical mm, then convert back to voxel units
+            hx = cx;                                     % col voxels
+            hy = cy;                                     % row voxels
+            hz = cz * (app.pixdim(3)/app.pixdim(1));    % slices scaled to col-voxel units
+            R  = max([hx, hy, hz]) * 1.1;
+
+            xlim(app.View3D, [cx-R, cx+R]);
+            ylim(app.View3D, [cy-R, cy+R]);
+            zlim(app.View3D, [cz-R*app.pixdim(1)/app.pixdim(3), cz+R*app.pixdim(1)/app.pixdim(3)]);
+
             app.oriAxis_View3D = app.drawOriAxis(app.View3D);
 
-            % if rotation angles are non-zero, rotate now
+            % Rotate around the volume centroid so the object stays centred
             if sum(abs(app.rotAngles)) > 0
-                if (app.isSegmentationLoaded)
-                    rotate(app.patchMasks{1},[1 0 0], app.rotAngles(1))
-                    rotate(app.patchMasks{1},[0 1 0], app.rotAngles(2))
+                if app.isSegmentationLoaded
+                    rotate(app.patchMasks{1}, [1 0 0], app.rotAngles(1), [cx cy cz]);
+                    rotate(app.patchMasks{1}, [0 1 0], app.rotAngles(2), [cx cy cz]);
                 else
-                    rotate(app.hpatch1,[1 0 0], app.rotAngles(1))
-                    rotate(app.hpatch1,[0 1 0], app.rotAngles(2))
+                    rotate(app.hpatch1, [1 0 0], app.rotAngles(1), [cx cy cz]);
+                    rotate(app.hpatch1, [0 1 0], app.rotAngles(2), [cx cy cz]);
                 end
             end
         end
@@ -845,6 +855,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             overlayMasks(app.AxesX, 1, imSize, 0.25);
             set(app.AxesX,'XTickLabel','','YTickLabel','')
             colormap(app.AxesX,'gray'); axis(app.AxesX,'equal'); daspect(app.AxesX,[1 1 1]);
+            set(app.AxesX,'DataAspectRatio',[app.pixdim(1) app.pixdim(3) 1])
 
             % Y axis MIP
             cla(app.AxesY);
@@ -853,6 +864,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             overlayMasks(app.AxesY, 2, imSize, 0.25);
             set(app.AxesY,'XTickLabel','','YTickLabel','')
             colormap(app.AxesY,'gray'); axis(app.AxesY,'equal'); daspect(app.AxesY,[1 1 1]);
+            set(app.AxesY,'DataAspectRatio',[app.pixdim(2) app.pixdim(3) 1])
 
             % Z axis MIP
             cla(app.AxesZ);
@@ -861,6 +873,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             overlayMasks(app.AxesZ, 3, imSize, 0.25);
             set(app.AxesZ,'XTickLabel','','YTickLabel','')
             colormap(app.AxesZ,'gray'); axis(app.AxesZ,'equal'); daspect(app.AxesZ,[1 1 1]);
+            set(app.AxesZ,'DataAspectRatio',[app.pixdim(1) app.pixdim(2) 1])
         end
 
         function updateVisualization(app)
@@ -1158,39 +1171,57 @@ classdef FlowProcessing < matlab.apps.AppBase
                     str = app.VisOptionsApp.VisPts.Value;
                     ptRange = str2num(str);
 
-                    % oblique slices
+                    if isempty(app.contourCoords) || ~isfield(app.contourCoords,'x') || ...
+                            isempty(app.contourCoords.x)
+                        % Fallback: contourCoords not yet populated (before first flow calc)
+                        return;
+                    end
+
+                    % Use the plane coordinates already computed by params_timeResolved.
+                    % x_full/y_full/z_full are [nBranch × planePixels] arrays in voxel indices.
+                    % Clamp ptRange to valid branch indices.
+                    ptRange(ptRange > size(app.contourCoords.x,1)) = [];
+                    ptRange(ptRange < 1) = [];
+                    if isempty(ptRange), return; end
+
+                    % Retrieve the stored plane geometry for selected points
+                    nPlanePx = size(app.contourCoords.x, 2);
+                    Side     = app.contourCoords.planeWidth * 3;   % InterpVals=3 inside params_timeResolved
+                    width    = Side*2+1;
+
                     L = []; xcoor_grid = []; ycoor_grid = []; zcoor_grid = [];
                     vx = []; vy = []; vz = [];
                     for ii = ptRange
-                        currCP = [app.branchActual(ii,2),app.branchActual(ii,1),app.branchActual(ii,3)];
-                        currNorm = app.tangent_V(ii,:); currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
-                        [B,x,y,z] = obliqueslice(currSeg,currCP,currNorm,'FillValues',0);
-                        % do a quick region grow from our centerline point
-                        tmp = cat(2,x(:),y(:),z(:)) - currCP;
-                        tmp = sqrt(sum(tmp.*tmp,2));
-                        [~, pointLinearIndexInSlice] = min(tmp);
-                        [pointColumn,pointRow] = ind2sub(size(B),pointLinearIndexInSlice(1));
-                        B = regiongrowing(B,pointColumn,pointRow);
+                        % In contourCoords: .x = col positions, .y = row positions
+                        % (opposite to variable names — confirmed empirically)
+                        x_plane = double(app.contourCoords.y(ii,:));   % rows
+                        y_plane = double(app.contourCoords.x(ii,:));   % cols
+                        z_plane = double(app.contourCoords.z(ii,:));   % slices
 
-                        currL = find(B(:));
-                        currL = currL(1:subsample:end);
-                        xcoor_grid = cat(1,xcoor_grid,x(currL)*app.pixdim(1));
-                        ycoor_grid = cat(1,ycoor_grid,y(currL)*app.pixdim(2));
-                        zcoor_grid = cat(1,zcoor_grid,z(currL)*app.pixdim(3));
+                        seg_plane = app.contours(ii,:,1);
+                        maskPx = find(seg_plane > 0.5);
+                        if isempty(maskPx), continue; end
+                        maskPx = maskPx(1:subsample:end);
 
-                        vx_tmp = obliqueslice(currV(:,:,:,1)/10,currCP,currNorm);
-                        vx = cat(1,vx,-vx_tmp(currL));
-                        vy_tmp = obliqueslice(currV(:,:,:,2)/10,currCP,currNorm);
-                        vy = cat(1,vy,-vy_tmp(currL));
-                        vz_tmp = obliqueslice(currV(:,:,:,3)/10,currCP,currNorm);
-                        vz = cat(1,vz,-vz_tmp(currL));
+                        xcoor_grid = cat(1, xcoor_grid, x_plane(maskPx)' * app.pixdim(1));
+                        ycoor_grid = cat(1, ycoor_grid, y_plane(maskPx)' * app.pixdim(2));
+                        zcoor_grid = cat(1, zcoor_grid, z_plane(maskPx)' * app.pixdim(3));
 
-                        L = cat(1,L,currL);
+                        xq = x_plane(maskPx)';   % rows
+                        yq = y_plane(maskPx)';   % cols
+                        zq = z_plane(maskPx)';   % slices
+                        % interp3(V, col, row, slice)
+                        vx = cat(1, vx, -interp3(currV(:,:,:,1)/10, xq, yq, zq, 'linear', 0));
+                        vy = cat(1, vy, -interp3(currV(:,:,:,2)/10, xq, yq, zq, 'linear', 0));
+                        vz = cat(1, vz, -interp3(currV(:,:,:,3)/10, xq, yq, zq, 'linear', 0));
+
+                        L = cat(1, L, (1:length(maskPx))' + length(L));
                     end
 
-                    % we keep all L points now
                     L = 1:length(L);
 
+                    % Draw planes if enabled (shared helper)
+                    app.showContoursIfEnabled(ptRange);
                 case 'segmentation'   % 3d vectors from the whole segmentation
                     [xcoor_grid,ycoor_grid,zcoor_grid] = meshgrid((1:subsample:size(currSeg,2))*app.pixdim(1),(1:subsample:size(currSeg,1))*app.pixdim(2), ...
                         (1:subsample:size(currSeg,3))*app.pixdim(3));
@@ -1249,7 +1280,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     round(app.VisOptionsApp.SubsampleSlider.Value), app.pixdim, ...
                     app.visParams.minQuiver, app.visParams.maxVel, ...
                     app.VisOptionsDropDown.Value, ...
-                    app.VisOptionsApp.VisPts.Value, app.branchActual, app.tangent_V);
+                    app.VisOptionsApp.VisPts.Value, app.contourCoords);
 
                 % Pad all frames to the same length per bin so surface object
                 % dimensions never change between frames (required by MATLAB surface).
@@ -1273,6 +1304,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
 
             % Step 2: create surface objects if they don't exist yet
+            ptRange_vis = str2num(app.VisOptionsApp.VisPts.Value);
             if isempty(app.streamPatch)
                 for k = 1:nbins
                     [X2,Y2,Z2,C2] = streamsToSurface( ...
@@ -1294,6 +1326,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
             uistack(app.streamPatch,'top');
+            app.showContoursIfEnabled(ptRange_vis);
         end
 
         % -----------------------------------------------------------------
@@ -1322,24 +1355,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 subsample = round(app.VisOptionsApp.SubsampleSlider.Value);
 
                 startX = []; startY = []; startZ = [];
+                ptRange(ptRange > size(app.contourCoords.x,1)) = [];
+                ptRange(ptRange < 1) = [];
                 for ii = ptRange
-                    currCP   = [app.branchActual(ii,2), app.branchActual(ii,1), app.branchActual(ii,3)];
-                    currNorm = app.tangent_V(ii,:);
-                    currNorm = [currNorm(1) -currNorm(2) currNorm(3)];
-                    [B, x, y, z] = obliqueslice(currSeg, currCP, currNorm, 'FillValues', 0);
+                    x_plane = double(app.contourCoords.y(ii,:));   % rows
+                    y_plane = double(app.contourCoords.x(ii,:));   % cols
+                    z_plane = double(app.contourCoords.z(ii,:));   % slices
 
-                    tmp  = cat(2, x(:), y(:), z(:)) - currCP;
-                    tmp  = sqrt(sum(tmp .* tmp, 2));
-                    [~, pointLinearIndexInSlice] = min(tmp);
-                    [pointColumn, pointRow] = ind2sub(size(B), pointLinearIndexInSlice(1));
-                    B    = regiongrowing(B, pointColumn, pointRow);
+                    seg_plane = app.contourCoords.seg(ii,:);
+                    maskPx = find(seg_plane > 0.5);
+                    if isempty(maskPx), continue; end
+                    maskPx = maskPx(1:subsample:end);
 
-                    currL = find(B(:));
-                    if isempty(currL), continue; end
-                    currL  = currL(1:subsample:end);
-                    startX = cat(1, startX, x(currL) * app.pixdim(1));
-                    startY = cat(1, startY, y(currL) * app.pixdim(2));
-                    startZ = cat(1, startZ, z(currL) * app.pixdim(3));
+                    startX = cat(1, startX, x_plane(maskPx)' * app.pixdim(1));
+                    startY = cat(1, startY, y_plane(maskPx)' * app.pixdim(2));
+                    startZ = cat(1, startZ, z_plane(maskPx)' * app.pixdim(3));
                 end
 
                 if isempty(startX)
@@ -1496,6 +1526,39 @@ classdef FlowProcessing < matlab.apps.AppBase
                 clim(app.VisualizationPlot, [app.visParams.minVel, app.visParams.maxVel]);
                 uistack(app.pathlinePatch, 'top');
             end
+            ptRange_pl = str2num(app.VisOptionsApp.VisPts.Value);
+            app.showContoursIfEnabled(ptRange_pl);
+        end
+        
+        % -----------------------------------------------------------------
+        % SHARED HELPER: draw contour planes on VisualizationPlot when the
+        % show_planes_checkbox is checked. Called from viewVelocityVectors,
+        % viewStreamlines, and viewPathlines.
+        % -----------------------------------------------------------------
+        function showContoursIfEnabled(app, ptRange)
+            if ~app.VisOptionsApp.show_planes_checkbox.Value
+                delete(findobj(app.VisualizationPlot,'Tag','vis_plane'));
+                return;
+            end
+            if isempty(app.contourCoords) || ~isfield(app.contourCoords,'x') || ...
+                    isempty(app.contourCoords.x) || isempty(app.vesselTangent)
+                return;
+            end
+            delete(findobj(app.VisualizationPlot,'Tag','vis_plane'));
+            ptRange(ptRange > min(size(app.vesselTangent,1), size(app.branchActual,1))) = [];
+            ptRange(ptRange < 1) = [];
+            if isempty(ptRange), return; end
+            pw     = round(max(1, app.contourCoords.planeWidth)*mean(app.pixdim));
+            b_mm   = app.branchActual(ptRange,:) .* app.pixdim(:)';
+            tv_sub = app.vesselTangent(ptRange,:);
+            hold(app.VisualizationPlot,'on');
+            viewPlanesIn3D(app.VisualizationPlot, tv_sub, pw, b_mm, 1);
+            newObjs = findobj(app.VisualizationPlot,'Type','patch', ...
+                '-not','Tag','vector_patch','-not','Tag','streamline_patch1', ...
+                '-not','Tag','streamline_patch2','-not','Tag','streamline_patch3', ...
+                '-not','Tag','3D_surface','-not','Tag','3D_seg_surface');
+            set(newObjs,'Tag','vis_plane');
+            hold(app.VisualizationPlot,'off');
         end
         % ang = [pitch, yaw, roll] matching original rotAngles2 convention.
         % -----------------------------------------------------------------
@@ -2439,8 +2502,6 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             View3DSegmentation(app);
             cd(currDir);
-            m_xstart = 1; m_ystart = 1; m_zstart = 1;
-            m_xstop = app.res(1); m_ystop = app.res(2); m_zstop = app.res(3);
 
             app.isStreamsChanged.Value = 1;
             app.isPathlinesChanged.Value = 1;
@@ -3186,10 +3247,21 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Calculate flow
             displayWaitBar = true;
-            [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val] = ...
+            % Store the vessel tangent (plane normal)
+            app.vesselTangent = Tangent_V;
+
+            [app.flowPerHeartCycle_vol, app.flowPulsatile_vol, app.contours, app.tangent_V, app.area_val, ...
+                xf, yf, zf] = ...
                 params_timeResolved(app.branchActual, app.angio, app.MAG, app.v, app.nframes, app.pixdim, ...
                 aortaSeg_timeResolved, app.isSegmentationLoaded, app.isTimeResolvedSeg, ...
                 Tangent_V, planeWidth, displayWaitBar);
+            % Store plane coordinates for reuse in visualization (avoids re-running obliqueslice)
+            app.contourCoords.x = xf;
+            app.contourCoords.y = yf;
+            app.contourCoords.z = zf;
+            app.contourCoords.planeWidth = planeWidth;
+            % Also store frame-1 segmentation mask at each plane for seed point extraction
+            app.contourCoords.seg       = app.contours(:,:,1);
             app.flowPerHeartCycle_vol = app.flowPerHeartCycle_vol*app.timeres/1000;
 
             % Enable flow-dependent UI
@@ -3692,11 +3764,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if app.maskHandles{ii}.Value
-                        rotate(app.patchMasks{ii},[0 1 0],10);
+                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[0 1 0],10,[ctr(2) ctr(1) ctr(3)]);
                     end
                 end
             else
-                rotate(app.hpatch1,[0 1 0],10)
+                ctr = size(app.segment)/2; rotate(app.hpatch1,[0 1 0],10,[ctr(2) ctr(1) ctr(3)])
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1) app.rotAngles(2)+10];
@@ -3708,11 +3780,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if app.maskHandles{ii}.Value
-                        rotate(app.patchMasks{ii},[0 1 0],-10);
+                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[0 1 0],-10,[ctr(2) ctr(1) ctr(3)]);
                     end
                 end
             else
-                rotate(app.hpatch1,[0 1 0],-10)
+                ctr = size(app.segment)/2; rotate(app.hpatch1,[0 1 0],-10,[ctr(2) ctr(1) ctr(3)])
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1) app.rotAngles(2)-10];
@@ -3724,11 +3796,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if app.maskHandles{ii}.Value
-                        rotate(app.patchMasks{ii},[1 0 0],10);
+                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[1 0 0],10,[ctr(2) ctr(1) ctr(3)]);
                     end
                 end
             else
-                rotate(app.hpatch1,[1 0 0],10)
+                ctr = size(app.segment)/2; rotate(app.hpatch1,[1 0 0],10,[ctr(2) ctr(1) ctr(3)])
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1)+10 app.rotAngles(2)];
@@ -3740,11 +3812,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             if (app.isSegmentationLoaded)
                 for ii = 1:size(app.aorta_seg,4)
                     if app.maskHandles{ii}.Value
-                        rotate(app.patchMasks{ii},[1 0 0],-10);
+                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[1 0 0],-10,[ctr(2) ctr(1) ctr(3)]);
                     end
                 end
             else
-                rotate(app.hpatch1,[1 0 0],-10)
+                ctr = size(app.segment)/2; rotate(app.hpatch1,[1 0 0],-10,[ctr(2) ctr(1) ctr(3)])
             end
             % update rotate angles
             app.rotAngles = [app.rotAngles(1)-10 app.rotAngles(2)];
@@ -4569,14 +4641,11 @@ classdef FlowProcessing < matlab.apps.AppBase
                     [~, outVol, idx_currSeg] = viewMap(app);
                     map_var = outVol;
                 else
-                    for t = 1:app.nframes
-                        app.TimeframeSpinner.Value = t;
-                        [~, outVol, idx_currSeg] = viewMap(app);
-                        if t == 1 % now we know the length of idx_currSeg to do preallocation
-                            map_var = zeros(length(idx_currSeg),app.nframes);
-                        end
-                        map_var(:,t) = outVol(idx_currSeg);
-                    end
+                    [~, outVol, idx_currSeg] = viewMap(app);
+                    % outVol already contains all time frames, so
+                    % simply grab the values now
+                    tmp = reshape(outVol,[prod(size(outVol,1:3)) app.nframes]);
+                    map_var = tmp(idx_currSeg,:); clear tmp;
                 end
             else    % outVol has all time frames
                 [~, outVol, idx_currSeg] = viewMap(app);
@@ -5211,6 +5280,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Visible = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
@@ -5241,6 +5312,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'off';
                     app.VisOptionsApp.VisPts.Visible = 'off';
                     app.VisOptionsApp.VisPts.Enable = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Visible = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
@@ -5274,6 +5347,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Enable = 'on';
                     app.VisOptionsApp.VisPts.Visible = 'on';
                     app.VisOptionsApp.VisPts.Enable = 'on';
+                    app.VisOptionsApp.show_planes_checkbox.Visible = 'on';
+                    app.VisOptionsApp.show_planes_checkbox.Enable = 'on';
                     app.VisOptionsApp.PathlineLengthLabel.Visible = 'on';
                     app.VisOptionsApp.PathlineLengthLabel.Enable = 'on';
                     app.VisOptionsApp.PathlineLengthEditField.Visible = 'on';

@@ -125,7 +125,7 @@ for ii = 1:4
         MAG = img_out;
         MAG = MAG/max(abs(MAG(:)));
     else            % '\P\ or 'PHASE'
-        vCount = vCount+1; vDir = [];
+        vCount = vCount+1;
         % velocity info
         if isEnhancedDicom
             img_out = img_out*info.PerFrameFunctionalGroupsSequence.Item_1.PixelValueTransformationSequence.Item_1.RescaleSlope + ...
@@ -134,7 +134,7 @@ for ii = 1:4
             dcmorient = IOP;
             rowDir = dirs{find(abs(dcmorient(1:3)) > 0.6)};
             colDir = dirs{find(abs(dcmorient(4:6)) > 0.6)};
-            if strcmp(rowDir,'ap') & strcmp(colDir,'rl')
+            if strcmp(rowDir,'ap') && strcmp(colDir,'rl')
                 tmpOri = 'Tra';
             elseif strcmp(rowDir,'rl') && strcmp(colDir,'fh')
                 tmpOri = 'Cor';
@@ -150,18 +150,20 @@ for ii = 1:4
             % https://dicom.nema.org/dicom/supps/sup49_30.pdf
             VENC = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingMaximumValue * 10;    % in mm/s
             tmpVDir = info.PerFrameFunctionalGroupsSequence.Item_1.MRVelocityEncodingSequence.Item_1.VelocityEncodingDirection;
+            idx = find(abs(tmpVDir)>0.6);
+            % check if v needs to be flipped
+            flipV = 1; if tmpVDir(idx) < 0; flipV = -1; end
+            img_out = flipV*img_out;
             switch tmpOri
                 case 'Tra'
                     dirs = {'rl','ap','through'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Cor'
                     dirs = {'rl','through','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
                 case 'Sag'
                     dirs = {'through','ap','fh'};
-                    vDir = dirs{find(abs(tmpVDir)>0.6)};
             end
-
+            vDir = dirs{idx};
+            fprintf('velocity direction = %s, flip velocity = %i\n',vDir,flipV)
         else
             img_out = img_out*info.RescaleSlope + info.RescaleIntercept;
             dirs = {'rl','ap','fh'};    % convention for HFS scans
@@ -180,7 +182,7 @@ for ii = 1:4
             end
             tmpVDir = info.VelocityEncodingDirection;
             idx = find(abs(tmpVDir)>0.6);
-            % check if v needs to be flipped 
+            % check if v needs to be flipped
             flipV = 1; if tmpVDir(idx) < 0; flipV = -1; end
             img_out = flipV*img_out;
             switch tmpOri

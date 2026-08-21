@@ -46,6 +46,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         view_3Dpatch_checkbox           matlab.ui.control.CheckBox
         view_3DSegpatch_checkbox        matlab.ui.control.CheckBox
         view_orientation_checkbox       matlab.ui.control.CheckBox
+        show_planes_checkbox            matlab.ui.control.CheckBox
 		PathlineLengthLabel             matlab.ui.control.Label
         PathlineLengthEditField         matlab.ui.control.EditField
         PathlineReleaseLabel            matlab.ui.control.Label
@@ -166,6 +167,12 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             if ~app.callingAppValid(), return; end
             app.CallingApp.isStreamsChanged.Value = 1;
             app.CallingApp.isPathlinesChanged.Value = 1;
+            updateVisualization(app.CallingApp);
+        end
+
+        % Value changed function: show_planes_checkbox
+        function show_planes_checkboxChanged(app, ~)
+            if ~app.callingAppValid(), return; end
             updateVisualization(app.CallingApp);
         end
 
@@ -342,7 +349,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Create VisOptionsDialogUIFigure and components
         function createComponents(app)
 
-            % Create VisOptionsDialogUIFigure and hide until all components are created
+            % Create VisOptionsDialogUIFigure
             app.VisOptionsDialogUIFigure = uifigure('Visible', 'off');
             app.VisOptionsDialogUIFigure.Position = [600 100 369 450];
             app.VisOptionsDialogUIFigure.Name = 'Options';
@@ -370,14 +377,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minVelocityVisEditField.ValueChangedFcn = createCallbackFcn(app, @minVelocityVisEditFieldValueChanged, true);
             app.minVelocityVisEditField.HorizontalAlignment = 'right';
             app.minVelocityVisEditField.FontName = 'SansSerif';
-            app.minVelocityVisEditField.Position = [43 224+162 30 22];
+            app.minVelocityVisEditField.Position = [43 224+162 37 22];
             app.minVelocityVisEditField.Value = '0';
 
             % Create velocityVistoEditFieldLabel
             app.velocityVistoEditFieldLabel = uilabel(app.VisPlotPanel);
             app.velocityVistoEditFieldLabel.HorizontalAlignment = 'center';
             app.velocityVistoEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVistoEditFieldLabel.Position = [73 224+162 25 22];
+            app.velocityVistoEditFieldLabel.Position = [78 224+162 25 22];
             app.velocityVistoEditFieldLabel.Text = 'to';
 
             % Create maxVelocityVisEditField
@@ -385,7 +392,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxVelocityVisEditField.ValueChangedFcn = createCallbackFcn(app, @maxVelocityVisEditFieldValueChanged, true);
             app.maxVelocityVisEditField.HorizontalAlignment = 'right';
             app.maxVelocityVisEditField.FontName = 'SansSerif';
-            app.maxVelocityVisEditField.Position = [99 224+162 30 22];
+            app.maxVelocityVisEditField.Position = [99 224+162 37 22];
             app.maxVelocityVisEditField.Value = 'max';
 
             % Create cutoffvaluesLabel
@@ -400,14 +407,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @minQuiverEditFieldValueChanged, true);
             app.minQuiverEditField.HorizontalAlignment = 'right';
             app.minQuiverEditField.FontName = 'SansSerif';
-            app.minQuiverEditField.Position = [43 180+162 30 22];
+            app.minQuiverEditField.Position = [43 180+162 37 22];
             app.minQuiverEditField.Value = '2';
 
             % Create toXEditFieldLabel
             app.toXEditFieldLabel = uilabel(app.VisPlotPanel);
             app.toXEditFieldLabel.HorizontalAlignment = 'center';
             app.toXEditFieldLabel.FontName = 'SansSerif';
-            app.toXEditFieldLabel.Position = [73 180+162 25 22];
+            app.toXEditFieldLabel.Position = [78 180+162 25 22];
             app.toXEditFieldLabel.Text = 'to';
 
             % Create maxQuiverEditField
@@ -415,7 +422,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @maxQuiverEditFieldValueChanged, true);
             app.maxQuiverEditField.HorizontalAlignment = 'right';
             app.maxQuiverEditField.FontName = 'SansSerif';
-            app.maxQuiverEditField.Position = [99 180+162 30 22];
+            app.maxQuiverEditField.Position = [99 180+162 37 22];
             app.maxQuiverEditField.Value = '10';
 
             % Create SubsampleLabel
@@ -442,7 +449,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.view_3Dpatch_checkbox.Tooltip = {'toggle viewing the thresholded 3D isosurface'};
             app.view_3Dpatch_checkbox.Text = '3D surface';
             app.view_3Dpatch_checkbox.FontName = 'SansSerif';
-            app.view_3Dpatch_checkbox.Position = [16 98+162 146 22];
+            app.view_3Dpatch_checkbox.Position = [16 130+44 146 22];
 
             % Create view_3DSegpatch_checkbox
             app.view_3DSegpatch_checkbox = uicheckbox(app.VisPlotPanel);
@@ -450,7 +457,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.view_3DSegpatch_checkbox.Tooltip = {'toggle viewing the loaded segmentation 3D isosurface'};
             app.view_3DSegpatch_checkbox.Text = 'segmentation surface';
             app.view_3DSegpatch_checkbox.FontName = 'SansSerif';
-            app.view_3DSegpatch_checkbox.Position = [16 76+162 146 22];
+            app.view_3DSegpatch_checkbox.Position = [16 130+22 146 22];
 
             % Create VisPts_Label
             app.VisPts_Label = uilabel(app.VisPlotPanel);
@@ -459,7 +466,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts_Label.FontSize = 10;
             app.VisPts_Label.Enable = 'off';
             app.VisPts_Label.Visible = 'off';
-            app.VisPts_Label.Position = [3 56+162 70 22];
+            app.VisPts_Label.Position = [3 130+110 70 22];
             app.VisPts_Label.Text = 'contour points';
 
             % Create VisPts
@@ -469,17 +476,27 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts.FontSize = 12;
             app.VisPts.Enable = 'off';
             app.VisPts.Visible = 'off';
-            app.VisPts.Tooltip = {'Centerline point labels used for visualization. '};
-            app.VisPts.Position = [73 56+162 70 22];
+            app.VisPts.Tooltip = {'Centerline point labels used for visualization'};
+            app.VisPts.Position = [73 130+110 70 22];
 
-            % Create PathlineLengthLabel
+            % show planes checkbox (below contour points)
+            app.show_planes_checkbox = uicheckbox(app.VisPlotPanel);
+            app.show_planes_checkbox.ValueChangedFcn = createCallbackFcn(app, @show_planes_checkboxChanged, true);
+            app.show_planes_checkbox.Text = 'show planes';
+            app.show_planes_checkbox.FontName = 'SansSerif';
+            app.show_planes_checkbox.FontSize = 12;
+            app.show_planes_checkbox.Enable = 'off';
+            app.show_planes_checkbox.Visible = 'off';
+            app.show_planes_checkbox.Position = [16 130+132 146 22];
+
+            % path length label + edit field
             app.PathlineLengthLabel = uilabel(app.VisPlotPanel);
             app.PathlineLengthLabel.HorizontalAlignment = 'right';
             app.PathlineLengthLabel.FontName = 'SansSerif';
             app.PathlineLengthLabel.FontSize = 10;
             app.PathlineLengthLabel.Enable = 'off';
             app.PathlineLengthLabel.Visible = 'off';
-            app.PathlineLengthLabel.Position = [3 34+162 70 22];
+            app.PathlineLengthLabel.Position = [3 130+88 70 22];
             app.PathlineLengthLabel.Text = 'path length (s)';
 
             % Create PathlineLengthEditField
@@ -490,7 +507,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineLengthEditField.Enable = 'off';
             app.PathlineLengthEditField.Visible = 'off';
             app.PathlineLengthEditField.Tooltip = {'Duration each particle is tracked (seconds). Leave blank to track for full cardiac cycle.'};
-            app.PathlineLengthEditField.Position = [73 34+162 70 22];
+            app.PathlineLengthEditField.Position = [73 130+88 70 22];
             app.PathlineLengthEditField.Value = '';
 
             % Create PathlineReleaseLabel
@@ -500,7 +517,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineReleaseLabel.FontSize = 10;
             app.PathlineReleaseLabel.Enable = 'off';
             app.PathlineReleaseLabel.Visible = 'off';
-            app.PathlineReleaseLabel.Position = [3 12+162 70 22];
+            app.PathlineReleaseLabel.Position = [3 130+66 70 22];
             app.PathlineReleaseLabel.Text = 'release frame';
 
             % Create PathlineReleaseEditField
@@ -511,7 +528,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineReleaseEditField.Enable = 'off';
             app.PathlineReleaseEditField.Visible = 'off';
             app.PathlineReleaseEditField.Tooltip = {'Cardiac frame at which particles are released (1 = start of cycle). Leave blank to release at all frames.'};
-            app.PathlineReleaseEditField.Position = [73 12+162 70 22];
+            app.PathlineReleaseEditField.Position = [73 130+66 70 22];
             app.PathlineReleaseEditField.Value = '1';
 
             % Create velocityVisEditFieldLabel_2
@@ -528,7 +545,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.view_orientation_checkbox.Tooltip = {'toggle viewing orientation marker'};
             app.view_orientation_checkbox.Text = 'orientation marker';
             app.view_orientation_checkbox.FontName = 'SansSerif';
-            app.view_orientation_checkbox.Position = [16 140 146 22];
+            app.view_orientation_checkbox.Position = [16 130 146 22];
 
             % Create LocationDropDownLabel
             app.LocationDropDownLabel = uilabel(app.VisPlotPanel);
@@ -608,14 +625,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minMapEditField.ValueChangedFcn = createCallbackFcn(app, @minMapEditFieldValueChanged, true);
             app.minMapEditField.HorizontalAlignment = 'right';
             app.minMapEditField.FontName = 'SansSerif';
-            app.minMapEditField.Position = [46 224+162 30 22];
+            app.minMapEditField.Position = [46 224+162 37 22];
             app.minMapEditField.Value = '0';
 
             % Create MaptoEditFieldLabel
             app.MaptoEditFieldLabel = uilabel(app.MapPlotPanel);
             app.MaptoEditFieldLabel.HorizontalAlignment = 'center';
             app.MaptoEditFieldLabel.FontName = 'SansSerif';
-            app.MaptoEditFieldLabel.Position = [76 224+162 25 22];
+            app.MaptoEditFieldLabel.Position = [78 224+162 25 22];
             app.MaptoEditFieldLabel.Text = 'to';
 
             % Create maxMapEditField

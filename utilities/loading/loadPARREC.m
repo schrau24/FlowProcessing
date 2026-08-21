@@ -11,7 +11,7 @@ files = dir([directory, fBase, '*.par']);
 keepPar = zeros(size(files));
 delayedReconFlag = 0;
 for ii = 1:length(files)
-    [~,h] = readrec_V4_2(fullfile(files(ii).folder,files(ii).name),'quiet','par');
+    [~,h] = readrec_V4_2(fullfile(files(ii).folder,files(ii).name),0,'quiet','par');
     if unique(h.tbl(:,5)) == 0  % we only have type = MAG
         if sum(unique(h.tbl(:,6)) == [2;4]) == 2    % we have magnitude and pcmra, this is a delayed recon
             delayedReconFlag = 1; keepPar(ii) = 2;
@@ -28,11 +28,14 @@ if delayedReconFlag
         if keepPar(ii) > 0
             if keepPar(ii) == 2
                 PARRECFILE = fullfile(directory,files(ii).name);
-                [IMG,h1] = readrec_V4_2(PARRECFILE);
+                [IMG,h1] = readrec_V4_2(PARRECFILE, delayedReconFlag);
                 MAG = double(squeeze(IMG(:,:,:,:,:,1,:))); clear IMG;
             else
                 PARRECFILE = fullfile(directory,files(ii).name);
-                [IMG,h3] = readrec_V4_2(PARRECFILE);
+                [IMG,h3] = readrec_V4_2(PARRECFILE, delayedReconFlag);
+                if size(IMG,6) == 2
+                    IMG = IMG(:,:,:,1,1,2,:);
+                end
                 [~,I] = max(h3.pevelocity);
                 switch I
                     case 1  % measurement direction velocity, in mm/s
@@ -47,21 +50,21 @@ if delayedReconFlag
     end
 else
     PARRECFILE = fullfile(directory,[fBase, '1.rec']);
-    [IMG,h1] = readrec_V4_2(PARRECFILE);
+    [IMG,h1] = readrec_V4_2(PARRECFILE, 0);
     IMG = single(IMG);
     % this is the readout direction
     vx = squeeze(IMG(:,:,:,:,:,2,:));
     mag1 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
     PARRECFILE = fullfile(directory,[fBase, '2.rec']);
-    [IMG,h2] = readrec_V4_2(PARRECFILE);
+    [IMG,h2] = readrec_V4_2(PARRECFILE, 0);
     IMG = single(IMG);
     % this is the phase direction
     vy = squeeze(IMG(:,:,:,:,:,2,:));
     mag2 = squeeze(IMG(:,:,:,:,:,1,:)); clear IMG;
 
     PARRECFILE = fullfile(directory,[fBase, '3.rec']);
-    [IMG,h3] = readrec_V4_2(PARRECFILE);
+    [IMG,h3] = readrec_V4_2(PARRECFILE, 0 );
     IMG = single(IMG);
     % this is the slice direction
     vz = squeeze(IMG(:,:,:,:,:,2,:));
@@ -124,13 +127,13 @@ if delayedReconFlag
                 angulations = [angulations(2) angulations(1) angulations(3)]; % ap, fh, rl
             end
             tmp = vx; vx = vz; vz = tmp; clear tmp;
-            vx = -vx;
+            vx = -vx; vz = -vz;
             % Slice direction: determine from per-slice RL offcentre
             rl_step = h3.tbl(2,22) - h3.tbl(1,22);
             if rl_step < 0
                 ori.vzlabel = 'L-R';
             else
-            ori.vzlabel = 'R-L';
+                ori.vzlabel = 'R-L';
             end
         case 3
             ori.label = 'coronal';
@@ -146,7 +149,7 @@ if delayedReconFlag
             tmp = vx; vx = vz; tmp2 = vy; vy = tmp; vz = tmp2; clear tmp tmp2;
             ori.vzlabel = 'A-P';
             vx = -vx;
-%             vz = -vz;
+            %             vz = -vz;
     end
 else
     switch h3.tbl(1,26) % orientation number (1 - axial, 2 - sagittal, 3 - coronal)
@@ -182,6 +185,11 @@ else
                 ori.vzlabel = 'L-R'; % slices increase toward Right
             else
                 ori.vzlabel = 'R-L'; % slices increase toward Left
+                % if FFS we flip the slice direction
+                if strcmp(h3.position,'FFS')
+                    MAG = flip(MAG,3);
+                    v = flip(v,3);
+                end
             end
             vx = -vx;
             vz = -vz;

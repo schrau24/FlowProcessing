@@ -1529,7 +1529,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             ptRange_pl = str2num(app.VisOptionsApp.VisPts.Value);
             app.showContoursIfEnabled(ptRange_pl);
         end
-        
+
         % -----------------------------------------------------------------
         % SHARED HELPER: draw contour planes on VisualizationPlot when the
         % show_planes_checkbox is checked. Called from viewVelocityVectors,
@@ -1552,7 +1552,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             b_mm   = app.branchActual(ptRange,:) .* app.pixdim(:)';
             tv_sub = app.vesselTangent(ptRange,:);
             hold(app.VisualizationPlot,'on');
-            viewPlanesIn3D(app.VisualizationPlot, tv_sub, pw, b_mm, 1);
+            planeColor = 'k';
+            if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+                planeColor = 'w';
+            end
+            viewPlanesIn3D(app.VisualizationPlot, tv_sub, pw, b_mm, 1, planeColor);
             newObjs = findobj(app.VisualizationPlot,'Type','patch', ...
                 '-not','Tag','vector_patch','-not','Tag','streamline_patch1', ...
                 '-not','Tag','streamline_patch2','-not','Tag','streamline_patch3', ...
@@ -2889,7 +2893,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             reset3DSegmentationAndCenterline(app);
             line(app.View3D_2, app.branchActual(:,2), app.branchActual(:,1), app.branchActual(:,3), ...
                 'Color','g','Marker','*','MarkerSize',12,'LineStyle','none');
-            viewPlanesIn3D(app.View3D_2, Tangent_V, planeWidth, app.branchActual);
+            viewPlanesIn3D(app.View3D_2, Tangent_V, planeWidth, app.branchActual,1,'k');
 
             choice = choosedialog;
 
@@ -3062,7 +3066,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % percSpacing controls how many knots are used (1=dense, 50=coarse).
         % -----------------------------------------------------------------
         function [branchOut, tangentOut] = fitCenterlineSpline(app, rawPts, percSpacing) %#ok<INUSL>
-            if size(rawPts,1) > 25 && percSpacing < 100
+            if size(rawPts,1) > 5 && percSpacing < 100
                 nKnots = max(2, round(size(rawPts,1) * percSpacing / 100));
                 ptSkip = round(linspace(1, size(rawPts,1), nKnots));
                 curve  = cscvn(rawPts(ptSkip,:)');
@@ -3178,7 +3182,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 state = redrawPlanes(state, b, tv, round(hSliderStep.Value));
                 legend(ax3d, {'Surface','Centerline','Start','End'}, 'Location','best');
                 drawnow;
-                end
+            end
 
             function onStepChanged(src)
                 step = round(src.Value);
@@ -3193,7 +3197,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     delete(st.planeHandles(isvalid(st.planeHandles)));
                 end
                 childBefore = ax3d.Children;
-                viewPlanesIn3D(ax3d, tv, planeWidth, b, step);
+                viewPlanesIn3D(ax3d, tv, planeWidth, b, step,'k');
                 st.planeHandles = setdiff(ax3d.Children, childBefore);
             end
 
@@ -5282,6 +5286,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts.Enable = 'off';
                     app.VisOptionsApp.show_planes_checkbox.Visible = 'off';
                     app.VisOptionsApp.show_planes_checkbox.Enable = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Value = 0;
+                    showContoursIfEnabled(app, []);
                     app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
@@ -5293,6 +5299,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'off';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'off';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Value = 0;
+                    app.VisOptionsApp.view_3DSegpatch_checkbox.Value = 0;
                     app.VisTypeDropDown.Value = 'Vectors';
                 case 'segmentation'
                     if ~isempty(app.sliceImg)
@@ -5314,6 +5321,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts.Enable = 'off';
                     app.VisOptionsApp.show_planes_checkbox.Visible = 'off';
                     app.VisOptionsApp.show_planes_checkbox.Enable = 'off';
+                    app.VisOptionsApp.show_planes_checkbox.Value = 0;
+                    showContoursIfEnabled(app, []);
                     app.VisOptionsApp.PathlineLengthLabel.Visible = 'off';
                     app.VisOptionsApp.PathlineLengthLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineLengthEditField.Visible = 'off';
@@ -5360,7 +5369,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
                     app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
                     app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
+                    if ~app.isSegmentationLoaded
+                        app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
+                    end
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
             end
             app.isStreamsChanged.Value = 1;

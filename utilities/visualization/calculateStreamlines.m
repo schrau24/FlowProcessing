@@ -62,7 +62,7 @@ end
 % TIME LOOP – parallel when toolbox available, serial fallback
 % =========================================================================
 useParallel = license('test', 'Distrib_Computing_Toolbox') && ...
-              ~isempty(ver('parallel'));
+              ~isempty(ver('parallel')) && contains(visType,'segmentation');
 
 P   = [2 1 3];
 xgP = permute(xcoor_grid, P);

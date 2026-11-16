@@ -68,6 +68,7 @@ if (nargin > 0) && isstruct(filename)
     filename = fullfile (PathName, [FileName '.rec']);
 else
     % use GUI to get filename
+    delayedReconFlag = 0;
     if (nargin == 0) || (strcmp (filename, ''))
         [FileName,PathName] = uigetfile ('*.par;*.PAR', 'Select a PAR file');
         if isequal(FileName,0)

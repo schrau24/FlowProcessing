@@ -73,9 +73,11 @@ for ii = 1:4
         fov = pixdim.*res/10;                       % Field of view in cm
     end
 
-    if isEnhancedDicom; img_out = zeros([res,nframes]); end
+       if isEnhancedDicom; img_out = zeros([res,nframes]); end
+    Pall = [];                                            % NEW
     for table_row = 1:size(tmp,1)
         [img, spatial, dim] = dicomreadVolume(tmp,sprintf('s%i',table_row));
+        Pall = [Pall; spatial.PatientPositions];          % NEW: positions in stored order
         if isEnhancedDicom
             img_out(:,:,table_row,:) = double(img);
         else
@@ -83,7 +85,27 @@ for ii = 1:4
         end
     end
 
-    isMag = 0;
+    % slice direction, computed once from the first series
+    if ii == 1
+        if isEnhancedDicom
+            iop = info.PerFrameFunctionalGroupsSequence.Item_1.PlaneOrientationSequence.Item_1.ImageOrientationPatient;
+        else
+            iop = info.ImageOrientationPatient;
+        end
+        iop = double(iop(:));
+        r = iop(1:3); c = iop(4:6);
+        n = cross(r, c);                          % slice normal, LPS
+        d = unique(Pall * n, 'stable');           % one value per slice, stored order
+        sliceSign = sign(median(diff(d)));        % +1: slice index increases along +n
+
+        lps = {'R->L','A->P','F->H'};
+        [~, ax] = max(abs(n));
+        if sign(n(ax))*sliceSign > 0, sliceDirLabel = lps{ax};
+        else,                         sliceDirLabel = fliplr(lps{ax}); end
+        fprintf('Slices go %s\n', sliceDirLabel);
+    end
+
+   isMag = 0;
     if isEnhancedDicom
         isMag = contains(info.ComplexImageComponent,'MAGNITUDE');
     else
@@ -135,7 +157,7 @@ for ii = 1:4
             dcmorient = info.ImageOrientationPatient;
             try
                 vInfo = info.Private_0051_1014;
-                tmpOri = info.Private_0051_100e;
+                tmpOri = info.Private_0051_100e(1:3);
             catch
                 vInfo = info.Private_0021_1129;
                 dirs   = {'rl','ap','fh'};
@@ -197,7 +219,6 @@ end
 switch tmpOri
     case 'Tra'
         ori.label = 'axial';
-        vz = -vz;
     case 'Sag'
         ori.label = 'sagittal';
         vx = -vx;
@@ -216,7 +237,13 @@ switch tmpOri
     case 'Cor'; ori.label = 'coronal';
 end
 ori = dicomOrientToLabels(dcmorient, ori);
+
 %%
+% make slice index always increase along +n
+if sliceSign < 0
+    vx = flip(vx,3); vy = flip(vy,3); vz = flip(vz,3);
+    MAG = flip(MAG,3);
+end
 v = cat(5,vx,vy,vz); v = permute(v, [1 2 3 5 4]);
 clear vx vy vz
 

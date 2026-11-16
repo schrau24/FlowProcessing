@@ -1,4 +1,4 @@
-function viewPlanesIn3D(ax, Tangent_V, planeWidth, branchActual, step)
+function viewPlanesIn3D(ax, Tangent_V, planeWidth, branchActual, step, planeColor)
 % step: plot every N-th plane (default 5)
 if nargin < 5 || isempty(step)
     step = 5;
@@ -96,6 +96,6 @@ Planes(:,:,3) = [z_full(:,1),z_full(:,width),z_full(:,end),z_full(:,end-width+1)
 %%
 hold(ax,'on')
 for k = 1:step:size(Planes,1)
-    fill3(ax,Planes(k,:,2)',Planes(k,:,1)',Planes(k,:,3)','k', ...
-        'EdgeColor','k','FaceAlpha',0.35,'PickableParts','none');
+    fill3(ax,Planes(k,:,2)',Planes(k,:,1)',Planes(k,:,3)',planeColor, ...
+        'EdgeColor',planeColor,'FaceAlpha',0.35,'PickableParts','none');
 end

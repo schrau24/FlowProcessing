@@ -4056,7 +4056,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     definput = {'0','0','0.0032'};
                     answer = inputdlg(prompt,dlgtitle,dims,definput);
 
-                    currSeg = app.getCurrentSeg(t);
+                    currSeg = app.getCurrentSeg(1);
 
                     peakSystole = str2double(answer{1})==0;
                     viscosity = str2double(answer{3});

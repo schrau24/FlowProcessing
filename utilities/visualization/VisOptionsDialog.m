@@ -247,6 +247,9 @@ classdef VisOptionsDialog < matlab.apps.AppBase
                 backgroundC = [0 0 0];
             end
             app.CallingApp.VisualizationGroup.BackgroundColor = backgroundC;
+            % labels on top of the viewer: white on black and vice versa
+            app.CallingApp.TimeframeSpinnerLabel.FontColor = 1 - backgroundC;
+            app.CallingApp.SliceSpinner_2Label.FontColor = 1 - backgroundC;
         end
 
         % Value changed function: minMapEditField

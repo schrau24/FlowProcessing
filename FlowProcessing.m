@@ -31,11 +31,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         flipseglr                       matlab.ui.control.CheckBox
         flipsegud                       matlab.ui.control.CheckBox
         ResetRotation                   matlab.ui.control.Button
-        RotateUp                        matlab.ui.control.Button
-        RotateDown                      matlab.ui.control.Button
-        Rotate                          matlab.ui.control.Label
-        RotateRight                     matlab.ui.control.Button
-        RotateLeft                      matlab.ui.control.Button
         View3D                          matlab.ui.control.UIAxes
         CropPanel                       matlab.ui.container.Panel
         FinishedCroppingButton          matlab.ui.control.Button
@@ -84,11 +79,6 @@ classdef FlowProcessing < matlab.apps.AppBase
         MapType                         matlab.ui.control.DropDown
         MapTime                         matlab.ui.control.DropDown
         ResetRotation_2                 matlab.ui.control.Button
-        RotateUp_2                      matlab.ui.control.Button
-        RotateDown_2                    matlab.ui.control.Button
-        Rotate_2                        matlab.ui.control.Label
-        RotateRight_2                   matlab.ui.control.Button
-        RotateLeft_2                    matlab.ui.control.Button
         CalculateMap                    matlab.ui.control.Button
         VisOptions                      matlab.ui.control.Button
         SaveAnimation                   matlab.ui.control.Button
@@ -149,6 +139,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         ParameterLabel                  matlab.ui.control.Label
         DisplayDistanceCheckbox         matlab.ui.control.CheckBox
         Reset3DviewButton               matlab.ui.control.Button
+        ResetFlowRotationButton         matlab.ui.control.Button
         View3D_2                        matlab.ui.control.UIAxes
         PWVCalcDisplay                  matlab.ui.control.UIAxes
         WaveformsDisplay                matlab.ui.control.UIAxes
@@ -255,6 +246,13 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Each cell: {hX, hY, hZ, tX, tY, tZ} — three lines + three text labels
         oriAxis_View3D    = {};
         oriAxis_VisPlt    = {};
+
+        % Flow-tab 3D view: click-to-highlight and user rotate/zoom
+        flowViewUserSet = false;    % true once the user has used rotate/zoom; camera is then kept across redraws
+        flowPickIdx     = [];       % centerline index (row of branchActual) currently highlighted
+        flowDrag        = struct('start',[0 0],'last',[0 0],'moved',false,'cp',zeros(2,3));  % state of a mouse press on the flow-tab 3D view
+        mapZoom         = 1;        % cumulative zoom factor shared by VisualizationPlot and MapPlot
+        camDrag         = struct('key','','last',[0 0],'dirty',false,'t',[]);  % state of a drag-rotate on View3D / VisualizationPlot
     end
 
     methods (Access = public)
@@ -448,20 +446,124 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             app.oriAxis_View3D = app.drawOriAxis(app.View3D);
 
-            % Rotate around the volume centroid so the object stays centred
-            if sum(abs(app.rotAngles)) > 0
-                if app.isSegmentationLoaded
-                    rotate(app.patchMasks{1}, [1 0 0], app.rotAngles(1), [cx cy cz]);
-                    rotate(app.patchMasks{1}, [0 1 0], app.rotAngles(2), [cx cy cz]);
-                else
-                    rotate(app.hpatch1, [1 0 0], app.rotAngles(1), [cx cy cz]);
-                    rotate(app.hpatch1, [0 1 0], app.rotAngles(2), [cx cy cz]);
-                end
+            % axis 'off' makes the axes invisible; keep it pickable so drag-rotate works anywhere on it
+            app.View3D.PickableParts = 'all';
+
+            % Re-apply the current rotation (patches + orientation widget)
+            if any(app.rotAngles ~= 0)
+                app.rotateView3D([0 0], app.rotAngles);
             end
+        end
+
+        % -----------------------------------------------------------------
+        % Rotate the View3D patches and orientation widget from oldAng to
+        % newAng ([pitch yaw], same convention as app.rotAngles). Old rotation
+        % is undone first (in reverse order), so the result always equals
+        % Rx(pitch) then Ry(yaw) about the volume centre, like a fresh redraw.
+        % -----------------------------------------------------------------
+        function rotateView3D(app, oldAng, newAng)
+            sz = size(app.segment);
+            ctr = [sz(2) sz(1) sz(3)]/2;        % [col row slice] = plot [X Y Z]
+
+            P = gobjects(0);
+            if app.isSegmentationLoaded
+                for ii = 1:numel(app.patchMasks)
+                    h = app.patchMasks{ii};
+                    if ~isempty(h) && isgraphics(h) && isequal(ancestor(h,'axes'), app.View3D)
+                        P(end+1) = h; %#ok<AGROW>
+                    end
+                end
+            elseif ~isempty(app.hpatch1) && isgraphics(app.hpatch1)
+                P = app.hpatch1;
+            end
+            if ~isempty(P)
+                if oldAng(2) ~= 0, rotate(P, [0 1 0], -oldAng(2), ctr); end
+                if oldAng(1) ~= 0, rotate(P, [1 0 0], -oldAng(1), ctr); end
+                if newAng(1) ~= 0, rotate(P, [1 0 0],  newAng(1), ctr); end
+                if newAng(2) ~= 0, rotate(P, [0 1 0],  newAng(2), ctr); end
+            end
+
+            % orientation widget: redraw fresh, then rotate with the data
+            app.oriAxis_View3D = app.drawOriAxis(app.View3D);
+            if newAng(1) ~= 0, app.rotateOriAxis(app.oriAxis_View3D, [1 0 0], newAng(1)); end
+            if newAng(2) ~= 0, app.rotateOriAxis(app.oriAxis_View3D, [0 1 0], newAng(2)); end
+        end
+
+        % -----------------------------------------------------------------
+        % Mouse drag on View3D (Loading tab) or VisualizationPlot (Maps tab,
+        % 3D modes) rotates it, using the same angles the old arrow buttons
+        % changed (rotAngles / rotAngles2). Started from the figure's
+        % WindowButtonDownFcn; the mouse wheel zooms (see ScrollWheel).
+        % -----------------------------------------------------------------
+        function startedDrag = camAxesPress(app, obj)
+            startedDrag = false;
+            if isempty(obj) || app.isAnimating, return, end
+            try
+                axp = ancestor(obj, 'axes');
+            catch
+                return
+            end
+            if isempty(axp), return, end
+
+            key = '';
+            if isequal(axp, app.View3D) && strcmp(app.TabGroup.SelectedTab.Title, 'Loading and Preprocessing')
+                key = 'View3D';
+            elseif isequal(axp, app.VisualizationPlot) && strcmp(app.TabGroup.SelectedTab.Title, 'Maps') ...
+                    && ~contains(app.VisOptionsDropDown.Value, 'slice-wise')
+                key = 'VisPlt';
+            end
+            if isempty(key), return, end
+
+            fig = app.FlowProcessingUIFigure;
+            app.camDrag = struct('key',key,'last',fig.CurrentPoint,'dirty',false,'t',tic);
+            fig.WindowButtonMotionFcn = @(~,~) camAxesDrag(app);
+            fig.WindowButtonUpFcn     = @(~,~) camAxesRelease(app);
+            startedDrag = true;
+        end
+
+        function camAxesDrag(app)
+            if toc(app.camDrag.t) < 0.03, return, end      % throttle
+            app.camDrag.t = tic;
+            fig = app.FlowProcessingUIFigure;
+            cp  = fig.CurrentPoint;
+            d   = cp - app.camDrag.last;
+            app.camDrag.last = cp;
+            if all(d == 0), return, end
+            dYaw   = -0.4*d(1);     % drag right = old 'rotate right' button
+            dPitch = -0.4*d(2);     % drag up    = old 'rotate up' button
+            switch app.camDrag.key
+                case 'View3D'
+                    newAng = app.rotAngles + [dPitch dYaw];
+                    app.rotateView3D(app.rotAngles, newAng);
+                    app.rotAngles = newAng;
+                case 'VisPlt'
+                    a = app.rotAngles2;
+                    a(1) = a(1) + dPitch;
+                    a(2) = a(2) + dYaw;
+                    app.rotAngles2 = a;
+                    ax = app.VisualizationPlot;
+                    view(ax, [0 0 1]);
+                    camorbit(ax, a(2), a(1), [1 1 0]);
+                    camroll(ax, a(3));
+                    app.camDrag.dirty = true;
+            end
+        end
+
+        function camAxesRelease(app)
+            fig = app.FlowProcessingUIFigure;
+            fig.WindowButtonMotionFcn = '';
+            fig.WindowButtonUpFcn     = '';
+            % the map projection depends on rotAngles2 too: refresh once the drag ends
+            if strcmp(app.camDrag.key,'VisPlt') && app.camDrag.dirty && ~contains(app.MapType.Value,'None')
+                viewMap(app);
+            end
+            app.camDrag.dirty = false;
         end
 
         function reset3DSegmentationAndCenterline(app)
             % Initialize figure
+            app.flowViewUserSet = false;
+            app.flowPickIdx = [];
             colorbar(app.View3D_2,'off')
             cla(app.View3D_2);
 
@@ -522,6 +624,15 @@ classdef FlowProcessing < matlab.apps.AppBase
             z = round(app.branchActual(:,3));
             index = sub2ind(size(currSeg),x,y,z);
 
+            % keep the camera if the user has rotated/zoomed the view
+            keepCam = [];
+            if app.flowViewUserSet
+                keepCam = struct('CameraPosition',  app.View3D_2.CameraPosition, ...
+                                 'CameraTarget',    app.View3D_2.CameraTarget, ...
+                                 'CameraUpVector',  app.View3D_2.CameraUpVector, ...
+                                 'CameraViewAngle', app.View3D_2.CameraViewAngle);
+            end
+
             %reset figure
             cla(app.View3D_2);
             colorbar(app.View3D_2,'off');
@@ -548,7 +659,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             hSurface = surface(app.View3D_2,'XData',[y(:) y(:)],'YData',[x(:) x(:)],'ZData',[z(:) z(:)],...
                 'CData',[cdata(:) cdata(:)],'FaceColor','none','EdgeColor','flat',...
-                'Marker','.','MarkerSize',12);
+                'Marker','.','MarkerSize',12,'PickableParts','none');   % clicks go to the axes (View3D_2ButtonDown)
 
             caxis(app.View3D_2,[min(cdata) max(cdata)]);
             colormap(app.View3D_2,jet)
@@ -593,8 +704,19 @@ classdef FlowProcessing < matlab.apps.AppBase
                     'FontSize',fontSz,'FontWeight','Bold','HitTest','off','PickableParts','none');
             end
 
-            % update view angle
-            camorbit(app.View3D_2,app.rotAngles(2),app.rotAngles(1),[1 1 0])
+            % update view angle (or restore the user's own rotate/zoom state)
+            if ~isempty(keepCam)
+                set(app.View3D_2, keepCam);
+                delete(findall(app.View3D_2,'Type','light'));
+                camlight(app.View3D_2);
+            else
+                camorbit(app.View3D_2,app.rotAngles(2),app.rotAngles(1),[1 1 0])
+            end
+            % use our own drag/scroll handling (View3D_2ButtonDown) instead of the built-in axes interactions
+            try disableDefaultInteractivity(app.View3D_2); catch, end
+            try app.View3D_2.Interactions = []; catch, end
+            try app.View3D_2.Toolbar.Visible = 'off'; catch, end
+            app.View3D_2.PickableParts = 'all';
             drawnow;
         end
 
@@ -649,6 +771,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             colorbar(app.WaveformsDisplay,'off')
             cla(app.WaveformsDisplay);
+            title(app.WaveformsDisplay,'');     % clear any previous point-highlight title
             hold(app.WaveformsDisplay,'on');
             for ii = 1:size(waveforms,1)
                 plot(app.WaveformsDisplay,card_time,waveforms(ii,:)','Color',c(ii,:),...
@@ -686,6 +809,138 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
             hold(app.WaveformsDisplay,'off');
+
+            % re-apply the clicked-point highlight (cla above removed it)
+            if ~isempty(app.flowPickIdx) && app.flowPickIdx <= size(app.branchActual,1)
+                highlightFlowPoint(app, app.flowPickIdx);
+            end
+        end
+
+        function highlightFlowPoint(app, idx)
+            % Mark centerline point idx in the 3D view and overlay its curve
+            % (thick black) on the waveform plot.
+            if isempty(idx) || idx < 1 || idx > size(app.branchActual,1)
+                return
+            end
+            app.flowPickIdx = idx;
+
+            % --- 3D marker (plot space: X = col, Y = row, Z = slice) ---
+            ax3 = app.View3D_2;
+            delete(findall(ax3,'Tag','flowPick'));
+            p = double(app.branchActual(idx,:));
+            held = ishold(ax3); hold(ax3,'on');
+            plot3(ax3, p(2), p(1), p(3), 'o', 'MarkerSize',14, 'LineWidth',2.5, ...
+                'MarkerFaceColor','w', 'MarkerEdgeColor','k', ...
+                'Tag','flowPick', 'PickableParts','none');
+            if ~held, hold(ax3,'off'); end
+
+            % --- waveform for this point ---
+            siz = size(app.aorta_seg);
+            lin = sub2ind(siz(1:3), round(p(1)), round(p(2)), round(p(3)));
+            wf  = app.flowPulsatile_vol(lin,:);
+            if ~contains(app.ParameterDropDown.Value,'flow')
+                wf = wf./app.area_val(idx,:);
+            end
+            card_time = (0:app.nframes-1)*app.timeres;
+
+            axW = app.WaveformsDisplay;
+            delete(findall(axW,'Tag','flowPickLine'));
+            held = ishold(axW); hold(axW,'on');
+            plot(axW, card_time, wf(:)', 'k-', 'LineWidth',4, ...
+                'Tag','flowPickLine', 'PickableParts','none');
+            if ~held, hold(axW,'off'); end
+
+            if ~isempty(app.FullBranchDistance) && numel(app.FullBranchDistance) >= idx
+                title(axW, sprintf('Point %i  (%.1f mm along vessel)', idx, app.FullBranchDistance(idx)), ...
+                    'FontSize',14);
+            else
+                title(axW, sprintf('Point %i', idx), 'FontSize',14);
+            end
+        end
+
+        function View3D_2ButtonDown(app, ~)
+            % Mouse press on the flow-tab 3D view. Dragging rotates the view;
+            % a press-and-release without moving picks the nearest centerline point.
+            if isempty(app.flowPulsatile_vol) || isempty(app.branchActual)
+                return
+            end
+            fig = app.FlowProcessingUIFigure;
+            app.flowDrag = struct('start',fig.CurrentPoint,'last',fig.CurrentPoint,'moved',false, ...
+                'cp',app.View3D_2.CurrentPoint);
+            fig.WindowButtonMotionFcn = @(~,~) flowViewDrag(app);
+            fig.WindowButtonUpFcn     = @(~,~) flowViewRelease(app);
+        end
+
+        function flowViewDrag(app)
+            fig = app.FlowProcessingUIFigure;
+            cp  = fig.CurrentPoint;
+            if ~app.flowDrag.moved && norm(cp - app.flowDrag.start) < 4
+                return          % still a click, not a drag
+            end
+            d = cp - app.flowDrag.last;
+            app.flowDrag.moved = true;
+            app.flowDrag.last  = cp;
+            camorbit(app.View3D_2, -0.4*d(1), -0.4*d(2), 'camera');
+            app.flowViewUserSet = true;
+        end
+
+        function flowViewRelease(app)
+            fig = app.FlowProcessingUIFigure;
+            fig.WindowButtonMotionFcn = '';
+            fig.WindowButtonUpFcn     = '';
+            if app.flowDrag.moved
+                return
+            end
+            % it was a click: snap to the nearest centerline point (min distance to the pick ray)
+            cp = app.flowDrag.cp;                   % [2 x 3] near/far points in data coordinates
+            o  = cp(1,:);
+            d  = cp(2,:) - cp(1,:);
+            P  = double([app.branchActual(:,2), app.branchActual(:,1), app.branchActual(:,3)]);  % [X Y Z]
+            w  = P - o;
+            t  = (w*d') / (d*d');
+            dist = sqrt(sum((P - (o + t.*d)).^2, 2));
+            [~, idx] = min(dist);
+            fprintf('Flow view click: centerline point %i\n', idx);
+            highlightFlowPoint(app, idx);
+        end
+
+        function FlowProcessingUIFigureScrollWheel(app, event)
+            % Mouse wheel over a 3D view zooms it
+            sel = app.TabGroup.SelectedTab;
+            axs = [];           % axes to test for the mouse position
+            if sel == app.FlowandPulseWaveVelocityTab
+                if ~isempty(app.flowPulsatile_vol), axs = app.View3D_2; end
+            elseif strcmp(sel.Title, 'Loading and Preprocessing')
+                axs = app.View3D;
+            elseif strcmp(sel.Title, 'Maps')
+                axs = [app.VisualizationPlot, app.MapPlot];     % zoom together
+                if strcmp(app.VisOptionsDropDown.Value,'None'), axs = app.MapPlot; end
+            end
+            if isempty(axs), return, end
+
+            fig = app.FlowProcessingUIFigure;
+            cp  = fig.CurrentPoint;
+            over = false;
+            for k = 1:numel(axs)
+                pos = getpixelposition(axs(k), true);       % [x y w h] relative to the figure
+                if cp(1) >= pos(1) && cp(1) <= pos(1)+pos(3) && cp(2) >= pos(2) && cp(2) <= pos(2)+pos(4)
+                    over = true; break
+                end
+            end
+            if ~over, return, end
+
+            f = 1.1^(-event.VerticalScrollCount);
+            if strcmp(sel.Title, 'Maps')
+                app.mapZoom = app.mapZoom*f;
+                for k = 1:numel(axs)
+                    camzoom(axs(k), f);
+                end
+            else
+                camzoom(axs, f);
+                if isequal(axs, app.View3D_2)
+                    app.flowViewUserSet = true;
+                end
+            end
         end
 
         function maskSz = cropImage(app,img,img2)
@@ -878,6 +1133,8 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         function updateVisualization(app)
 
+            if strcmp(app.VisOptionsDropDown.Value,'None'), return, end     % viewer turned off
+
             t = app.TimeframeSpinner.Value;
             if t == 0, t = 1; end
 
@@ -912,8 +1169,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             colormap(app.VisualizationPlot, cmap);
             app.VisualizationGroup.BackgroundColor = backgroundC;
             app.VisualizationGroup.ForegroundColor = axisText;
-            app.TimeframeSpinnerLabel.FontColor = axisText;
-            app.SliceSpinner_2Label.FontColor = axisText;
+            % these labels sit on top of the viewer: white on a black background and vice versa
+            app.TimeframeSpinnerLabel.FontColor = 1 - backgroundC;
+            app.SliceSpinner_2Label.FontColor = 1 - backgroundC;
             set(get(app.cbar_vis,'xlabel'),'string','velocity (cm/s)','Color',axisText);
             set(app.cbar_vis,'FontSize',13,'color',axisText,'Location','west');
             pos = get(app.cbar_vis,'position');
@@ -1034,6 +1292,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             % Skip during animation – limits are frozen by the animation loop.
             if ~app.isAnimating
                 axis(app.VisualizationPlot, 'off', 'tight')
+                app.VisualizationPlot.PickableParts = 'all';
                 view(app.VisualizationPlot, [0 0 1]);
                 daspect(app.VisualizationPlot, [1 1 1]);
                 if ~(contains(app.VisOptionsDropDown.Value,'slice-wise'))
@@ -1053,6 +1312,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
             hold(app.VisualizationPlot, 'off');
+            if ~app.isAnimating
+                app.applyMapZoom();
+            end
         end
 
         % -----------------------------------------------------------------
@@ -1062,6 +1324,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         % data shown on existing patch/image objects.
         % -----------------------------------------------------------------
         function updateVisualizationData(app)
+
+            if strcmp(app.VisOptionsDropDown.Value,'None'), return, end     % viewer turned off
 
             t = app.TimeframeSpinner.Value;
             if t == 0, t = 1; end
@@ -1892,6 +2156,20 @@ classdef FlowProcessing < matlab.apps.AppBase
                     idx_currSeg = 1:length(WSS_magnitude);
                 end
 
+                app.applyMapZoom();     % keep the zoom shared with the visualization plot
+            end
+        end
+
+        function applyMapZoom(app)
+            % Re-apply the shared zoom factor to both Maps-tab axes (redraws can reset the view angle)
+            if app.mapZoom == 1, return, end
+            axs = [app.VisualizationPlot, app.MapPlot];
+            for k = 1:numel(axs)
+                axs(k).CameraViewAngleMode = 'auto';
+            end
+            drawnow;                            % let the auto view angle settle
+            for k = 1:numel(axs)
+                camzoom(axs(k), app.mapZoom);
             end
         end
 
@@ -2839,6 +3117,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             reset3DSegmentationAndCenterline(app);
         end
 
+        % Button pushed function: ResetFlowRotationButton
+        function ResetFlowRotationButtonPushed(app, ~)
+            % reset rotation/zoom of the flow-tab 3D view (keeps the flow display and highlighted point)
+            if isempty(app.flowPulsatile_vol) || isempty(app.branchActual)
+                return
+            end
+            app.flowViewUserSet = false;
+            app.View3D_2.CameraViewAngleMode = 'auto';
+            plotWaveforms(app);
+        end
+
         % Button pushed function: CheckcenterlinecalculateflowButton
         function CheckcenterlinecalculateflowButtonPushed(app, ~)
             % Grab the branches from user input, then perform aorta segmentation, check
@@ -3294,12 +3583,14 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
             CalculatePWVButtonPushed(app, []);
 
-            % View results
+            % View results (new geometry: drop any stored camera / highlighted point)
+            app.flowViewUserSet = false;
+            app.flowPickIdx = [];
             view3D_wParams(app);
             plotWaveforms(app);
 
             % Update maps tab
-            app.VisOptionsDropDown.Items = {'segmentation','slice-wise','centerline contours'};
+            app.VisOptionsDropDown.Items = {'None','segmentation','slice-wise','centerline contours'};
             app.VisOptionsApp.VisPts.Value = ['5:10:' num2str(length(app.branchActual)-4)];
             app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
         end
@@ -3763,74 +4054,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             View3DSegmentation(app);
         end
 
-        % Button pushed function: RotateLeft
-        function RotateLeftButtonPushed(app, ~)
-            if (app.isSegmentationLoaded)
-                for ii = 1:size(app.aorta_seg,4)
-                    if app.maskHandles{ii}.Value
-                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[0 1 0],10,[ctr(2) ctr(1) ctr(3)]);
-                    end
-                end
-            else
-                ctr = size(app.segment)/2; rotate(app.hpatch1,[0 1 0],10,[ctr(2) ctr(1) ctr(3)])
-            end
-            % update rotate angles
-            app.rotAngles = [app.rotAngles(1) app.rotAngles(2)+10];
-            app.rotateOriAxis(app.oriAxis_View3D, [0 1 0], 10);
-        end
-
-        % Button pushed function: RotateRight
-        function RotateRightButtonPushed(app, ~)
-            if (app.isSegmentationLoaded)
-                for ii = 1:size(app.aorta_seg,4)
-                    if app.maskHandles{ii}.Value
-                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[0 1 0],-10,[ctr(2) ctr(1) ctr(3)]);
-                    end
-                end
-            else
-                ctr = size(app.segment)/2; rotate(app.hpatch1,[0 1 0],-10,[ctr(2) ctr(1) ctr(3)])
-            end
-            % update rotate angles
-            app.rotAngles = [app.rotAngles(1) app.rotAngles(2)-10];
-            app.rotateOriAxis(app.oriAxis_View3D, [0 1 0], -10);
-        end
-
-        % Button pushed function: RotateDown
-        function RotateDownButtonPushed(app, ~)
-            if (app.isSegmentationLoaded)
-                for ii = 1:size(app.aorta_seg,4)
-                    if app.maskHandles{ii}.Value
-                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[1 0 0],10,[ctr(2) ctr(1) ctr(3)]);
-                    end
-                end
-            else
-                ctr = size(app.segment)/2; rotate(app.hpatch1,[1 0 0],10,[ctr(2) ctr(1) ctr(3)])
-            end
-            % update rotate angles
-            app.rotAngles = [app.rotAngles(1)+10 app.rotAngles(2)];
-            app.rotateOriAxis(app.oriAxis_View3D, [1 0 0], 10);
-        end
-
-        % Button pushed function: RotateUp
-        function RotateUpButtonPushed(app, ~)
-            if (app.isSegmentationLoaded)
-                for ii = 1:size(app.aorta_seg,4)
-                    if app.maskHandles{ii}.Value
-                        ctr = size(app.segment)/2; rotate(app.patchMasks{ii},[1 0 0],-10,[ctr(2) ctr(1) ctr(3)]);
-                    end
-                end
-            else
-                ctr = size(app.segment)/2; rotate(app.hpatch1,[1 0 0],-10,[ctr(2) ctr(1) ctr(3)])
-            end
-            % update rotate angles
-            app.rotAngles = [app.rotAngles(1)-10 app.rotAngles(2)];
-            app.rotateOriAxis(app.oriAxis_View3D, [1 0 0], -10);
-        end
-
         % Button pushed function: ResetRotation
         function ResetRotationButtonPushed(app, ~)
             % update rotate angles
             app.rotAngles = [0 0];
+            app.View3D.CameraViewAngleMode = 'auto';    % reset zoom too
             View3DSegmentation(app);
         end
 
@@ -4274,6 +4502,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             if strcmp(app.VisOptionsDropDown.Value,'slice-wise')
                 errordlg('rotated animation not available for slice-wise vectors')
                 return;
+            elseif strcmp(app.VisOptionsDropDown.Value,'None')
+                errordlg('rotated animation needs the visualization viewer: choose segmentation or centerline contours')
+                return;
             end
             app.rotAngles2 = [0 0 0];
             disp('only native orientation allowed for animated rotations');
@@ -4427,7 +4658,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                     if strcmp(answer2,'Yes')
                         mapTypes = {'peak velocity','mean velocity', ...
                             'kinetic energy','energy loss','vorticity'};
+                        % once WSS has been calculated the ROI can be applied to it too:
+                        % it is projected through the volume onto the WSS surface
+                        if app.isWSScalculated
+                            mapTypes{end+1} = 'wall shear stress';
+                        end
                         mapTypes(contains(mapTypes,app.MapType.Value)) = [];
+                        origMapType = app.MapType.Value;
                         % Save user's current map scale to restore at the end
                         savedMinMap = app.visParams.minMap;
                         savedMaxMap = app.visParams.maxMap;
@@ -4442,13 +4679,31 @@ classdef FlowProcessing < matlab.apps.AppBase
                             % Render the new map type so the screenshot reflects it
                             viewMap(app);
                             drawnow;
+                            card_time2 = card_time;
+                            if strcmp(mapTypes{mt},'wall shear stress')
+                                [map_var2, selV, wFrames] = app.computeWSSROI(idx);
+                                if isempty(map_var2)
+                                    disp('ROI does not overlap the WSS surface: WSS skipped');
+                                    continue
+                                end
+                                card_time2 = card_time(wFrames);
+                                % mark the selected part of the surface in the screenshot
+                                kV = 1; if numel(app.V_matrix) > 1, kV = app.TimeframeSpinner.Value; end
+                                Vsel = app.V_matrix{kV}(selV,:);
+                                hold(app.MapPlot,'on');
+                                scatter3(app.MapPlot,Vsel(:,1),Vsel(:,2),Vsel(:,3),12,'k','filled','PickableParts','none');
+                                hold(app.MapPlot,'off');
+                                drawnow;
+                            end
                             ff2 = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
                             im2 = frame2im(ff2);
-                            map_var2 = app.computeMapROI(idx);
+                            if ~strcmp(mapTypes{mt},'wall shear stress')
+                                map_var2 = app.computeMapROI(idx);
+                            end
                             [fig2,~,ss2] = app.plotROIresult( ...
-                                700,im2,card_time,map_var2,mapTypes{mt});
+                                700,im2,card_time2,map_var2,mapTypes{mt});
                             sp2 = strcat(answer{1},'_',ss2);
-                            tbl2 = array2table(cat(2,card_time', ...
+                            tbl2 = array2table(cat(2,card_time2', ...
                                 mean(map_var2,1,'omitnan')', ...
                                 max(map_var2,[],1,'omitnan')'));
                             tbl2.Properties.VariableNames = ...
@@ -4463,6 +4718,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.visParams.maxMap = savedMaxMap;
                         app.VisOptionsApp.minMapEditField.Value = num2str(savedMinMap);
                         app.VisOptionsApp.maxMapEditField.Value = num2str(savedMaxMap);
+                        % go back to the map the user started from
+                        app.MapType.Value = origMapType;
+                        viewMap(app);
                     end
                     msgbox(['results saved to ' saveName '.xlsx'], ...
                         'Saving complete','replace');
@@ -4595,6 +4853,72 @@ classdef FlowProcessing < matlab.apps.AppBase
         end
 
         % -----------------------------------------------------------------
+        % HELPER: apply a 2D map ROI (pixel indices idx in the rotated 2D map
+        % image) to the WSS surface. The ROI is projected through the volume
+        % along the map's projection direction: every WSS surface vertex whose
+        % voxel lies in a segmented column under the ROI is selected (both
+        % walls). Returns the WSS magnitude of those vertices per frame
+        % (nVertices x nFrames), the vertex mask, and the frame numbers.
+        % -----------------------------------------------------------------
+        function [map_var, selVerts, frames] = computeWSSROI(app, idx)
+            map_var = []; selVerts = [];
+            nW = numel(app.WSS_matrix);
+            if nW > 1, frames = 1:nW; else, frames = min(app.time_peak, app.nframes); end
+
+            % same rotation chain as the 2D map (see computeMapROI / rotateVol3D)
+            ang = app.rotAngles2;
+            rot = @(A) imrotate3(imrotate3(imrotate3(A, ang(2), [0 -1 0], 'nearest'), ...
+                ang(1), [-1 0 0], 'nearest'), ang(3), [0 0 1], 'nearest');
+            szFull = size(rot(double(app.segment)));       % size of the volume the map image is defined on
+
+            % rotate a voxel-index volume along with the segmentation, so every rotated
+            % voxel knows which original voxel it came from
+            currSeg0 = app.getCurrentSeg(1);               % the WSS mesh was built from frame 1
+            L    = reshape(1:numel(currSeg0), size(currSeg0));
+            Lr   = rot(L);
+            segR = rot(double(currSeg0)) > 0.5;
+            sz = size(Lr);
+            r = min(szFull(1),sz(1)); c = min(szFull(2),sz(2)); s = min(szFull(3),sz(3));
+            Lp = zeros(szFull);  Lp(1:r,1:c,1:s) = Lr(1:r,1:c,1:s);
+            Sp = false(szFull);  Sp(1:r,1:c,1:s) = segR(1:r,1:c,1:s);
+
+            % segmented voxels in the columns under the ROI, mapped back to original voxels
+            roi2d = false(szFull(1:2));
+            roi2d(idx) = true;
+            src = Lp(Sp & repmat(roi2d,[1 1 szFull(3)]));
+            src = src(src > 0);
+            if isempty(src), return, end
+            Smask = false(size(currSeg0));
+            Smask(src) = true;
+
+            % WSS vertices are in mm on the (col,row,slice)*pixdim grid; pick the vertices
+            % that touch a voxel of the projected region
+            V  = app.V_matrix{1};
+            rr = V(:,2)/app.pixdim(2);
+            cc = V(:,1)/app.pixdim(1);
+            ss = V(:,3)/app.pixdim(3);
+            sm = size(Smask);
+            selVerts = false(size(V,1),1);
+            for dr = 0:1
+                for dc = 0:1
+                    for ds = 0:1
+                        ri = min(max(floor(rr)+dr,1),sm(1));
+                        ci = min(max(floor(cc)+dc,1),sm(2));
+                        si = min(max(floor(ss)+ds,1),sm(3));
+                        selVerts = selVerts | Smask(sub2ind(sm,ri,ci,si));
+                    end
+                end
+            end
+            if ~any(selVerts), return, end
+
+            map_var = zeros(nnz(selVerts), nW);
+            for k = 1:nW
+                Wk = app.WSS_matrix{k};
+                map_var(:,k) = sqrt(sum(Wk(selVerts,:).^2,2));
+            end
+        end
+
+        % -----------------------------------------------------------------
         % HELPER: plot ROI waveform result, return figure + label strings
         % -----------------------------------------------------------------
         function [fig, paramString, saveString] = plotROIresult( ...
@@ -4605,6 +4929,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 case 'kinetic energy';  paramString='Max KE (\muJ)';        saveString='KE';
                 case 'energy loss';     paramString='EL (mW)';              saveString='EL';
                 case 'vorticity';       paramString='vorticity (rad)';      saveString='vorticity';
+                case 'wall shear stress'; paramString='WSS (Pa)';           saveString='WSS';
                 otherwise;              paramString=mapType;                 saveString=mapType;
             end
             fig=figure(figNum); clf;
@@ -4781,56 +5106,11 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Button pushed function: ResetRotation_2
         function ResetRotation_2ButtonPushed(app, ~)
-            % update rotate angles
+            % update rotate angles (and reset zoom)
+            app.mapZoom = 1;
+            app.VisualizationPlot.CameraViewAngleMode = 'auto';
+            app.MapPlot.CameraViewAngleMode = 'auto';
             app.rotAngles2 = [0 0 0];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateUp_2
-        function RotateUp_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1)-10 app.rotAngles2(2) app.rotAngles2(3)];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateDown_2
-        function RotateDown_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1)+10 app.rotAngles2(2) app.rotAngles2(3)];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateRight_2
-        function RotateRight_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)-10 app.rotAngles2(3)];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateLeft_2
-        function RotateLeft_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2)+10 app.rotAngles2(3)];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateIn_2
-        function RotateIn_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2) app.rotAngles2(3)+10];
-            updateVisualization(app);
-            viewMap(app);
-        end
-
-        % Button pushed function: RotateOut_2
-        function RotateOut_2ButtonPushed(app, ~)
-            % update rotate angles
-            app.rotAngles2 = [app.rotAngles2(1) app.rotAngles2(2) app.rotAngles2(3)-10];
             updateVisualization(app);
             viewMap(app);
         end
@@ -5029,6 +5309,10 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Window button down function: FlowProcessingUIFigure
         function FlowProcessingUIFigureWindowButtonDown(app, event)
+            % drag-rotate on the 3D views (Loading tab / Maps tab)
+            if app.camAxesPress(event.Source.CurrentObject)
+                return
+            end
             if (app.TabGroup.SelectedTab == app.VelocityUnwrappingTab) && ...
                     ~isempty(event.Source.CurrentObject) && isequal(event.Source.CurrentObject.Type,'image') && ...
                     (app.Unwrap_manual_1.Value || app.Unwrap_manual_2.Value || app.Unwrap_manual_3.Value)
@@ -5121,18 +5405,6 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 case 'Maps'
                     switch key
-                        case 'w'
-                            RotateUp_2ButtonPushed(app);
-                        case 's'
-                            RotateDown_2ButtonPushed(app);
-                        case 'd'
-                            RotateRight_2ButtonPushed(app);
-                        case 'a'
-                            RotateLeft_2ButtonPushed(app);
-                        case 'q'
-                            RotateIn_2ButtonPushed(app);
-                        case 'e'
-                            RotateOut_2ButtonPushed(app);
                         case 'r'
                             ResetRotation_2ButtonPushed(app);
                         case 'rightarrow'
@@ -5171,16 +5443,14 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 case 'Loading and Preprocessing'
                     switch key
-                        case 'w'
-                            RotateUpButtonPushed(app);
-                        case 's'
-                            RotateDownButtonPushed(app);
-                        case 'd'
-                            RotateRightButtonPushed(app);
-                        case 'a'
-                            RotateLeftButtonPushed(app);
                         case 'r'
                             ResetRotationButtonPushed(app);
+                    end
+
+                case 'Flow and Pulse Wave Velocity'
+                    switch key
+                        case 'r'
+                            ResetFlowRotationButtonPushed(app);
                     end
             end
         end
@@ -5265,6 +5535,16 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Value changed function: VisOptionsDropDown
         function VisOptionsDropDownValueChanged(app, ~)
             value = app.VisOptionsDropDown.Value;
+            if strcmp(value,'None')
+                % turn the visualization viewer off entirely (hidden, and not updated)
+                app.VisualizationGroup.Visible = 'off';
+                app.VisTypeDropDown.Visible = 'off';
+                app.SliceSpinner_2Label.Visible = 'off';
+                app.SliceSpinner_2.Visible = 'off';
+                return
+            end
+            app.VisualizationGroup.Visible = 'on';
+            app.VisTypeDropDown.Visible = 'on';
             switch value
                 case 'slice-wise'
                     % add the magnitude slice, and re-plot the velocity vectors
@@ -5463,6 +5743,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.FlowProcessingUIFigure.Position = [357 92 1234 760];
             app.FlowProcessingUIFigure.Name = '4D Flow Processing Tool';
             app.FlowProcessingUIFigure.WindowButtonDownFcn = createCallbackFcn(app, @FlowProcessingUIFigureWindowButtonDown, true);
+            app.FlowProcessingUIFigure.WindowScrollWheelFcn = createCallbackFcn(app, @FlowProcessingUIFigureScrollWheel, true);
             app.FlowProcessingUIFigure.KeyPressFcn = createCallbackFcn(app, @FlowProcessingUIFigureKeyPress, true);
 
             % Create TabGroup
@@ -5706,70 +5987,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.View3D.YTick = [];
             app.View3D.ZColor = 'none';
             app.View3D.Position = [8 9 598 691];
-
-            % Create RotateLeft
-            app.RotateLeft = uibutton(app.DVisualizationPanel, 'push');
-            app.RotateLeft.ButtonPushedFcn = createCallbackFcn(app, @RotateLeftButtonPushed, true);
-            app.RotateLeft.IconAlignment = 'center';
-            app.RotateLeft.VerticalAlignment = 'center';
-            app.RotateLeft.HorizontalAlignment = 'center';
-            app.RotateLeft.BackgroundColor = [1 1 1];
-            app.RotateLeft.FontName = 'SansSerif';
-            app.RotateLeft.FontSize = 24;
-            app.RotateLeft.FontWeight = 'bold';
-            app.RotateLeft.Tooltip = {'shortcut ''a'''};
-            app.RotateLeft.Position = [9 710-58 28 28];
-            app.RotateLeft.Text = '<';
-
-            % Create RotateRight
-            app.RotateRight = uibutton(app.DVisualizationPanel, 'push');
-            app.RotateRight.ButtonPushedFcn = createCallbackFcn(app, @RotateRightButtonPushed, true);
-            app.RotateRight.IconAlignment = 'center';
-            app.RotateRight.VerticalAlignment = 'center';
-            app.RotateRight.HorizontalAlignment = 'center';
-            app.RotateRight.BackgroundColor = [1 1 1];
-            app.RotateRight.FontName = 'SansSerif';
-            app.RotateRight.FontSize = 24;
-            app.RotateRight.FontWeight = 'bold';
-            app.RotateRight.Tooltip = {'shortcut ''d'''};
-            app.RotateRight.Position = [88 710-58 28 28];
-            app.RotateRight.Text = '>';
-
-            % Create Rotate
-            app.Rotate = uilabel(app.DVisualizationPanel);
-            app.Rotate.HorizontalAlignment = 'center';
-            app.Rotate.FontName = 'SansSerif';
-            app.Rotate.FontSize = 16;
-            app.Rotate.Position = [36 710-58 53 22];
-            app.Rotate.Text = 'Rotate';
-
-            % Create RotateDown
-            app.RotateDown = uibutton(app.DVisualizationPanel, 'push');
-            app.RotateDown.ButtonPushedFcn = createCallbackFcn(app, @RotateDownButtonPushed, true);
-            app.RotateDown.IconAlignment = 'center';
-            app.RotateDown.VerticalAlignment = 'center';
-            app.RotateDown.HorizontalAlignment = 'center';
-            app.RotateDown.BackgroundColor = [1 1 1];
-            app.RotateDown.FontName = 'SansSerif';
-            app.RotateDown.FontSize = 24;
-            app.RotateDown.FontWeight = 'bold';
-            app.RotateDown.Tooltip = {'shortcut ''s'''};
-            app.RotateDown.Position = [49 710-84 28 28];
-            app.RotateDown.Text = '▼';
-
-            % Create RotateUp
-            app.RotateUp = uibutton(app.DVisualizationPanel, 'push');
-            app.RotateUp.ButtonPushedFcn = createCallbackFcn(app, @RotateUpButtonPushed, true);
-            app.RotateUp.IconAlignment = 'center';
-            app.RotateUp.VerticalAlignment = 'center';
-            app.RotateUp.HorizontalAlignment = 'center';
-            app.RotateUp.BackgroundColor = [1 1 1];
-            app.RotateUp.FontName = 'SansSerif';
-            app.RotateUp.FontSize = 24;
-            app.RotateUp.FontWeight = 'bold';
-            app.RotateUp.Tooltip = {'shortcut ''w'''};
-            app.RotateUp.Position = [49 710-33 28 28];
-            app.RotateUp.Text = '▲';
+            app.View3D.PickableParts = 'all';
 
             % Create ResetRotation
             app.ResetRotation = uibutton(app.DVisualizationPanel, 'push');
@@ -5777,9 +5995,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ResetRotation.IconAlignment = 'center';
             app.ResetRotation.FontName = 'SansSerif';
             app.ResetRotation.FontSize = 16;
-            app.ResetRotation.Tooltip = {'Reset rotation to original view'; 'shortcut ''r'''};
-            app.ResetRotation.Position = [9 710-115 107 28];
-            app.ResetRotation.Text = 'Reset rotation';
+            app.ResetRotation.Tooltip = {'Reset view (rotation and zoom)'; 'drag the 3D view to rotate, scroll to zoom'; 'shortcut ''r'''};
+            app.ResetRotation.Position = [9 672 100 28];
+            app.ResetRotation.Text = 'Reset view';
 
             % Create TimeframeSpinner_4Label
             app.TimeframeSpinner_4Label = uilabel(app.DVisualizationPanel);
@@ -6187,6 +6405,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Create VisualizationPlot
             app.VisualizationPlot = uiaxes(app.VisualizationGroup);
+            app.VisualizationPlot.PickableParts = 'all';   % keep clickable (axis off) so drag-rotate works
             app.VisualizationPlot.YDir = 'reverse';
             app.VisualizationPlot.ZDir = 'reverse';
             app.VisualizationPlot.XColor = 'none';
@@ -6236,7 +6455,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             % Create VisOptionsDropDown
             app.VisOptionsDropDown = uidropdown(app.Maps);
-            app.VisOptionsDropDown.Items = {'segmentation', 'slice-wise'};
+            app.VisOptionsDropDown.Items = {'None', 'segmentation', 'slice-wise'};
             app.VisOptionsDropDown.ValueChangedFcn = createCallbackFcn(app, @VisOptionsDropDownValueChanged, true);
             app.VisOptionsDropDown.FontName = 'SansSerif';
             app.VisOptionsDropDown.Position = [1 700 140 22];
@@ -6247,7 +6466,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PeaksystoleEditFieldLabel.HorizontalAlignment = 'right';
             app.PeaksystoleEditFieldLabel.FontName = 'SansSerif';
             app.PeaksystoleEditFieldLabel.Enable = 'off';
-            app.PeaksystoleEditFieldLabel.Position = [1056 698 74 22];
+            app.PeaksystoleEditFieldLabel.Position = [1096 698 74 22];
             app.PeaksystoleEditFieldLabel.Text = 'peak systole';
 
             % Create PeaksystoleEditField
@@ -6256,7 +6475,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.PeaksystoleEditField.FontName = 'SansSerif';
             app.PeaksystoleEditField.Enable = 'off';
             app.PeaksystoleEditField.Tooltip = {'the calculated peak systolic phase'};
-            app.PeaksystoleEditField.Position = [1142 697 39 22];
+            app.PeaksystoleEditField.Position = [1182 697 39 22];
 
             % Create CalculateMap
             app.CalculateMap = uibutton(app.Maps, 'push');
@@ -6266,7 +6485,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.CalculateMap.FontSize = 15;
             app.CalculateMap.Enable = 'off';
             app.CalculateMap.Tooltip = {'calculate WSS'};
-            app.CalculateMap.Position = [1036 654 150 28];
+            app.CalculateMap.Position = [1076 654 150 28];
             app.CalculateMap.Text = '(Re)Calculate Map';
 
             % Create VisOptions
@@ -6277,7 +6496,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisOptions.FontSize = 15;
             app.VisOptions.Enable = 'off';
             app.VisOptions.Tooltip = {'open dialog for visualization settings'};
-            app.VisOptions.Position = [1036 570 150 28];
+            app.VisOptions.Position = [1076 570 150 28];
             app.VisOptions.Text = 'Visualization options';
 
             % Create SaveAnimation
@@ -6288,7 +6507,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SaveAnimation.FontSize = 15;
             app.SaveAnimation.Enable = 'off';
             app.SaveAnimation.Tooltip = {'save animation of plots over time'};
-            app.SaveAnimation.Position = [1036 528 150 28];
+            app.SaveAnimation.Position = [1076 528 150 28];
             app.SaveAnimation.Text = 'Save animation';
 
             % Create SaveRotatedAnimation
@@ -6299,7 +6518,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SaveRotatedAnimation.FontSize = 13;
             app.SaveRotatedAnimation.Enable = 'off';
             app.SaveRotatedAnimation.Tooltip = {'save animation of plots over time'};
-            app.SaveRotatedAnimation.Position = [1036 486 150 28];
+            app.SaveRotatedAnimation.Position = [1076 486 150 28];
             app.SaveRotatedAnimation.Text = 'Save rotated animation';
 
             % Create MapROIanalysis
@@ -6310,7 +6529,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapROIanalysis.FontSize = 15;
             app.MapROIanalysis.Enable = 'off';
             app.MapROIanalysis.Tooltip = {'draw ROI in map and save results'};
-            app.MapROIanalysis.Position = [1036 402 150 28];
+            app.MapROIanalysis.Position = [1076 402 150 28];
             app.MapROIanalysis.Text = 'Map ROI analysis';
 
             % Create MapVolumetricanalysis
@@ -6321,68 +6540,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.MapVolumetricanalysis.FontSize = 15;
             app.MapVolumetricanalysis.Enable = 'off';
             app.MapVolumetricanalysis.Tooltip = {'draw ROI in map and save results'};
-            app.MapVolumetricanalysis.Position = [1036 360 150 28];
+            app.MapVolumetricanalysis.Position = [1076 360 150 28];
             app.MapVolumetricanalysis.Text = 'Map volume analysis';
-
-            % Create RotateLeft_2
-            app.RotateLeft_2 = uibutton(app.Maps, 'push');
-            app.RotateLeft_2.ButtonPushedFcn = createCallbackFcn(app, @RotateLeft_2ButtonPushed, true);
-            app.RotateLeft_2.IconAlignment = 'center';
-            app.RotateLeft_2.VerticalAlignment = 'bottom';
-            app.RotateLeft_2.BackgroundColor = [1 1 1];
-            app.RotateLeft_2.FontName = 'SansSerif';
-            app.RotateLeft_2.FontSize = 24;
-            app.RotateLeft_2.FontWeight = 'bold';
-            app.RotateLeft_2.Tooltip = {'shortcut ''a'''};
-            app.RotateLeft_2.Position = [1050 68 28 28];
-            app.RotateLeft_2.Text = '<';
-
-            % Create RotateRight_2
-            app.RotateRight_2 = uibutton(app.Maps, 'push');
-            app.RotateRight_2.ButtonPushedFcn = createCallbackFcn(app, @RotateRight_2ButtonPushed, true);
-            app.RotateRight_2.IconAlignment = 'center';
-            app.RotateRight_2.VerticalAlignment = 'bottom';
-            app.RotateRight_2.BackgroundColor = [1 1 1];
-            app.RotateRight_2.FontName = 'SansSerif';
-            app.RotateRight_2.FontSize = 24;
-            app.RotateRight_2.FontWeight = 'bold';
-            app.RotateRight_2.Tooltip = {'shortcut ''d'''};
-            app.RotateRight_2.Position = [1129 68 28 28];
-            app.RotateRight_2.Text = '>';
-
-            % Create Rotate_2
-            app.Rotate_2 = uilabel(app.Maps);
-            app.Rotate_2.HorizontalAlignment = 'center';
-            app.Rotate_2.FontName = 'SansSerif';
-            app.Rotate_2.FontSize = 16;
-            app.Rotate_2.Position = [1077 71 53 22];
-            app.Rotate_2.Text = 'Rotate';
-
-            % Create RotateDown_2
-            app.RotateDown_2 = uibutton(app.Maps, 'push');
-            app.RotateDown_2.ButtonPushedFcn = createCallbackFcn(app, @RotateDown_2ButtonPushed, true);
-            app.RotateDown_2.IconAlignment = 'center';
-            app.RotateDown_2.VerticalAlignment = 'bottom';
-            app.RotateDown_2.BackgroundColor = [1 1 1];
-            app.RotateDown_2.FontName = 'SansSerif';
-            app.RotateDown_2.FontSize = 24;
-            app.RotateDown_2.FontWeight = 'bold';
-            app.RotateDown_2.Tooltip = {'shortcut ''s'''};
-            app.RotateDown_2.Position = [1090 43 28 28];
-            app.RotateDown_2.Text = '▼';
-
-            % Create RotateUp_2
-            app.RotateUp_2 = uibutton(app.Maps, 'push');
-            app.RotateUp_2.ButtonPushedFcn = createCallbackFcn(app, @RotateUp_2ButtonPushed, true);
-            app.RotateUp_2.IconAlignment = 'center';
-            app.RotateUp_2.VerticalAlignment = 'bottom';
-            app.RotateUp_2.BackgroundColor = [1 1 1];
-            app.RotateUp_2.FontName = 'SansSerif';
-            app.RotateUp_2.FontSize = 24;
-            app.RotateUp_2.FontWeight = 'bold';
-            app.RotateUp_2.Tooltip = {'shortcut ''w'''};
-            app.RotateUp_2.Position = [1090 94 28 28];
-            app.RotateUp_2.Text = '▲';
 
             % Create ResetRotation_2
             app.ResetRotation_2 = uibutton(app.Maps, 'push');
@@ -6390,9 +6549,9 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.ResetRotation_2.IconAlignment = 'center';
             app.ResetRotation_2.FontName = 'SansSerif';
             app.ResetRotation_2.FontSize = 16;
-            app.ResetRotation_2.Tooltip = {'Reset rotation to original view'; 'shortcut ''r'''};
-            app.ResetRotation_2.Position = [1050 11 107 28];
-            app.ResetRotation_2.Text = 'Reset rotation';
+            app.ResetRotation_2.Tooltip = {'Reset view (rotation and zoom)'; 'drag the 3D view to rotate, scroll to zoom'; 'shortcut ''r'''};
+            app.ResetRotation_2.Position = [1126 11 100 28];
+            app.ResetRotation_2.Text = 'Reset view';
 
             % Create MapType
             app.MapType = uidropdown(app.Maps);
@@ -6530,6 +6689,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.View3D_2.YColor = 'none';
             app.View3D_2.YTick = [];
             app.View3D_2.Position = [1 0 459 669];
+            app.View3D_2.ButtonDownFcn = createCallbackFcn(app, @View3D_2ButtonDown, true);
+            app.View3D_2.PickableParts = 'all';     % 'axis off' makes the axes invisible, and invisible axes ignore clicks otherwise
+
+            % Create ResetFlowRotationButton
+            app.ResetFlowRotationButton = uibutton(app.SegmentationAndCenterline, 'push');
+            app.ResetFlowRotationButton.ButtonPushedFcn = createCallbackFcn(app, @ResetFlowRotationButtonPushed, true);
+            app.ResetFlowRotationButton.FontName = 'SansSerif';
+            app.ResetFlowRotationButton.FontSize = 12;
+            app.ResetFlowRotationButton.Tooltip = {'Reset view (rotation and zoom)'; 'drag the 3D view to rotate, scroll to zoom'; 'shortcut ''r'''};
+            app.ResetFlowRotationButton.Position = [2 5 92 28];
+            app.ResetFlowRotationButton.Text = 'Reset view';
 
             % Create Reset3DviewButton
             app.Reset3DviewButton = uibutton(app.SegmentationAndCenterline, 'push');

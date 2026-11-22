@@ -43,8 +43,12 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         velocityVistoEditFieldLabel     matlab.ui.control.Label
         minVelocityVisEditField         matlab.ui.control.EditField
         velocityVisEditFieldLabel       matlab.ui.control.Label
-        view_3Dpatch_checkbox           matlab.ui.control.CheckBox
-        view_3DSegpatch_checkbox        matlab.ui.control.CheckBox
+        surfaceDropDown                 matlab.ui.control.DropDown
+        surfaceDropDownLabel            matlab.ui.control.Label
+        surfaceColorDropDown            matlab.ui.control.DropDown
+        surfaceColorDropDownLabel       matlab.ui.control.Label
+        surfaceOpacityEditField         matlab.ui.control.NumericEditField
+        surfaceOpacityEditFieldLabel    matlab.ui.control.Label
         view_orientation_checkbox       matlab.ui.control.CheckBox
         show_planes_checkbox            matlab.ui.control.CheckBox
 		PathlineLengthLabel             matlab.ui.control.Label
@@ -144,14 +148,20 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             updateVisualization(app.CallingApp);
         end
 
-        % Value changed function: view_3Dpatch_checkboxChanged
-        function view_3Dpatch_checkboxChanged(app, event)
+        % Value changed function: surfaceDropDown (none / 3D surface / segmentation surface)
+        function surfaceDropDownValueChanged(app, event)
             if ~app.callingAppValid(), return; end
             updateVisualization(app.CallingApp);
         end
 
-        % Value changed function: view_3DSegpatch_checkboxChanged
-        function view_3DSegpatch_checkboxChanged(app, event)
+        % Value changed function: surfaceOpacityEditField
+        function surfaceOpacityEditFieldValueChanged(app, event)
+            if ~app.callingAppValid(), return; end
+            updateVisualization(app.CallingApp);
+        end
+
+        % Value changed function: surfaceColorDropDown
+        function surfaceColorDropDownValueChanged(app, event)
             if ~app.callingAppValid(), return; end
             updateVisualization(app.CallingApp);
         end
@@ -230,10 +240,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Value changed function: TextcolorDropDown
         function TextcolorDropDownValueChanged(app, event)
             if ~app.callingAppValid(), return; end
-            axisText = [0 0 0];
-            if strcmp(app.TextcolorDropDown.Value,'white')
-                axisText = [1 1 1];
-            end
+            axisText = visColor(app.TextcolorDropDown.Value);
             app.CallingApp.VisualizationGroup.ForegroundColor = axisText;
             currCbar = app.CallingApp.VisualizationPlot.Colorbar;
             currCbar.Color = axisText;
@@ -242,14 +249,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Value changed function: backgroundDropDown
         function backgroundDropDownValueChanged(app, event)
             if ~app.callingAppValid(), return; end
-            backgroundC = [1 1 1];
-            if strcmp(app.backgroundDropDown.Value,'black')
-                backgroundC = [0 0 0];
-            end
+            backgroundC = visColor(app.backgroundDropDown.Value);
             app.CallingApp.VisualizationGroup.BackgroundColor = backgroundC;
-            % labels on top of the viewer: white on black and vice versa
-            app.CallingApp.TimeframeSpinnerLabel.FontColor = 1 - backgroundC;
-            app.CallingApp.SliceSpinner_2Label.FontColor = 1 - backgroundC;
+            % labels on top of the viewer: white, except on a white background
+            labelC = [1 1 1];
+            if all(backgroundC == 1), labelC = [0 0 0]; end
+            app.CallingApp.TimeframeSpinnerLabel.FontColor = labelC;
+            app.CallingApp.SliceSpinner_2Label.FontColor = labelC;
         end
 
         % Value changed function: minMapEditField
@@ -304,10 +310,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
         % Value changed function: TextcolorDropDown_2
         function TextcolorDropDown_2ValueChanged(app, event)
             if ~app.callingAppValid(), return; end
-            axisText = [0 0 0];
-            if strcmp(app.TextcolorDropDown_2.Value,'white')
-                axisText = [1 1 1];
-            end
+            axisText = visColor(app.TextcolorDropDown_2.Value);
             app.CallingApp.MapGroup.ForegroundColor = axisText;
             currCbar = app.CallingApp.MapPlot.Colorbar;
             currCbar.Color = axisText;
@@ -337,10 +340,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
         % Value changed function: backgroundDropDown_2
         function backgroundDropDown_2ValueChanged(app, event)
-            backgroundC = [1 1 1];
-            if strcmp(app.backgroundDropDown_2.Value,'black')
-                backgroundC = [0 0 0];
-            end
+            backgroundC = visColor(app.backgroundDropDown_2.Value);
             app.CallingApp.MapGroup.BackgroundColor = backgroundC;
 
         end
@@ -354,7 +354,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create VisOptionsDialogUIFigure
             app.VisOptionsDialogUIFigure = uifigure('Visible', 'off');
-            app.VisOptionsDialogUIFigure.Position = [600 100 369 450];
+            app.VisOptionsDialogUIFigure.Position = [600 100 369 472];
             app.VisOptionsDialogUIFigure.Name = 'Options';
             app.VisOptionsDialogUIFigure.CloseRequestFcn = createCallbackFcn(app, @VisOptionsDialogCloseRequest, true);
 
@@ -366,13 +366,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPlotPanel.FontName = 'SansSerif';
             app.VisPlotPanel.FontWeight = 'bold';
             app.VisPlotPanel.FontSize = 16;
-            app.VisPlotPanel.Position = [1 1 185 450];
+            app.VisPlotPanel.Position = [1 1 185 472];
 
             % Create velocityVisEditFieldLabel
             app.velocityVisEditFieldLabel = uilabel(app.VisPlotPanel);
             app.velocityVisEditFieldLabel.HorizontalAlignment = 'right';
             app.velocityVisEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVisEditFieldLabel.Position = [32 245+162 114 22];
+            app.velocityVisEditFieldLabel.Position = [32 245+162+22 114 22];
             app.velocityVisEditFieldLabel.Text = 'velocity scale (cm/s)';
 
             % Create minVelocityVisEditField
@@ -380,14 +380,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minVelocityVisEditField.ValueChangedFcn = createCallbackFcn(app, @minVelocityVisEditFieldValueChanged, true);
             app.minVelocityVisEditField.HorizontalAlignment = 'right';
             app.minVelocityVisEditField.FontName = 'SansSerif';
-            app.minVelocityVisEditField.Position = [43 224+162 37 22];
+            app.minVelocityVisEditField.Position = [43 224+162+22 37 22];
             app.minVelocityVisEditField.Value = '0';
 
             % Create velocityVistoEditFieldLabel
             app.velocityVistoEditFieldLabel = uilabel(app.VisPlotPanel);
             app.velocityVistoEditFieldLabel.HorizontalAlignment = 'center';
             app.velocityVistoEditFieldLabel.FontName = 'SansSerif';
-            app.velocityVistoEditFieldLabel.Position = [78 224+162 25 22];
+            app.velocityVistoEditFieldLabel.Position = [78 224+162+22 25 22];
             app.velocityVistoEditFieldLabel.Text = 'to';
 
             % Create maxVelocityVisEditField
@@ -395,14 +395,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxVelocityVisEditField.ValueChangedFcn = createCallbackFcn(app, @maxVelocityVisEditFieldValueChanged, true);
             app.maxVelocityVisEditField.HorizontalAlignment = 'right';
             app.maxVelocityVisEditField.FontName = 'SansSerif';
-            app.maxVelocityVisEditField.Position = [99 224+162 37 22];
+            app.maxVelocityVisEditField.Position = [99 224+162+22 37 22];
             app.maxVelocityVisEditField.Value = 'max';
 
             % Create cutoffvaluesLabel
             app.cutoffvaluesLabel = uilabel(app.VisPlotPanel);
             app.cutoffvaluesLabel.HorizontalAlignment = 'left';
             app.cutoffvaluesLabel.FontName = 'SansSerif';
-            app.cutoffvaluesLabel.Position = [52 201+162 90 22];
+            app.cutoffvaluesLabel.Position = [52 201+162+22 90 22];
             app.cutoffvaluesLabel.Text = 'vector scale';
 
             % Create minQuiverEditField
@@ -410,14 +410,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @minQuiverEditFieldValueChanged, true);
             app.minQuiverEditField.HorizontalAlignment = 'right';
             app.minQuiverEditField.FontName = 'SansSerif';
-            app.minQuiverEditField.Position = [43 180+162 37 22];
+            app.minQuiverEditField.Position = [43 180+162+22 37 22];
             app.minQuiverEditField.Value = '2';
 
             % Create toXEditFieldLabel
             app.toXEditFieldLabel = uilabel(app.VisPlotPanel);
             app.toXEditFieldLabel.HorizontalAlignment = 'center';
             app.toXEditFieldLabel.FontName = 'SansSerif';
-            app.toXEditFieldLabel.Position = [78 180+162 25 22];
+            app.toXEditFieldLabel.Position = [78 180+162+22 25 22];
             app.toXEditFieldLabel.Text = 'to';
 
             % Create maxQuiverEditField
@@ -425,7 +425,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxQuiverEditField.ValueChangedFcn = createCallbackFcn(app, @maxQuiverEditFieldValueChanged, true);
             app.maxQuiverEditField.HorizontalAlignment = 'right';
             app.maxQuiverEditField.FontName = 'SansSerif';
-            app.maxQuiverEditField.Position = [99 180+162 37 22];
+            app.maxQuiverEditField.Position = [99 180+162+22 37 22];
             app.maxQuiverEditField.Value = '10';
 
             % Create SubsampleLabel
@@ -433,7 +433,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.SubsampleLabel.HorizontalAlignment = 'right';
             app.SubsampleLabel.WordWrap = 'on';
             app.SubsampleLabel.FontName = 'SansSerif';
-            app.SubsampleLabel.Position = [3 128+162 59 43];
+            app.SubsampleLabel.Position = [3 128+162+22 59 43];
             app.SubsampleLabel.Text = 'subsample';
 
             % Create SubsampleSlider
@@ -443,24 +443,53 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.SubsampleSlider.Limits = [1 5];
             app.SubsampleSlider.MajorTicks = [1 2 3 4 5];
             app.SubsampleSlider.MinorTicks = [];
-            app.SubsampleSlider.Position = [71 158+162 101 3];
+            app.SubsampleSlider.Position = [71 158+162+22 101 3];
             app.SubsampleSlider.Value = 1;
 
-            % Create view_3Dpatch_checkbox
-            app.view_3Dpatch_checkbox = uicheckbox(app.VisPlotPanel);
-            app.view_3Dpatch_checkbox.ValueChangedFcn = createCallbackFcn(app, @view_3Dpatch_checkboxChanged, true);
-            app.view_3Dpatch_checkbox.Tooltip = {'toggle viewing the thresholded 3D isosurface'};
-            app.view_3Dpatch_checkbox.Text = '3D surface';
-            app.view_3Dpatch_checkbox.FontName = 'SansSerif';
-            app.view_3Dpatch_checkbox.Position = [16 130+44 146 22];
+            % Create surfaceDropDownLabel
+            app.surfaceDropDownLabel = uilabel(app.VisPlotPanel);
+            app.surfaceDropDownLabel.FontName = 'SansSerif';
+            app.surfaceDropDownLabel.Position = [3 130+44+22 45 22];
+            app.surfaceDropDownLabel.Text = 'surface';
 
-            % Create view_3DSegpatch_checkbox
-            app.view_3DSegpatch_checkbox = uicheckbox(app.VisPlotPanel);
-            app.view_3DSegpatch_checkbox.ValueChangedFcn = createCallbackFcn(app, @view_3DSegpatch_checkboxChanged, true);
-            app.view_3DSegpatch_checkbox.Tooltip = {'toggle viewing the loaded segmentation 3D isosurface'};
-            app.view_3DSegpatch_checkbox.Text = 'segmentation surface';
-            app.view_3DSegpatch_checkbox.FontName = 'SansSerif';
-            app.view_3DSegpatch_checkbox.Position = [16 130+22 146 22];
+            % Create surfaceDropDown
+            app.surfaceDropDown = uidropdown(app.VisPlotPanel);
+            app.surfaceDropDown.Items = {'none', '3D surface', 'segmentation surface'};
+            app.surfaceDropDown.ValueChangedFcn = createCallbackFcn(app, @surfaceDropDownValueChanged, true);
+            app.surfaceDropDown.Tooltip = {'3D surface: thresholded 3D isosurface'; 'segmentation surface: loaded segmentation isosurface'; 'only one is shown at a time'};
+            app.surfaceDropDown.FontName = 'SansSerif';
+            app.surfaceDropDown.Position = [48 130+44+22 135 22];
+            app.surfaceDropDown.Value = 'none';
+
+            % Create surfaceColorDropDownLabel
+            app.surfaceColorDropDownLabel = uilabel(app.VisPlotPanel);
+            app.surfaceColorDropDownLabel.FontName = 'SansSerif';
+            app.surfaceColorDropDownLabel.Position = [3 130+22+22 45 22];
+            app.surfaceColorDropDownLabel.Text = 'color';
+
+            % Create surfaceColorDropDown
+            app.surfaceColorDropDown = uidropdown(app.VisPlotPanel);
+            app.surfaceColorDropDown.Items = {'light gray', 'gray', 'white', 'black', 'light blue', 'yellow', 'red', 'blue'};
+            app.surfaceColorDropDown.ValueChangedFcn = createCallbackFcn(app, @surfaceColorDropDownValueChanged, true);
+            app.surfaceColorDropDown.Tooltip = {'color of the shown surface'};
+            app.surfaceColorDropDown.FontName = 'SansSerif';
+            app.surfaceColorDropDown.Position = [48 130+22+22 135 22];
+            app.surfaceColorDropDown.Value = 'light gray';
+
+            % Create surfaceOpacityEditFieldLabel
+            app.surfaceOpacityEditFieldLabel = uilabel(app.VisPlotPanel);
+            app.surfaceOpacityEditFieldLabel.FontName = 'SansSerif';
+            app.surfaceOpacityEditFieldLabel.Position = [3 130+22 45 22];
+            app.surfaceOpacityEditFieldLabel.Text = 'opacity';
+
+            % Create surfaceOpacityEditField
+            app.surfaceOpacityEditField = uieditfield(app.VisPlotPanel, 'numeric');
+            app.surfaceOpacityEditField.Limits = [0 1];
+            app.surfaceOpacityEditField.ValueChangedFcn = createCallbackFcn(app, @surfaceOpacityEditFieldValueChanged, true);
+            app.surfaceOpacityEditField.Tooltip = {'surface opacity: 0 (transparent) to 1 (opaque)'};
+            app.surfaceOpacityEditField.FontName = 'SansSerif';
+            app.surfaceOpacityEditField.Position = [48 130+22 60 22];
+            app.surfaceOpacityEditField.Value = 0.15;
 
             % Create VisPts_Label
             app.VisPts_Label = uilabel(app.VisPlotPanel);
@@ -469,7 +498,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts_Label.FontSize = 10;
             app.VisPts_Label.Enable = 'off';
             app.VisPts_Label.Visible = 'off';
-            app.VisPts_Label.Position = [3 130+110 70 22];
+            app.VisPts_Label.Position = [3 130+110+22 70 22];
             app.VisPts_Label.Text = 'contour points';
 
             % Create VisPts
@@ -480,7 +509,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.VisPts.Enable = 'off';
             app.VisPts.Visible = 'off';
             app.VisPts.Tooltip = {'Centerline point labels used for visualization'};
-            app.VisPts.Position = [73 130+110 70 22];
+            app.VisPts.Position = [73 130+110+22 70 22];
 
             % show planes checkbox (below contour points)
             app.show_planes_checkbox = uicheckbox(app.VisPlotPanel);
@@ -490,7 +519,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.show_planes_checkbox.FontSize = 12;
             app.show_planes_checkbox.Enable = 'off';
             app.show_planes_checkbox.Visible = 'off';
-            app.show_planes_checkbox.Position = [16 130+132 146 22];
+            app.show_planes_checkbox.Position = [16 130+132+22 146 22];
 
             % path length label + edit field
             app.PathlineLengthLabel = uilabel(app.VisPlotPanel);
@@ -499,7 +528,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineLengthLabel.FontSize = 10;
             app.PathlineLengthLabel.Enable = 'off';
             app.PathlineLengthLabel.Visible = 'off';
-            app.PathlineLengthLabel.Position = [3 130+88 70 22];
+            app.PathlineLengthLabel.Position = [3 130+88+22 70 22];
             app.PathlineLengthLabel.Text = 'path length (s)';
 
             % Create PathlineLengthEditField
@@ -510,7 +539,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineLengthEditField.Enable = 'off';
             app.PathlineLengthEditField.Visible = 'off';
             app.PathlineLengthEditField.Tooltip = {'Duration each particle is tracked (seconds). Leave blank to track for full cardiac cycle.'};
-            app.PathlineLengthEditField.Position = [73 130+88 70 22];
+            app.PathlineLengthEditField.Position = [73 130+88+22 70 22];
             app.PathlineLengthEditField.Value = '';
 
             % Create PathlineReleaseLabel
@@ -520,7 +549,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineReleaseLabel.FontSize = 10;
             app.PathlineReleaseLabel.Enable = 'off';
             app.PathlineReleaseLabel.Visible = 'off';
-            app.PathlineReleaseLabel.Position = [3 130+66 70 22];
+            app.PathlineReleaseLabel.Position = [3 130+66+22 70 22];
             app.PathlineReleaseLabel.Text = 'release frame';
 
             % Create PathlineReleaseEditField
@@ -531,7 +560,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.PathlineReleaseEditField.Enable = 'off';
             app.PathlineReleaseEditField.Visible = 'off';
             app.PathlineReleaseEditField.Tooltip = {'Cardiac frame at which particles are released (1 = start of cycle). Leave blank to release at all frames.'};
-            app.PathlineReleaseEditField.Position = [73 130+66 70 22];
+            app.PathlineReleaseEditField.Position = [73 130+66+22 70 22];
             app.PathlineReleaseEditField.Value = '1';
 
             % Create velocityVisEditFieldLabel_2
@@ -586,7 +615,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create TextcolorDropDown
             app.TextcolorDropDown = uidropdown(app.VisPlotPanel);
-            app.TextcolorDropDown.Items = {'black', 'white'};
+            app.TextcolorDropDown.Items = {'black', 'white', 'gray', 'light gray', 'light blue', 'yellow'};
             app.TextcolorDropDown.ValueChangedFcn = createCallbackFcn(app, @TextcolorDropDownValueChanged, true);
             app.TextcolorDropDown.FontName = 'SansSerif';
             app.TextcolorDropDown.Position = [73 72 110 22];
@@ -600,7 +629,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create backgroundDropDown
             app.backgroundDropDown = uidropdown(app.VisPlotPanel);
-            app.backgroundDropDown.Items = {'black', 'white'};
+            app.backgroundDropDown.Items = {'black', 'white', 'gray', 'light gray', 'light blue'};
             app.backgroundDropDown.ValueChangedFcn = createCallbackFcn(app, @backgroundDropDownValueChanged, true);
             app.backgroundDropDown.FontName = 'SansSerif';
             app.backgroundDropDown.Position = [73 98 110 22];
@@ -614,7 +643,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.MapPlotPanel.FontName = 'SansSerif';
             app.MapPlotPanel.FontWeight = 'bold';
             app.MapPlotPanel.FontSize = 16;
-            app.MapPlotPanel.Position = [185 1 185 450];
+            app.MapPlotPanel.Position = [185 1 185 472];
 
             % Create MapEditFieldLabel
             app.MapEditFieldLabel = uilabel(app.MapPlotPanel);
@@ -690,7 +719,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create TextcolorDropDown_2
             app.TextcolorDropDown_2 = uidropdown(app.MapPlotPanel);
-            app.TextcolorDropDown_2.Items = {'black', 'white'};
+            app.TextcolorDropDown_2.Items = {'black', 'white', 'gray', 'light gray', 'light blue', 'yellow'};
             app.TextcolorDropDown_2.ValueChangedFcn = createCallbackFcn(app, @TextcolorDropDown_2ValueChanged, true);
             app.TextcolorDropDown_2.FontName = 'SansSerif';
             app.TextcolorDropDown_2.Position = [74 74 110 22];
@@ -735,7 +764,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
 
             % Create backgroundDropDown_2
             app.backgroundDropDown_2 = uidropdown(app.MapPlotPanel);
-            app.backgroundDropDown_2.Items = {'black', 'white'};
+            app.backgroundDropDown_2.Items = {'black', 'white', 'gray', 'light gray', 'light blue'};
             app.backgroundDropDown_2.ValueChangedFcn = createCallbackFcn(app, @backgroundDropDown_2ValueChanged, true);
             app.backgroundDropDown_2.FontName = 'SansSerif';
             app.backgroundDropDown_2.Position = [74 100 110 22];

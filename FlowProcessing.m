@@ -1153,14 +1153,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.visParams.maxVel = app.VENC/10;
                 end
                 scale      = [app.visParams.minVel, app.visParams.maxVel];
-                backgroundC = [1 1 1];
-                if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
-                    backgroundC = [0 0 0];
-                end
-                axisText = [0 0 0];
-                if strcmp(app.VisOptionsApp.TextcolorDropDown.Value,'white')
-                    axisText = [1 1 1];
-                end
+                backgroundC = visColor(app.VisOptionsApp.backgroundDropDown.Value);
+                axisText    = visColor(app.VisOptionsApp.TextcolorDropDown.Value);
                 cmap = app.VisOptionsApp.ColormapDropDown.Value;
                 cbarLoc = app.VisOptionsApp.LocationDropDown.Value;
             end
@@ -1169,9 +1163,11 @@ classdef FlowProcessing < matlab.apps.AppBase
             colormap(app.VisualizationPlot, cmap);
             app.VisualizationGroup.BackgroundColor = backgroundC;
             app.VisualizationGroup.ForegroundColor = axisText;
-            % these labels sit on top of the viewer: white on a black background and vice versa
-            app.TimeframeSpinnerLabel.FontColor = 1 - backgroundC;
-            app.SliceSpinner_2Label.FontColor = 1 - backgroundC;
+            % these labels sit on top of the viewer: white, except on a white background
+            labelC = [1 1 1];
+            if all(backgroundC == 1), labelC = [0 0 0]; end
+            app.TimeframeSpinnerLabel.FontColor = labelC;
+            app.SliceSpinner_2Label.FontColor = labelC;
             set(get(app.cbar_vis,'xlabel'),'string','velocity (cm/s)','Color',axisText);
             set(app.cbar_vis,'FontSize',13,'color',axisText,'Location','west');
             pos = get(app.cbar_vis,'position');
@@ -1196,7 +1192,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             % vis3Dsurface  = background anatomy shell (app.segment, full FOV)
             % vis3DSegsurface = vessel of interest (currSeg / aorta_seg)
             % Both use pixdim-scaled grids so they share the same mm coordinate space.
-            if app.VisOptionsApp.view_3Dpatch_checkbox.Value
+            surfSel   = app.VisOptionsApp.surfaceDropDown.Value;       % 'none' | '3D surface' | 'segmentation surface'
+            surfColor = visColor(app.VisOptionsApp.surfaceColorDropDown.Value);
+            surfAlpha = app.VisOptionsApp.surfaceOpacityEditField.Value;
+            if strcmp(surfSel,'3D surface')
                 if isempty(app.vis3Dsurface) || app.is3DChanged
                     app.vis3Dsurface = []; idxToRemove = [];
                     for ii = 1:numel(app.VisualizationPlot.Children)
@@ -1215,11 +1214,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.segIsoFV_dirty  = false;
                     end
                     app.vis3Dsurface = patch(app.VisualizationPlot, app.segIsoFV, ...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor','none', ...
+                        'FaceAlpha',surfAlpha,'FaceColor',surfColor,'EdgeColor','none', ...
                         'PickableParts','none','Tag','3D_surface');
                     app.is3DChanged = 0;
                 else
                     app.vis3Dsurface.Visible = 'on';
+                    app.vis3Dsurface.FaceColor = surfColor;
+                    app.vis3Dsurface.FaceAlpha = surfAlpha;
                 end
             else
                 if ~isempty(app.vis3Dsurface) && isvalid(app.vis3Dsurface)
@@ -1227,7 +1228,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
 
-            if app.VisOptionsApp.view_3DSegpatch_checkbox.Value
+            if strcmp(surfSel,'segmentation surface')
                 if isempty(app.vis3DSegsurface) || app.is3DSegChanged
                     app.vis3DSegsurface = []; idxToRemove = [];
                     for ii = 1:numel(app.VisualizationPlot.Children)
@@ -1246,11 +1247,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                         app.visSegIsoFV_dirty = false;
                     end
                     app.vis3DSegsurface = patch(app.VisualizationPlot, app.visSegIsoFV, ...
-                        'FaceAlpha',0.15,'FaceColor',[0.7 0.7 0.7],'EdgeColor','none', ...
+                        'FaceAlpha',surfAlpha,'FaceColor',surfColor,'EdgeColor','none', ...
                         'PickableParts','none','Tag','3D_seg_surface');
                     app.is3DSegChanged = 0;
                 else
                     app.vis3DSegsurface.Visible = 'on';
+                    app.vis3DSegsurface.FaceColor = surfColor;
+                    app.vis3DSegsurface.FaceAlpha = surfAlpha;
                 end
             else
                 if ~isempty(app.vis3DSegsurface) && isvalid(app.vis3DSegsurface)
@@ -1817,7 +1820,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             tv_sub = app.vesselTangent(ptRange,:);
             hold(app.VisualizationPlot,'on');
             planeColor = 'k';
-            if strcmp(app.VisOptionsApp.backgroundDropDown.Value,'black')
+            if mean(visColor(app.VisOptionsApp.backgroundDropDown.Value)) < 0.6   % dark / mid backgrounds
                 planeColor = 'w';
             end
             viewPlanesIn3D(app.VisualizationPlot, tv_sub, pw, b_mm, 1, planeColor);
@@ -2065,14 +2068,8 @@ classdef FlowProcessing < matlab.apps.AppBase
                     cbarLoc = 'bottom-left';
                 else
                     scale = [app.visParams.minMap, app.visParams.maxMap];
-                    backgroundC = [1 1 1];
-                    if strcmp(app.VisOptionsApp.backgroundDropDown_2.Value,'black')
-                        backgroundC = [0 0 0];
-                    end
-                    axisText = [0 0 0];
-                    if strcmp(app.VisOptionsApp.TextcolorDropDown_2.Value,'white')
-                        axisText = [1 1 1];
-                    end
+                    backgroundC = visColor(app.VisOptionsApp.backgroundDropDown_2.Value);
+                    axisText    = visColor(app.VisOptionsApp.TextcolorDropDown_2.Value);
                     if contains(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse')
                         cmap = feval(erase(app.VisOptionsApp.ColormapDropDown_2.Value,'inverse '), 256);
                         cmap = flip(cmap,1);
@@ -3023,9 +3020,10 @@ classdef FlowProcessing < matlab.apps.AppBase
             % view vectors
             app.VisOptionsApp = VisOptionsDialog(app, round(app.VENC/10));
             if contains(app.VisOptionsDropDown.Value,'slice-wise')
-                app.VisOptionsApp.view_3Dpatch_checkbox.Value = 0;
+                app.VisOptionsApp.surfaceDropDown.Items = {'none','segmentation surface'};
+                app.VisOptionsApp.surfaceDropDown.Value = 'none';
             else
-                app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
+                app.VisOptionsApp.surfaceDropDown.Value = '3D surface';
             end
             colormap(app.VisualizationPlot, 'jet');
             clim(app.VisualizationPlot, [0 app.VENC/10]);
@@ -4618,7 +4616,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 disp('Draw ROI in map image to check results')
                 app.MapPlot.Toolbar.Visible = 'off';
                 h = drawpolygon(app.MapPlot,'color', ...
-                    app.VisOptionsApp.TextcolorDropDown_2.Value,'FaceAlpha',0);
+                    visColor(app.VisOptionsApp.TextcolorDropDown_2.Value),'FaceAlpha',0);
                 BW = createMask(h); idx = find(BW);
                 ff = getframe(app.FlowProcessingUIFigure, [476 25 475 690]);
                 im = frame2im(ff);
@@ -5576,10 +5574,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.PathlineReleaseLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineReleaseEditField.Visible = 'off';
                     app.VisOptionsApp.PathlineReleaseEditField.Enable = 'off';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'off';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'off';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Value = 0;
-                    app.VisOptionsApp.view_3DSegpatch_checkbox.Value = 0;
+                    % the 3D surface would hide the slice: only 'none' / segmentation surface
+                    app.VisOptionsApp.surfaceDropDown.Items = {'none','segmentation surface'};
+                    app.VisOptionsApp.surfaceDropDown.Value = 'none';
                     app.VisTypeDropDown.Value = 'Vectors';
                 case 'segmentation'
                     if ~isempty(app.sliceImg)
@@ -5611,8 +5608,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.PathlineReleaseLabel.Enable = 'off';
                     app.VisOptionsApp.PathlineReleaseEditField.Visible = 'off';
                     app.VisOptionsApp.PathlineReleaseEditField.Enable = 'off';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
+                    app.VisOptionsApp.surfaceDropDown.Items = {'none','3D surface','segmentation surface'};
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines'};
                     % Pathlines not available in segmentation mode
                     if strcmp(app.VisTypeDropDown.Value,'Pathlines')
@@ -5647,10 +5643,9 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsApp.PathlineReleaseEditField.Visible = 'on';
                     app.VisOptionsApp.PathlineReleaseEditField.Enable = 'on';
                     app.VisOptionsApp.VisPts_Label.Text = sprintf('contour points\n[1:%i]',length(app.branchActual));
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Visible = 'on';
-                    app.VisOptionsApp.view_3Dpatch_checkbox.Enable = 'on';
+                    app.VisOptionsApp.surfaceDropDown.Items = {'none','3D surface','segmentation surface'};
                     if ~app.isSegmentationLoaded
-                        app.VisOptionsApp.view_3Dpatch_checkbox.Value = 1;
+                        app.VisOptionsApp.surfaceDropDown.Value = '3D surface';
                     end
                     app.VisTypeDropDown.Items = {'Vectors','Streamlines','Pathlines'};
             end

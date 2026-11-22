@@ -649,7 +649,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.MapEditFieldLabel = uilabel(app.MapPlotPanel);
             app.MapEditFieldLabel.HorizontalAlignment = 'center';
             app.MapEditFieldLabel.FontName = 'SansSerif';
-            app.MapEditFieldLabel.Position = [46 245+162 93 22];
+            app.MapEditFieldLabel.Position = [46 245+162+22 93 22];
             app.MapEditFieldLabel.Text = 'map scale';
 
             % Create minMapEditField
@@ -657,14 +657,14 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.minMapEditField.ValueChangedFcn = createCallbackFcn(app, @minMapEditFieldValueChanged, true);
             app.minMapEditField.HorizontalAlignment = 'right';
             app.minMapEditField.FontName = 'SansSerif';
-            app.minMapEditField.Position = [46 224+162 37 22];
+            app.minMapEditField.Position = [46 224+162+22 37 22];
             app.minMapEditField.Value = '0';
 
             % Create MaptoEditFieldLabel
             app.MaptoEditFieldLabel = uilabel(app.MapPlotPanel);
             app.MaptoEditFieldLabel.HorizontalAlignment = 'center';
             app.MaptoEditFieldLabel.FontName = 'SansSerif';
-            app.MaptoEditFieldLabel.Position = [78 224+162 25 22];
+            app.MaptoEditFieldLabel.Position = [78 224+162+22 25 22];
             app.MaptoEditFieldLabel.Text = 'to';
 
             % Create maxMapEditField
@@ -672,7 +672,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.maxMapEditField.ValueChangedFcn = createCallbackFcn(app, @maxMapEditFieldValueChanged, true);
             app.maxMapEditField.HorizontalAlignment = 'right';
             app.maxMapEditField.FontName = 'SansSerif';
-            app.maxMapEditField.Position = [102 224+162 37 22];
+            app.maxMapEditField.Position = [102 224+162+22 37 22];
             app.maxMapEditField.Value = 'max';
 
             % Create MapColorbarEditFieldLabel
@@ -731,13 +731,13 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.mask_erosion_checkbox.Tooltip = {'erode mask 1 voxel for selected map'};
             app.mask_erosion_checkbox.Text = 'mask erosion';
             app.mask_erosion_checkbox.FontName = 'SansSerif';
-            app.mask_erosion_checkbox.Position = [46 180+162 146 22];
+            app.mask_erosion_checkbox.Position = [46 180+162+22 146 22];
 
             % Create projectionDropDown_Label
             app.projectionDropDown_Label = uilabel(app.MapPlotPanel);
             app.projectionDropDown_Label.WordWrap = 'on';
             app.projectionDropDown_Label.FontName = 'SansSerif';
-            app.projectionDropDown_Label.Position = [2 140+162 68 30];
+            app.projectionDropDown_Label.Position = [2 140+162+22 68 30];
             app.projectionDropDown_Label.Text = 'map slice projection';
 
             % Create projectionDropDown
@@ -745,7 +745,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.projectionDropDown.Items = {'mean', 'max'};
             app.projectionDropDown.ValueChangedFcn = createCallbackFcn(app, @projectionDropDownValueChanged, true);
             app.projectionDropDown.FontName = 'SansSerif';
-            app.projectionDropDown.Position = [74 140+162 110 22];
+            app.projectionDropDown.Position = [74 140+162+22 110 22];
             app.projectionDropDown.Value = 'max';
 
             % Create smoothMap_checkbox
@@ -754,7 +754,7 @@ classdef VisOptionsDialog < matlab.apps.AppBase
             app.smoothMap_checkbox.Tooltip = {'2x bicubic interpolation for a smooth map'};
             app.smoothMap_checkbox.Text = 'smooth map';
             app.smoothMap_checkbox.FontName = 'SansSerif';
-            app.smoothMap_checkbox.Position = [46 98+162 146 22];
+            app.smoothMap_checkbox.Position = [46 98+162+22 146 22];
 
             % Create backgroundDropDown_2Label
             app.backgroundDropDown_2Label = uilabel(app.MapPlotPanel);

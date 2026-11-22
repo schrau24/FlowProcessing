@@ -61,8 +61,17 @@ end
 % =========================================================================
 % TIME LOOP – parallel when toolbox available, serial fallback
 % =========================================================================
-useParallel = license('test', 'Distrib_Computing_Toolbox') && ...
-              ~isempty(ver('parallel')) && contains(visType,'segmentation');
+% Many seeds (segmentation) justify starting a pool; centerline-contour seeds
+% are few, so only use parallel there when a pool is ALREADY running (no
+% start-up cost). The cheap checks come first: ver() is slow.
+poolRunning = false;
+try
+    poolRunning = ~isempty(gcp('nocreate'));
+catch
+end
+useParallel = (contains(visType,'segmentation') || poolRunning) && ...
+              license('test', 'Distrib_Computing_Toolbox') && ...
+              ~isempty(ver('parallel'));
 
 P   = [2 1 3];
 xgP = permute(xcoor_grid, P);
@@ -137,8 +146,10 @@ function [Xb_t, Yb_t, Zb_t, Cb_t] = computeOneFrame( ...
     S = stream3(xcoor_grid, ycoor_grid, zcoor_grid, -vy, -vx, -vz, startX, startY, startZ);
     F = griddedInterpolant(xgP, ygP, zgP, permute(vmagn,[2 1 3]), 'linear', 'none');
 
-    Xb_t = cell(nbins,1); Yb_t = cell(nbins,1);
-    Zb_t = cell(nbins,1); Cb_t = cell(nbins,1);
+    % Collect the pieces per bin and join them ONCE at the end (growing the
+    % arrays with [X; new] inside the loops copies them again and again).
+    pX = repmat({{}}, nbins, 1); pY = pX; pZ = pX; pC = pX;   % nbins x 1 cells of {}
+    cnt = zeros(nbins,1);
 
     for ii = 1:numel(S)
         pts = S{ii};
@@ -160,12 +171,24 @@ function [Xb_t, Yb_t, Zb_t, Cb_t] = computeOneFrame( ...
             segEnd   = [segStart(2:end) - 1; numel(idx)];
 
             for s = 1:numel(segStart)
-                ii0      = idx(segStart(s):segEnd(s));
-                Xb_t{k} = [Xb_t{k}; XX(ii0); NaN];
-                Yb_t{k} = [Yb_t{k}; YY(ii0); NaN];
-                Zb_t{k} = [Zb_t{k}; ZZ(ii0); NaN];
-                Cb_t{k} = [Cb_t{k}; c(ii0);  NaN];
+                ii0 = idx(segStart(s):segEnd(s));
+                cnt(k) = cnt(k) + 1;
+                pX{k}{cnt(k)} = [XX(ii0); NaN];
+                pY{k}{cnt(k)} = [YY(ii0); NaN];
+                pZ{k}{cnt(k)} = [ZZ(ii0); NaN];
+                pC{k}{cnt(k)} = [c(ii0);  NaN];
             end
+        end
+    end
+
+    Xb_t = cell(nbins,1); Yb_t = cell(nbins,1);
+    Zb_t = cell(nbins,1); Cb_t = cell(nbins,1);
+    for k = 1:nbins
+        if cnt(k) > 0
+            Xb_t{k} = vertcat(pX{k}{:});
+            Yb_t{k} = vertcat(pY{k}{:});
+            Zb_t{k} = vertcat(pZ{k}{:});
+            Cb_t{k} = vertcat(pC{k}{:});
         end
     end
 end

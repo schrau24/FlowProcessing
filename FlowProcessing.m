@@ -83,6 +83,8 @@ classdef FlowProcessing < matlab.apps.AppBase
         VisOptions                      matlab.ui.control.Button
         SaveAnimation                   matlab.ui.control.Button
         SaveRotatedAnimation            matlab.ui.control.Button
+        PlayButton                      matlab.ui.control.Button
+        PlayFPSSpinner                  matlab.ui.control.Spinner
         MapROIanalysis                  matlab.ui.control.Button
         MapVolumetricanalysis           matlab.ui.control.Button
         PeaksystoleEditField            matlab.ui.control.EditField
@@ -217,6 +219,14 @@ classdef FlowProcessing < matlab.apps.AppBase
         visSegIsoFV_dirty = true;
 
         isAnimating = false;    	% true during SaveRotatedAnimation – suppresses axis tight
+        isPlaying = false;          % true while the Play button loop is running
+        playTimes = [0 0];          % seconds spent in map / vis updates during playback
+        playToggleTic = [];         % tic of the last play/pause toggle (debounce button + spacebar)
+        pathlineRender = [];        % cached window-ordered pathline arrays (X,Y,Z,C,offset) for fast display
+        visPlaneKey = [];           % cache key of the contour planes currently drawn in the vis viewer
+        captureFigs = struct('vis',[],'map',[]);   % hidden figures used for the fast GIF capture
+        captureFastOK = true;       % false once the fast capture failed (falls back to getframe)
+        mapCache = [];              % cached map volume (see getMapVolume)
 
         usedBranches;               % a list that is built up to determine which branches to perform flow measurements on
         FullBranchDistance;         % the full distance vector (in mm)
@@ -1135,6 +1145,8 @@ classdef FlowProcessing < matlab.apps.AppBase
 
             if strcmp(app.VisOptionsDropDown.Value,'None'), return, end     % viewer turned off
 
+            app.visPlaneKey = [];        % full redraw: rebuild the contour planes
+
             t = app.TimeframeSpinner.Value;
             if t == 0, t = 1; end
 
@@ -1526,7 +1538,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 set(app.vectorPatch,'Faces',F,'Vertices',V,'CData',C,...
                     'FaceColor','flat','EdgeColor','none','FaceAlpha',0.75);
             end
-            uistack(app.vectorPatch,'top');
+            if ~app.isPlaying, uistack(app.vectorPatch,'top'); end   % no re-stacking per played frame
         end
 
         function viewStreamlines(app, currSeg, t)
@@ -1549,18 +1561,13 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.VisOptionsDropDown.Value, ...
                     app.VisOptionsApp.VisPts.Value, app.contourCoords);
 
-                % Pad all frames to the same length per bin so surface object
-                % dimensions never change between frames (required by MATLAB surface).
+                % Every frame keeps its own length: set() with all four data
+                % arrays at once may change the size of a surface, and padding
+                % every frame to the longest one made each redraw send (and
+                % draw) far more data than needed. Only force column vectors.
                 [nbins_out, nframes_out] = size(app.streamsOut.Xb);
                 for k = 1:nbins_out
-                    maxLen = max(cellfun(@numel, app.streamsOut.Xb(k,:)));
-                    if maxLen == 0, maxLen = 1; end
                     for tt = 1:nframes_out
-                        app.streamsOut.Xb{k,tt}(end+1:maxLen,1) = NaN;
-                        app.streamsOut.Yb{k,tt}(end+1:maxLen,1) = NaN;
-                        app.streamsOut.Zb{k,tt}(end+1:maxLen,1) = NaN;
-                        app.streamsOut.Cb{k,tt}(end+1:maxLen,1) = NaN;
-                        % Guarantee column vector regardless of original orientation
                         app.streamsOut.Xb{k,tt} = app.streamsOut.Xb{k,tt}(:);
                         app.streamsOut.Yb{k,tt} = app.streamsOut.Yb{k,tt}(:);
                         app.streamsOut.Zb{k,tt} = app.streamsOut.Zb{k,tt}(:);
@@ -1592,14 +1599,14 @@ classdef FlowProcessing < matlab.apps.AppBase
                     set(app.streamPatch(k),'XData',X2,'YData',Y2,'ZData',Z2,'CData',C2);
                 end
             end
-            uistack(app.streamPatch,'top');
+            if ~app.isPlaying, uistack(app.streamPatch,'top'); end   % no re-stacking per played frame
             app.showContoursIfEnabled(ptRange_vis);
         end
 
         % -----------------------------------------------------------------
         % PATHLINE VISUALIZATION
-        % Pathlines trace particle trajectories through time using ODE45
-        % integration through a 4D velocity field. Each particle is emitted
+        % Pathlines trace particle trajectories through time using a
+        % vectorised RK4 integration through a 4D velocity field. Each particle is emitted
         % from a centerline contour seed point and tracked for the full
         % cardiac cycle. The timeframe spinner selects the emission time
         % window to display.
@@ -1718,83 +1725,89 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.pathlineInterp, app.visParams.minVel, app.visParams.maxVel, ...
                     pathLenSec, releaseFrame);
 
+                app.pathlineRender = [];     % flattened display arrays are rebuilt lazily
                 app.isPathlinesChanged.Value = 0;
             end
 
-            % --- Render: show trajectory accumulated up to timeframe t ----
-            % The dataStore rows correspond to windows in the order they were
-            % computed (starting at releaseFrame). The timeframe spinner
-            % controls how many windows of path are shown (trail length).
+            % --- Render: trail accumulated up to timeframe t ---------------
+            % The spinner value selects how many integration windows of the
+            % trail are shown. Every window's segments are NaN-separated, so
+            % the display for frame t is simply a PREFIX of a window-ordered
+            % array. That array is built once per calculation and a single
+            % surface object is updated in place (no per-frame object
+            % creation or concatenation) so the frame can change in real time.
             if isempty(app.pathlinesOut) || isempty(app.pathlinesOut.dataStore)
                 return
             end
 
-            % Number of windows to show = t (clamped to what was computed)
-            nComputed    = size(app.pathlinesOut.dataStore, 1);
-            numParticles = size(app.pathlinesOut.dataStore, 2);
-            nShow        = min(t, nComputed);
-
-            % Delete old patches and recreate (pathlines don't have a
-            % fixed uniform length like streamlines so surface trick doesn't apply —
-            % use patch with NaN separators; there are far fewer particles
-            % than streamline points so this is fast enough)
-            if ~isempty(app.pathlinePatch)
-                try; delete(app.pathlinePatch); catch; end
-                app.pathlinePatch = [];
+            if isempty(app.pathlineRender)
+                app.buildPathlineRender();
             end
-
-            patchIdx     = 0;
-            hold(app.VisualizationPlot, 'on');
-
-            % Collect all particle trajectories first so we can pad to uniform length
-            allX = cell(numParticles,1); allY = cell(numParticles,1);
-            allZ = cell(numParticles,1); allC = cell(numParticles,1);
-            for i = 1:numParticles
-                Xp = []; Yp = []; Zp = []; Cp = [];
-                for k = 1:nShow
-                    d = app.pathlinesOut.dataStore{k, i};
-                    if isempty(d), continue; end
-                    Xp = [Xp; d.coords(:,2); NaN];
-                    Yp = [Yp; d.coords(:,1); NaN];
-                    Zp = [Zp; d.coords(:,3); NaN];
-                    Cp = [Cp; d.vel;       NaN];
-                end
-                allX{i} = Xp(:); allY{i} = Yp(:);
-                allZ{i} = Zp(:); allC{i} = Cp(:);
+            R     = app.pathlineRender;
+            nShow = min(t, numel(R.offset)-1);
+            nPts  = R.offset(nShow+1);
+            if nPts == 0
+                Xs = NaN; Ys = NaN; Zs = NaN; Cs = NaN;      % nothing to show yet
+            else
+                Xs = R.X(1:nPts); Ys = R.Y(1:nPts);
+                Zs = R.Z(1:nPts); Cs = R.C(1:nPts);
             end
+            [X2,Y2,Z2,C2] = streamsToSurface(Xs, Ys, Zs, Cs);
 
-            % Pad all to same length for uniform surface dimensions
-            maxLen = max(cellfun(@numel, allX));
-            if maxLen == 0, hold(app.VisualizationPlot,'off'); return; end
-
-            for i = 1:numParticles
-                if isempty(allX{i}), continue; end
-                n = numel(allX{i});
-                if n < maxLen
-                    allX{i}(end+1:maxLen,1) = NaN;
-                    allY{i}(end+1:maxLen,1) = NaN;
-                    allZ{i}(end+1:maxLen,1) = NaN;
-                    allC{i}(end+1:maxLen,1) = NaN;
-                end
-
-                [X2,Y2,Z2,C2] = streamsToSurface(allX{i}, allY{i}, allZ{i}, allC{i});
-                patchIdx = patchIdx + 1;
-                app.pathlinePatch(patchIdx) = surface(app.VisualizationPlot, ...
+            if isempty(app.pathlinePatch) || ~all(isvalid(app.pathlinePatch))
+                app.pathlinePatch = surface(app.VisualizationPlot, ...
                     X2, Y2, Z2, C2, ...
                     'EdgeColor', 'interp', ...
-                    'FaceColor',    'none', ...
+                    'FaceColor', 'none', ...
                     'EdgeAlpha', 0.75, ...
                     'LineWidth', 0.75, ...
+                    'PickableParts', 'none', ...
                     'Tag', 'pathline_patch');
-            end
-            hold(app.VisualizationPlot, 'off');
-
-            if ~isempty(app.pathlinePatch)
-                clim(app.VisualizationPlot, [app.visParams.minVel, app.visParams.maxVel]);
                 uistack(app.pathlinePatch, 'top');
+            else
+                % one set() call so the data size can change between frames
+                set(app.pathlinePatch, 'XData',X2, 'YData',Y2, 'ZData',Z2, ...
+                    'CData',C2, 'Visible','on');
+                if ~app.isPlaying
+                    uistack(app.pathlinePatch, 'top');
+                end
             end
+            clim(app.VisualizationPlot, [app.visParams.minVel, app.visParams.maxVel]);
+
             ptRange_pl = str2num(app.VisOptionsApp.VisPts.Value);
             app.showContoursIfEnabled(ptRange_pl);
+        end
+
+        % -----------------------------------------------------------------
+        % HELPER: flatten pathlinesOut.dataStore (nWindows x nParticles) into
+        % window-ordered NaN-separated column vectors, with offset(k+1) = number
+        % of points belonging to windows 1..k. Built once per calculation.
+        % -----------------------------------------------------------------
+        function buildPathlineRender(app)
+            ds = app.pathlinesOut.dataStore;
+            nWin = size(ds, 1);
+            Xc = cell(nWin,1); Yc = cell(nWin,1);
+            Zc = cell(nWin,1); Cc = cell(nWin,1);
+            offset = zeros(nWin+1, 1);
+            for k = 1:nWin
+                row = ds(k,:);
+                row = row(~cellfun(@isempty, row));
+                if isempty(row)
+                    Xc{k} = zeros(0,1); Yc{k} = zeros(0,1);
+                    Zc{k} = zeros(0,1); Cc{k} = zeros(0,1);
+                else
+                    % coords columns: [x y z] of the ODE grid; the viewer's
+                    % axes use (col 2, col 1, col 3) – as in the original code
+                    Xc{k} = cell2mat(cellfun(@(d) [d.coords(:,2); NaN], row(:), 'UniformOutput', false));
+                    Yc{k} = cell2mat(cellfun(@(d) [d.coords(:,1); NaN], row(:), 'UniformOutput', false));
+                    Zc{k} = cell2mat(cellfun(@(d) [d.coords(:,3); NaN], row(:), 'UniformOutput', false));
+                    Cc{k} = cell2mat(cellfun(@(d) [d.vel(:);        NaN], row(:), 'UniformOutput', false));
+                end
+                offset(k+1) = offset(k) + numel(Xc{k});
+            end
+            app.pathlineRender = struct( ...
+                'X', vertcat(Xc{:}), 'Y', vertcat(Yc{:}), ...
+                'Z', vertcat(Zc{:}), 'C', vertcat(Cc{:}), 'offset', offset);
         end
 
         % -----------------------------------------------------------------
@@ -1805,24 +1818,34 @@ classdef FlowProcessing < matlab.apps.AppBase
         function showContoursIfEnabled(app, ptRange)
             if ~app.VisOptionsApp.show_planes_checkbox.Value
                 delete(findobj(app.VisualizationPlot,'Tag','vis_plane'));
+                app.visPlaneKey = [];
                 return;
             end
             if isempty(app.contourCoords) || ~isfield(app.contourCoords,'x') || ...
                     isempty(app.contourCoords.x) || isempty(app.vesselTangent)
                 return;
             end
-            delete(findobj(app.VisualizationPlot,'Tag','vis_plane'));
             ptRange(ptRange > min(size(app.vesselTangent,1), size(app.branchActual,1))) = [];
             ptRange(ptRange < 1) = [];
             if isempty(ptRange), return; end
             pw     = round(max(1, app.contourCoords.planeWidth)*mean(app.pixdim));
             b_mm   = app.branchActual(ptRange,:) .* app.pixdim(:)';
             tv_sub = app.vesselTangent(ptRange,:);
-            hold(app.VisualizationPlot,'on');
             planeColor = 'k';
             if mean(visColor(app.VisOptionsApp.backgroundDropDown.Value)) < 0.6   % dark / mid backgrounds
                 planeColor = 'w';
             end
+            % The planes do not depend on the time frame: when playing / stepping
+            % through frames keep the ones already drawn. updateVisualization
+            % clears the key so the full redraw always rebuilds them.
+            planeKey = [double(ptRange(:))', pw, double(planeColor), sum(b_mm(:)), sum(tv_sub(:))];
+            if isequal(app.visPlaneKey, planeKey) && ...
+                    ~isempty(findobj(app.VisualizationPlot,'Tag','vis_plane'))
+                return;
+            end
+            app.visPlaneKey = planeKey;
+            delete(findobj(app.VisualizationPlot,'Tag','vis_plane'));
+            hold(app.VisualizationPlot,'on');
             viewPlanesIn3D(app.VisualizationPlot, tv_sub, pw, b_mm, 1, planeColor);
             newObjs = findobj(app.VisualizationPlot,'Type','patch', ...
                 '-not','Tag','vector_patch','-not','Tag','streamline_patch1', ...
@@ -1906,51 +1929,21 @@ classdef FlowProcessing < matlab.apps.AppBase
                 t = app.TimeframeSpinner.Value;
                 currSeg = app.getCurrentSeg(t);
 
-                % Rotate using the full segment volume (same size as app.v) so
-                % imrotate3 output sizes are consistent. Apply currSeg mask afterward.
-                [seg_rot, currV_rot, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,1)/10, app.MAG(:,:,:,1), app.rotAngles2);
-
-                % Rotate currSeg separately (may be smaller if from aorta_seg)
-                tmpSeg  = imrotate3(double(currSeg), app.rotAngles2(2), [0 -1 0], 'nearest');
-                tmpSeg  = imrotate3(tmpSeg,          app.rotAngles2(1), [-1 0 0], 'nearest');
-                currSeg = logical(imrotate3(tmpSeg,  app.rotAngles2(3), [0  0 1], 'nearest'));
-
-                % Pad or crop currSeg to match rotated full-volume size if needed
-                sz_full = size(seg_rot);
-                sz_seg  = size(currSeg);
-                if ~isequal(sz_full, sz_seg)
-                    tmp = false(sz_full);
-                    r = min(sz_full(1),sz_seg(1)); c = min(sz_full(2),sz_seg(2)); s = min(sz_full(3),sz_seg(3));
-                    tmp(1:r,1:c,1:s) = currSeg(1:r,1:c,1:s);
-                    currSeg = tmp;
-                end
-
-                % grab current velocity (all frames, already divided by 10 for units)
-                if contains(app.MapTime.Value,'resolved')
-                    currV = zeros([sz_full, 3, size(app.v,5)], 'like', app.v);
-                    for tt = 1:size(app.v,5)
-                        [~, currV_tt, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,tt)/10, app.MAG(:,:,:,1), app.rotAngles2);
-                        currV(:,:,:,:,tt) = currV_tt;
-                    end
-                else
-                    currV = repmat(currV_rot,[1 1 1 1 size(app.v,5)]);
-                end
-
-                vx = currSeg.*currV(:,:,:,1,:);
-                vy = currSeg.*currV(:,:,:,2,:);
-                vz = currSeg.*currV(:,:,:,3,:);
-
-                % do erosion if mask_erosion_checkbox checked
-                if app.VisOptionsApp.mask_erosion_checkbox.Value
-                    currSeg = mask_erosion(currSeg,0);
-                end
-
-                isSliceWise = 0;
-                if contains(app.VisOptionsDropDown.Value,'slice-wise')
-                    isSliceWise = 1;
+                isWSS = strcmp(app.MapType.Value,'wall shear stress');
+                isSliceWise = contains(app.VisOptionsDropDown.Value,'slice-wise');
+                if isSliceWise
                     % grab current slice, limits already correctly set in
                     % viewVelocityVectors above
-                    sl = app.SliceSpinner_2.Value;
+                    sl = app.SliceSpinner_2.Value; %#ok<NASGU>
+                end
+
+                % The rotated / masked map volume (all frames) is expensive and
+                % only changes when the data, rotation, mask or map type change:
+                % it is cached (getMapVolume). WSS needs no volume at all.
+                if isWSS
+                    currSeg = app.getCurrentSeg(t);
+                else
+                    [outVol, currSeg] = app.getMapVolume(t);
                 end
 
                 switch app.MapType.Value
@@ -1975,89 +1968,18 @@ classdef FlowProcessing < matlab.apps.AppBase
                     case 'peak velocity'
                         scaletmp = [0 round(app.VENC/10)];
                         cBarString = 'peak velocity (cm/s)';
-                        % for cmap, calculate absolute max of the mean
-                        tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
-                        outVol = squeeze(tmp);
-
                     case 'mean velocity'
                         scaletmp = [0 round(app.VENC/50)];
                         cBarString = 'mean velocity (cm/s)';
-                        % for cmap, calculate absolute max of the mean
-                        tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
-                        outVol = squeeze(tmp);
-
                     case 'kinetic energy'
                         scaletmp = [0 20];
                         cBarString = 'KE (\muJ)';
-                        vx = vx/100; % in m/s
-                        vy = vy/100;
-                        vz = vz/100;
-
-                        % 1 Joule = 1 kg (m/s)^2
-                        rho = 1.060;                            % density of blood, in kg/L
-                        vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
-                        vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
-                        KE = currSeg.*0.5*rho*vox_vol.*vel;
-                        outVol = squeeze(1e6*squeeze(KE));    % in uJ
-
                     case 'energy loss'
                         scaletmp = [-0.001 4];
                         cBarString = 'EL (mW)';
-
-                        % calculate viscous energy loss as the divergence of velocity,
-                        % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
-                        % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
-                        v1 = squeeze(vx); v2 = squeeze(vy); v3 = squeeze(vz);
-                        % calculate gradients
-                        [v11, v12, v13] = gradient(v1);
-                        [v21, v22, v23] = gradient(v2);
-                        [v31, v32, v33] = gradient(v3);
-
-                        % divergence
-                        for tt = 1:size(v1,4)
-                            div(:,:,:,tt) = squeeze(divergence(v1(:,:,:,tt),v2(:,:,:,tt),v3(:,:,:,tt)));
-                        end
-
-                        % the viscous dissipation function at each voxel
-                        % Pack all 9 gradient components into a 3x3 cell for clean indexing
-                        gradV = {v11, v12, v13; v21, v22, v23; v31, v32, v33};
-                        theta_v = 0;
-                        for ii = 1:3
-                            for jj = 1:3
-                                dij = double(ii == jj);
-                                theta_v = theta_v + (gradV{ii,jj} + gradV{jj,ii} - (2/3)*div.*dij).^2;
-                            end
-                        end
-                        theta_v = 1/2*theta_v;
-
-                        % dynamic viscosity mu = 0.004 Pa·s
-                        EL = currSeg.*0.004 .* theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
-                        outVol = squeeze(EL);
-
                     case 'vorticity'
                         scaletmp = [0 250];
                         cBarString = 'vorticity (rad)';
-
-                        % code adopted from open source left atrial post-processing
-                        % software from Oxford (Dr. Aaron Hess):
-                        % https://ora.ox.ac.uk/objects/uuid:8f2910d9-44ed-4479-85b1-dbd4f06ea54c
-                        vx = squeeze(vx)/100; % in m/s
-                        vy = squeeze(vy)/100;
-                        vz = squeeze(vz)/100;
-
-                        pixelspacing = app.pixdim./1000;          % in m
-                        [X, Y, Z] = meshgrid((1:size(vx,2))*pixelspacing(1),(1:size(vx,1))*pixelspacing(2),(1:size(vx,3))*pixelspacing(3));clear pixelspacing
-
-                        for tt = 1:size(vx,4)
-                            [curlx,curly,curlz,cav] = curl(X,Y,Z,vx(:,:,:,tt),vy(:,:,:,tt),vz(:,:,:,tt));
-                            cx(:,:,:,tt) = curlx; cy(:,:,:,tt) = curly; cz(:,:,:,tt) = curlz;
-                        end
-                        vorticity = currSeg.*sqrt(cx.^2+cy.^2+cz.^2);
-                        clear cx cy cz curlx curly curlz;
-                        outVol = squeeze(vorticity);
-                end
-                if ~isWSS
-                    outVol(currSeg==0) = nan;
                 end
 
                 if ~isvalid(app.VisOptionsApp)
@@ -2082,35 +2004,11 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 % the plotting
                 if isWSS
-                    patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1);
+                    patch(app.MapPlot,'Faces',faces,'Vertices',verts,'EdgeColor','none', 'FaceVertexCData',WSS_magnitude,'FaceColor','interp','FaceAlpha',1,'Tag','map_wss');
                 else
-                    % first determine time operation
-                    switch app.MapTime.Value
-                        case 'time-resolved'
-                            % outVol is x×y×z×t — select the current frame
-                            outImg = outVol(:,:,:,t);
-                        case 'time-averaged'
-                            outImg = mean(outVol,4,'omitnan');
-                        case 'peak'
-                            outImg = max(outVol,[],4,'omitnan');
-                    end
-                    % then project the image, or choose a slice
-                    if isSliceWise
-                        outImg = outImg(:,:,sl); smthMask = currSeg(:,:,sl);
-                    elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
-                        outImg = mean(outImg,3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
-                    else          % app.VisOptions.MapProjection.Value = 'max'
-                        outImg = max(outImg,[],3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
-                    end
-
-                    % do smoothing if checkbox checked
-                    if app.VisOptionsApp.smoothMap_checkbox.Value
-                        smthMask = imresize(smthMask,2,"bilinear");
-                        smthMask(smthMask < 0.75) = 0;
-                        outImg = imresize(outImg,2,'bilinear').*smthMask;
-                    end
-                    [xcoor_grid,ycoor_grid] = meshgrid((1:size(outImg,2))*app.pixdim(1),(1:size(outImg,1))*app.pixdim(2));
-                    imagesc(app.MapPlot,[min(xcoor_grid) max(xcoor_grid)],[min(ycoor_grid) max(ycoor_grid)],outImg);
+                    [outImg, xr, yr] = app.projectMapImage(outVol, currSeg, t);
+                    hImg = imagesc(app.MapPlot, xr, yr, outImg);
+                    hImg.Tag = 'map_img';
                 end
 
                 clim(app.MapPlot, scale);
@@ -2154,6 +2052,236 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
 
                 app.applyMapZoom();     % keep the zoom shared with the visualization plot
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % MAP VOLUME CACHE. The map (all frames, rotated, masked) is expensive:
+        % it rotates every frame's velocity volume. It only depends on the
+        % map type, rotation, mask, erosion and the velocity data, so it is
+        % computed once and reused for every frame / appearance change.
+        % (The cache is also cleared when the Maps tab is entered and when a
+        % velocity component is flipped.)
+        % -----------------------------------------------------------------
+        function key = mapCacheKey(app, t)
+            currSeg0 = app.getCurrentSeg(t);
+            sl = unique(round([1 size(app.v,3)/2 size(app.v,3)]));
+            tKey = 0;
+            if app.isTimeResolvedSeg, tKey = t; end
+            key = {app.MapType.Value, contains(app.MapTime.Value,'resolved'), app.rotAngles2, ...
+                logical(app.VisOptionsApp.mask_erosion_checkbox.Value), ...
+                size(app.v), app.pixdim, [nnz(currSeg0), sum(double(find(currSeg0)))], ...
+                double(squeeze(sum(app.v(:,:,sl,:,:), [1 2 3 5])))', tKey};
+        end
+
+        % frames (optional): frame numbers to compute. Default = all frames
+        % (cached). A subset (e.g. just frame t) is computed directly, without
+        % cache: the returned outVol then has numel(frames) frames.
+        function [outVol, currSeg] = getMapVolume(app, t, frames)
+            allFrames = (nargin < 3);
+            if allFrames
+                frames = 1:size(app.v,5);
+                key = app.mapCacheKey(t);
+                if ~isempty(app.mapCache) && isequaln(app.mapCache.key, key)
+                    outVol  = app.mapCache.outVol;
+                    currSeg = app.mapCache.currSeg;
+                    return
+                end
+            end
+            currSeg = app.getCurrentSeg(t);
+            % Rotate using the full segment volume (same size as app.v) so
+            % imrotate3 output sizes are consistent. Apply currSeg mask afterward.
+            [seg_rot, currV_rot, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,1)/10, app.MAG(:,:,:,1), app.rotAngles2);
+
+            % Rotate currSeg separately (may be smaller if from aorta_seg)
+            tmpSeg  = imrotate3(double(currSeg), app.rotAngles2(2), [0 -1 0], 'nearest');
+            tmpSeg  = imrotate3(tmpSeg,          app.rotAngles2(1), [-1 0 0], 'nearest');
+            currSeg = logical(imrotate3(tmpSeg,  app.rotAngles2(3), [0  0 1], 'nearest'));
+
+            % Pad or crop currSeg to match rotated full-volume size if needed
+            sz_full = size(seg_rot);
+            sz_seg  = size(currSeg);
+            if ~isequal(sz_full, sz_seg)
+                tmp = false(sz_full);
+                r = min(sz_full(1),sz_seg(1)); c = min(sz_full(2),sz_seg(2)); s = min(sz_full(3),sz_seg(3));
+                tmp(1:r,1:c,1:s) = currSeg(1:r,1:c,1:s);
+                currSeg = tmp;
+            end
+
+            % grab current velocity (all frames, already divided by 10 for units)
+            if contains(app.MapTime.Value,'resolved')
+                currV = zeros([sz_full, 3, numel(frames)], 'like', app.v);
+                for kk = 1:numel(frames)
+                    [~, currV_tt, ~] = app.rotateVol3D(app.segment, app.v(:,:,:,:,frames(kk))/10, app.MAG(:,:,:,1), app.rotAngles2);
+                    currV(:,:,:,:,kk) = currV_tt;
+                end
+            else
+                currV = repmat(currV_rot,[1 1 1 1 size(app.v,5)]);
+            end
+
+            vx = currSeg.*currV(:,:,:,1,:);
+            vy = currSeg.*currV(:,:,:,2,:);
+            vz = currSeg.*currV(:,:,:,3,:);
+
+            % do erosion if mask_erosion_checkbox checked
+            if app.VisOptionsApp.mask_erosion_checkbox.Value
+                currSeg = mask_erosion(currSeg,0);
+            end
+
+
+            switch app.MapType.Value
+                case 'peak velocity'
+                    scaletmp = [0 round(app.VENC/10)];
+                    cBarString = 'peak velocity (cm/s)';
+                    % for cmap, calculate absolute max of the mean
+                    tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
+                    outVol = squeeze(tmp);
+
+                case 'mean velocity'
+                    scaletmp = [0 round(app.VENC/50)];
+                    cBarString = 'mean velocity (cm/s)';
+                    % for cmap, calculate absolute max of the mean
+                    tmp = currSeg.*sqrt(vx.^2 + vy.^2 + vz.^2);
+                    outVol = squeeze(tmp);
+
+                case 'kinetic energy'
+                    scaletmp = [0 20];
+                    cBarString = 'KE (\muJ)';
+                    vx = vx/100; % in m/s
+                    vy = vy/100;
+                    vz = vz/100;
+
+                    % 1 Joule = 1 kg (m/s)^2
+                    rho = 1.060;                            % density of blood, in kg/L
+                    vox_vol = prod(app.pixdim/1000)*1000;   % volume of voxel, in L
+                    vel = (vx.^2 + vy.^2 + vz.^2);          % velocity in m^2/s^2
+                    KE = currSeg.*0.5*rho*vox_vol.*vel;
+                    outVol = squeeze(1e6*squeeze(KE));    % in uJ
+
+                case 'energy loss'
+                    scaletmp = [-0.001 4];
+                    cBarString = 'EL (mW)';
+
+                    % calculate viscous energy loss as the divergence of velocity,
+                    % from: https://onlinelibrary.wiley.com/doi/10.1002/mrm.26129,
+                    % and: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/
+                    v1 = squeeze(vx); v2 = squeeze(vy); v3 = squeeze(vz);
+                    % calculate gradients
+                    [v11, v12, v13] = gradient(v1);
+                    [v21, v22, v23] = gradient(v2);
+                    [v31, v32, v33] = gradient(v3);
+
+                    % divergence
+                    for tt = 1:size(v1,4)
+                        div(:,:,:,tt) = squeeze(divergence(v1(:,:,:,tt),v2(:,:,:,tt),v3(:,:,:,tt)));
+                    end
+
+                    % the viscous dissipation function at each voxel
+                    % Pack all 9 gradient components into a 3x3 cell for clean indexing
+                    gradV = {v11, v12, v13; v21, v22, v23; v31, v32, v33};
+                    theta_v = 0;
+                    for ii = 1:3
+                        for jj = 1:3
+                            dij = double(ii == jj);
+                            theta_v = theta_v + (gradV{ii,jj} + gradV{jj,ii} - (2/3)*div.*dij).^2;
+                        end
+                    end
+                    theta_v = 1/2*theta_v;
+
+                    % dynamic viscosity mu = 0.004 Pa·s
+                    EL = currSeg.*0.004 .* theta_v * prod(app.pixdim)/(10*10*10); % voxel size in cm^3
+                    outVol = squeeze(EL);
+
+                case 'vorticity'
+                    scaletmp = [0 250];
+                    cBarString = 'vorticity (rad)';
+
+                    % code adopted from open source left atrial post-processing
+                    % software from Oxford (Dr. Aaron Hess):
+                    % https://ora.ox.ac.uk/objects/uuid:8f2910d9-44ed-4479-85b1-dbd4f06ea54c
+                    vx = squeeze(vx)/100; % in m/s
+                    vy = squeeze(vy)/100;
+                    vz = squeeze(vz)/100;
+
+                    pixelspacing = app.pixdim./1000;          % in m
+                    [X, Y, Z] = meshgrid((1:size(vx,2))*pixelspacing(1),(1:size(vx,1))*pixelspacing(2),(1:size(vx,3))*pixelspacing(3));clear pixelspacing
+
+                    for tt = 1:size(vx,4)
+                        [curlx,curly,curlz,cav] = curl(X,Y,Z,vx(:,:,:,tt),vy(:,:,:,tt),vz(:,:,:,tt));
+                        cx(:,:,:,tt) = curlx; cy(:,:,:,tt) = curly; cz(:,:,:,tt) = curlz;
+                    end
+                    vorticity = currSeg.*sqrt(cx.^2+cy.^2+cz.^2);
+                    clear cx cy cz curlx curly curlz;
+                    outVol = squeeze(vorticity);
+            end
+            outVol(currSeg==0) = nan;
+            if allFrames
+                app.mapCache = struct('key',key, 'outVol',outVol, 'currSeg',currSeg);
+            end
+        end
+
+        % time operation + projection / slice + optional smoothing of the map
+        function [outImg, xr, yr] = projectMapImage(app, outVol, currSeg, t)
+            switch app.MapTime.Value
+                case 'time-resolved'
+                    outImg = outVol(:,:,:,t);          % x*y*z*t: select the current frame
+                case 'time-averaged'
+                    outImg = mean(outVol,4,'omitnan');
+                case 'peak'
+                    outImg = max(outVol,[],4,'omitnan');
+            end
+            if contains(app.VisOptionsDropDown.Value,'slice-wise')
+                sl = app.SliceSpinner_2.Value;
+                outImg = outImg(:,:,sl); smthMask = currSeg(:,:,sl);
+            elseif contains(app.VisOptionsApp.projectionDropDown.Value,'mean')
+                outImg = mean(outImg,3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
+            else          % projection 'max'
+                outImg = max(outImg,[],3,'omitnan'); smthMask = max(currSeg,[],3,'omitnan');
+            end
+            if app.VisOptionsApp.smoothMap_checkbox.Value
+                smthMask = imresize(smthMask,2,"bilinear");
+                smthMask(smthMask < 0.75) = 0;
+                outImg = imresize(outImg,2,'bilinear').*smthMask;
+            end
+            [xg,yg] = meshgrid((1:size(outImg,2))*app.pixdim(1),(1:size(outImg,1))*app.pixdim(2));
+            xr = [min(xg(:)) max(xg(:))];
+            yr = [min(yg(:)) max(yg(:))];
+        end
+
+        % FAST per-frame map update (playback / arrow keys): only the data of the
+        % existing image / WSS patch is replaced. Returns false when a full
+        % viewMap is needed (nothing drawn yet, cache outdated, ...).
+        function done = updateMapFast(app)
+            done = false;
+            try
+                if contains(app.MapType.Value,'None'), done = true; return, end
+                t = app.TimeframeSpinner.Value;
+                if strcmp(app.MapType.Value,'wall shear stress')
+                    h = findobj(app.MapPlot,'Tag','map_wss');
+                    if ~isscalar(h), return, end
+                    if numel(app.WSS_matrix) > 1
+                        WSS = app.WSS_matrix{t};
+                        set(h, 'Faces',app.F_matrix{t}, 'Vertices',app.V_matrix{t}, ...
+                            'FaceVertexCData',sqrt(WSS(:,1).^2 + WSS(:,2).^2 + WSS(:,3).^2));
+                    end
+                    done = true;
+                else
+                    h = findobj(app.MapPlot,'Tag','map_img');
+                    if ~isscalar(h), return, end
+                    if ~isempty(app.mapCache) && isequaln(app.mapCache.key, app.mapCacheKey(t))
+                        [outImg, xr, yr] = app.projectMapImage(app.mapCache.outVol, app.mapCache.currSeg, t);
+                    else
+                        % no valid cache (e.g. time-resolved segmentation: the mask
+                        % changes every frame): compute ONLY this frame instead of
+                        % rotating the velocity volumes of all frames
+                        [vol, seg] = app.getMapVolume(t, t);
+                        [outImg, xr, yr] = app.projectMapImage(vol, seg, 1);
+                    end
+                    set(h, 'CData',outImg, 'XData',xr, 'YData',yr);
+                    done = true;
+                end
+            catch
+                done = false;
             end
         end
 
@@ -2575,6 +2703,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             catch err
                 disp(['could not restore  plotVelocities: ', err.identifier])
             end
+            app.mapCache = [];
             try
                 app.TimeframeSpinnerLabel.Enable = 'on';
                 app.TimeframeSpinner.Enable = 'on';
@@ -2584,6 +2713,8 @@ classdef FlowProcessing < matlab.apps.AppBase
 
                 app.SaveAnimation.Enable = 'on';
                 app.SaveRotatedAnimation.Enable = 'on';
+                app.PlayButton.Enable = 'on';
+                app.PlayFPSSpinner.Enable = 'on';
                 app.VisOptions.Enable = 'on';
                 app.MapROIanalysis.Enable = 'on';
                 app.MapVolumetricanalysis.Enable = 'on';
@@ -2992,6 +3123,7 @@ classdef FlowProcessing < matlab.apps.AppBase
                 end
             end
 
+            app.mapCache = [];       % velocity data may have been corrected on other tabs
             % switch to the correct tab and enable fields
             app.TabGroup.SelectedTab = app.Maps;
             app.TimeframeSpinnerLabel.Enable = 'on';
@@ -3067,6 +3199,8 @@ classdef FlowProcessing < matlab.apps.AppBase
             updateVisualization(app);
             app.SaveAnimation.Enable = 'on';
             app.SaveRotatedAnimation.Enable = 'on';
+            app.PlayButton.Enable = 'on';
+            app.PlayFPSSpinner.Enable = 'on';
             app.VisOptions.Enable = 'on';
             app.MapROIanalysis.Enable = 'on';
             app.MapVolumetricanalysis.Enable = 'on';
@@ -4173,12 +4307,141 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Value changed function: TimeframeSpinner
         function TimeframeSpinnerValueChanged(app, ~)
+            tk = tic;
             if contains(app.MapTime.Value,'resolved')
-                viewMap(app);
+                if ~updateMapFast(app)       % only swap the data of the drawn map ...
+                    viewMap(app);            % ... or redraw it completely
+                end
             end
+            tMap = toc(tk);
             % Use fast path when only the timeframe changed – skips all
             % appearance/geometry work that hasn't changed.
+            tk = tic;
             updateVisualizationData(app);
+            if app.isPlaying
+                app.playTimes = app.playTimes + [tMap toc(tk)];
+            end
+        end
+
+        % -----------------------------------------------------------------
+        % PLAYBACK of the time frames (Maps tab): Play / Pause button and
+        % the space bar. Frames are chosen from a wall clock, so when a
+        % redraw is slower than the requested fps frames are DROPPED and the
+        % playback keeps its real speed instead of lagging behind.
+        % Every frame goes through TimeframeSpinnerValueChanged, i.e. exactly
+        % the same (fast) path as stepping with the arrow keys.
+        % -----------------------------------------------------------------
+        function PlayButtonPushed(app, ~)
+            togglePlayback(app);
+        end
+
+        function togglePlayback(app)
+            % the button and the space bar can both react to one key press
+            if ~isempty(app.playToggleTic) && toc(app.playToggleTic) < 0.25
+                return
+            end
+            app.playToggleTic = tic;
+            if app.isPlaying
+                app.isPlaying = false;       % the running loop sees this and exits
+            else
+                playTimeframes(app);
+            end
+        end
+
+        function stopPlayback(app)
+            if ~isvalid(app), return, end
+            app.isPlaying = false;
+            try
+                app.PlayButton.Text = 'Play';
+            catch
+            end
+        end
+
+        function playTimeframes(app)
+            if app.isPlaying || app.nframes < 2, return, end
+            app.isPlaying = true;
+            app.PlayButton.Text = 'Pause';
+            app.playTimes = [0 0];
+
+            % freeze the current axis limits while playing (as in the GIF export),
+            % so the views cannot jitter from frame to frame
+            axVis = app.VisualizationPlot;  axMap = app.MapPlot;
+            limVis = {axVis.XLim, axVis.YLim, axVis.ZLim};
+            limMap = {axMap.XLim, axMap.YLim};
+            oldModes = {axVis.XLimMode, axVis.YLimMode, axVis.ZLimMode, axMap.XLimMode, axMap.YLimMode};
+            axVis.XLimMode = 'manual';  axVis.YLimMode = 'manual';  axVis.ZLimMode = 'manual';
+            axMap.XLimMode = 'manual';  axMap.YLimMode = 'manual';
+            guard = onCleanup(@() finishPlayback(app, oldModes)); %#ok<NASGU>
+
+            nT     = app.nframes;
+            fps    = app.PlayFPSSpinner.Value;
+            frame0 = app.TimeframeSpinner.Value;     % frame at the start of the clock
+            shown  = frame0;                         % frame currently on screen
+            nDrawn = 0;
+            tDraw  = 0;
+            tPlay  = tic;
+            t0     = tic;
+
+            while isvalid(app) && app.isPlaying
+                if ~strcmp(app.TabGroup.SelectedTab.Title,'Maps')
+                    break                            % never animate a hidden tab
+                end
+
+                % frame or speed changed by the user (arrow keys, typed value,
+                % fps field): carry on from there
+                cur    = app.TimeframeSpinner.Value;
+                newFps = app.PlayFPSSpinner.Value;
+                if cur ~= shown || newFps ~= fps
+                    frame0 = cur;  shown = cur;  fps = newFps;  t0 = tic;
+                end
+
+                target = mod(frame0 - 1 + floor(toc(t0)*fps), nT) + 1;
+                if target ~= shown
+                    try
+                        app.TimeframeSpinner.Value = target;
+                        TimeframeSpinnerValueChanged(app);
+                    catch ME
+                        stopPlayback(app);
+                        uialert(app.FlowProcessingUIFigure, ME.message, 'Playback stopped');
+                        return
+                    end
+                    % redraws (e.g. axis 'tight' in viewMap) may reset the limits
+                    if ~isequal(axVis.XLim, limVis{1}), axVis.XLim = limVis{1}; end
+                    if ~isequal(axVis.YLim, limVis{2}), axVis.YLim = limVis{2}; end
+                    if ~isequal(axVis.ZLim, limVis{3}), axVis.ZLim = limVis{3}; end
+                    if ~isequal(axMap.XLim, limMap{1}), axMap.XLim = limMap{1}; end
+                    if ~isequal(axMap.YLim, limMap{2}), axMap.YLim = limMap{2}; end
+                    shown  = target;
+                    nDrawn = nDrawn + 1;
+                    tk = tic;
+                    drawnow;                         % show it (also serves clicks / keys)
+                    tDraw = tDraw + toc(tk);
+                else
+                    pause(0.002);                    % idle until the next frame is due
+                end
+            end
+
+            % how fast could MATLAB really redraw? (helps to choose the fps)
+            tEl = toc(tPlay);
+            if nDrawn > 0 && tEl > 0.5
+                fprintf('Playback: %d frames drawn in %.1f s = %.1f fps (requested %d fps)\n', ...
+                    nDrawn, tEl, nDrawn/tEl, fps);
+                fprintf('   per frame: map %.2f s | vis %.2f s | drawnow %.2f s\n', ...
+                    app.playTimes(1)/nDrawn, app.playTimes(2)/nDrawn, tDraw/nDrawn);
+            end
+        end
+
+        function finishPlayback(app, oldModes)
+            if ~isvalid(app), return, end
+            stopPlayback(app);
+            try
+                app.VisualizationPlot.XLimMode = oldModes{1};
+                app.VisualizationPlot.YLimMode = oldModes{2};
+                app.VisualizationPlot.ZLimMode = oldModes{3};
+                app.MapPlot.XLimMode = oldModes{4};
+                app.MapPlot.YLimMode = oldModes{5};
+            catch
+            end
         end
 
         % Value changed function: MapType
@@ -4404,9 +4667,83 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
         end
 
+        % -----------------------------------------------------------------
+        % HELPER: image of the plot area(s) for the GIF export.
+        % getframe() of a uifigure is a real screen capture and takes ~2 s per
+        % frame, so the axes (with their colorbars) are copied into hidden
+        % classic figures and rendered off-screen instead. If anything goes
+        % wrong, the screen capture is used (with the region taken from the
+        % axes positions, not from fixed pixel numbers).
+        % -----------------------------------------------------------------
+        function ff = captureVisFrame(app, withMap)
+            if app.captureFastOK
+                try
+                    im = app.renderAxesCopy('vis', app.VisualizationPlot, app.VisualizationGroup, app.cbar_vis);
+                    if withMap
+                        cbMap = findobj(app.MapGroup, 'Type', 'colorbar');
+                        imM = app.renderAxesCopy('map', app.MapPlot, app.MapGroup, cbMap);
+                        if size(imM,1) ~= size(im,1)
+                            imM = imresize(imM, [size(im,1) size(imM,2)]);
+                        end
+                        im = [im, imM];
+                    end
+                    ff = struct('cdata', im, 'colormap', []);
+                    return
+                catch ME
+                    app.captureFastOK = false;
+                    fprintf('Fast GIF capture failed (%s) - using screen capture instead.\n', ME.message);
+                end
+            end
+            pv = getpixelposition(app.VisualizationPlot, true);     % [x y w h] in the figure
+            rect = pv;
+            if withMap
+                pm = getpixelposition(app.MapPlot, true);
+                pg = getpixelposition(app.MapGroup, true);
+                right = max(pm(1)+pm(3), pg(1)+pg(3));
+                rect = [pv(1) pv(2) right-pv(1) pv(4)];
+            end
+            ff = getframe(app.FlowProcessingUIFigure, round(rect));
+        end
+
+        % render a copy of one UIAxes (+ its colorbar) in a hidden figure and
+        % return the part of the image that is the axes area
+        function im = renderAxesCopy(app, key, ax, panel, cb)
+            pp   = getpixelposition(panel);           % container size [x y w h]
+            apos = getpixelposition(ax);              % axes position inside the container
+            hF = app.captureFigs.(key);
+            if isempty(hF) || ~isvalid(hF)
+                hF = figure('Visible','off', 'MenuBar','none', 'ToolBar','none', ...
+                    'NumberTitle','off', 'HandleVisibility','off', 'Units','pixels', ...
+                    'InvertHardcopy','off', 'PaperPositionMode','auto');
+                app.captureFigs.(key) = hF;
+            end
+            set(hF, 'Position',[100 100 pp(3) pp(4)], 'Color',panel.BackgroundColor);
+            delete(hF.Children);
+            if isempty(cb) || ~all(isvalid(cb))
+                cb = [];
+            end
+            copyobj([ax; cb(:)], hF);
+            im = print(hF, '-RGBImage', '-r0', '-opengl');
+            sc = size(im,1) / pp(4);                  % print resolution vs. screen pixels
+            r1 = max(1, round((pp(4) - (apos(2)+apos(4))) * sc) + 1);
+            r2 = min(size(im,1), round((pp(4) - apos(2)) * sc));
+            c1 = max(1, round(apos(1) * sc));
+            c2 = min(size(im,2), round((apos(1)-1+apos(3)) * sc));
+            im = im(r1:r2, c1:c2, :);
+        end
+
+        function closeCaptureFigs(app)
+            for key = {'vis','map'}
+                hF = app.captureFigs.(key{1});
+                if ~isempty(hF) && isvalid(hF), delete(hF); end
+                app.captureFigs.(key{1}) = [];
+            end
+        end
+
         % Button pushed function: SaveAnimation
         function SaveAnimationButtonPushed(app, ~)
 
+            stopPlayback(app);
             saveFrame = app.TimeframeSpinner.Value;
             % temporarily hide other things for plotting
             app.MapPlot.Toolbar.Visible = 'off';
@@ -4429,10 +4766,17 @@ classdef FlowProcessing < matlab.apps.AppBase
             definput = {'5'};
             answer = inputdlg(prompt,dlgtitle,dims,definput);
             delay = 1/str2double(answer{1});
+            app.captureFastOK = true;
             % loop over time frames and record
+            tm = zeros(1,4);                         % timing: vis update | map | capture | encode+write
             for t = 1:app.nframes
+                tk = tic;
                 app.TimeframeSpinner.Value = t;
-                updateVisualization(app);
+                if t == 1
+                    updateVisualization(app);        % full draw once (sets limits, camera)
+                else
+                    updateVisualizationData(app);    % afterwards only the frame data changes
+                end
 
                 % freeze limits to avoid jittering in gif
                 if t == 1
@@ -4451,29 +4795,47 @@ classdef FlowProcessing < matlab.apps.AppBase
                     app.MapPlot.XLim = maplim_x;
                     app.MapPlot.YLim = maplim_y;
                 end
-                pause(0.01);
+                drawnow;
+                tm(1) = tm(1) + toc(tk);
 
-                if ~contains(app.MapType.Value,'None')
+                tk = tic;
+                withMap = ~contains(app.MapType.Value,'None');
+                if withMap
                     app.TimeframeSpinner.Value = t;
                     viewMap(app);
-                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475*2 690]);
-                else
-                    ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
+                    drawnow;
                 end
-                % Turn screenshot into image
+                tm(2) = tm(2) + toc(tk);
+
+                tk = tic;
+                ff = app.captureVisFrame(withMap);
+                tm(3) = tm(3) + toc(tk);
+
+                tk = tic;
+                % Turn screenshot into image (all GIF frames must have the same size)
                 im = frame2im(ff);
+                if t == 1
+                    size0 = size(im);
+                elseif ~isequal(size(im), size0)
+                    im = imresize(im, size0(1:2));
+                end
                 % add time label
                 im = insertText(im,[100 1],sprintf('t = %2.2f s', (t-1)*(app.timeres/1000)),'BoxColor','white','FontSize',18);
 
                 % Turn image into indexed image (the gif format needs this)
-                [imind,cm] = rgb2ind(im(1:673,:,:),256);
+                % ('nodither': much faster than the default dithering)
+                [imind,cm] = rgb2ind(im,256,'nodither');
 
                 if t == 1
                     imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
                 else
                     imwrite(imind,cm, filename,'gif','WriteMode','append','DelayTime',delay);
                 end
+                tm(4) = tm(4) + toc(tk);
             end
+            fprintf(['Save animation, %d frames: vis update %.1f s | map %.1f s | ' ...
+                'capture %.1f s | encode+write %.1f s\n'], app.nframes, tm);
+            closeCaptureFigs(app);
 
             % turn back on
             app.VisualizationPlot.XLimMode = 'auto';
@@ -4496,6 +4858,7 @@ classdef FlowProcessing < matlab.apps.AppBase
         % Button pushed function: SaveRotatedAnimation
         function SaveRotatedAnimationButtonPushed(app, ~)
 
+            stopPlayback(app);
             saveFrame = app.TimeframeSpinner.Value;
             if strcmp(app.VisOptionsDropDown.Value,'slice-wise')
                 errordlg('rotated animation not available for slice-wise vectors')
@@ -4542,9 +4905,31 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.VisualizationPlot.ZLimMode = 'manual';
             app.MapPlot.XLim = maplim_x;
             app.MapPlot.YLim = maplim_y;
-            axis(app.VisualizationPlot, 'vis3d');   % lock aspect ratio for rotation
+
+            % --- AUTOMATIC ZOOM: 'vis3d' freezes the view angle with enough margin to
+            % fit the box in every orientation, which looks zoomed out. Instead let
+            % MATLAB fit the (frozen) box at a number of orientations around the
+            % rotation and use the widest of those angles: as tight as possible
+            % without clipping at any point of the rotation.
+            axR = app.VisualizationPlot;
+            nSample  = 24;
+            fitAngle = 0;
+            for ii = 0:nSample-1
+                view(axR, [0 0 1]);
+                camorbit(axR, ii*360/nSample, 0, [1 1 0]);   % same orbit as in the loop below
+                axR.CameraViewAngleMode = 'auto';
+                drawnow;                                     % the auto angle is computed on redraw
+                fitAngle = max(fitAngle, axR.CameraViewAngle);
+            end
+            axis(axR, 'vis3d');                      % lock aspect ratio for rotation
+            view(axR, [0 0 1]);
+            axR.CameraViewAngle = min(fitAngle*1.02, 175);   % 2% margin
+            if app.mapZoom ~= 1
+                camzoom(axR, app.mapZoom);           % keep the zoom set with the scroll wheel
+            end
 
             app.isAnimating = true;  % suppresses axis tight inside update functions
+            app.captureFastOK = true;
 
             ct_time = 1;
             ct_rotation = 0;
@@ -4566,11 +4951,16 @@ classdef FlowProcessing < matlab.apps.AppBase
                 drawnow;
 
                 % Capture and write frame
-                ff = getframe(app.FlowProcessingUIFigure, [1 25 475 690]);
+                ff = app.captureVisFrame(false);
                 im = frame2im(ff);
+                if t == 1
+                    size0 = size(im);
+                elseif ~isequal(size(im), size0)
+                    im = imresize(im, size0(1:2));
+                end
                 im = insertText(im, [100 1], sprintf('t = %2.2f s', (ct_time-1)*(app.timeres/1000)), ...
                     'BoxColor','white','FontSize',18);
-                [imind,cm] = rgb2ind(im(1:673,:,:),256);
+                [imind,cm] = rgb2ind(im,256);
                 delay = 1/(5*2);
                 if t == 1
                     imwrite(imind,cm,filename,'gif', 'WriteMode','overwrite','DelayTime', delay, 'LoopCount', Inf);
@@ -4587,6 +4977,7 @@ classdef FlowProcessing < matlab.apps.AppBase
             end
 
             % Restore state
+            closeCaptureFigs(app);
             app.isAnimating = false;
             app.VisualizationPlot.XLimMode = 'auto';
             app.VisualizationPlot.YLimMode = 'auto';
@@ -5345,6 +5736,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Value changed function: flipvx
         function flipvxValueChanged(app, ~)
+            app.mapCache = [];
             app.v(:,:,:,1,:) = -app.v(:,:,:,1,:);
             app.isStreamsChanged.Value = 1;
             app.isPathlinesChanged.Value = 1;
@@ -5353,6 +5745,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Value changed function: flipvy
         function flipvyValueChanged(app, ~)
+            app.mapCache = [];
             app.v(:,:,:,2,:) = -app.v(:,:,:,2,:);
             app.isStreamsChanged.Value = 1;
             app.isPathlinesChanged.Value = 1;
@@ -5361,6 +5754,7 @@ classdef FlowProcessing < matlab.apps.AppBase
 
         % Value changed function: flipvz
         function flipvzValueChanged(app, ~)
+            app.mapCache = [];
             app.v(:,:,:,3,:) = -app.v(:,:,:,3,:);
             app.isStreamsChanged.Value = 1;
             app.isPathlinesChanged.Value = 1;
@@ -5405,6 +5799,10 @@ classdef FlowProcessing < matlab.apps.AppBase
                     switch key
                         case 'r'
                             ResetRotation_2ButtonPushed(app);
+                        case 'space'
+                            if strcmp(app.PlayButton.Enable,'on')
+                                togglePlayback(app);
+                            end
                         case 'rightarrow'
                             value = app.TimeframeSpinner.Value + 1;
                             if value > app.TimeframeSpinner.Limits(2)
@@ -6515,6 +6913,30 @@ classdef FlowProcessing < matlab.apps.AppBase
             app.SaveRotatedAnimation.Tooltip = {'save animation of plots over time'};
             app.SaveRotatedAnimation.Position = [1076 486 150 28];
             app.SaveRotatedAnimation.Text = 'Save rotated animation';
+
+            % Create PlayButton
+            app.PlayButton = uibutton(app.Maps, 'push');
+            app.PlayButton.ButtonPushedFcn = createCallbackFcn(app, @PlayButtonPushed, true);
+            app.PlayButton.Interruptible = 'on';
+            app.PlayButton.IconAlignment = 'center';
+            app.PlayButton.FontName = 'SansSerif';
+            app.PlayButton.FontSize = 15;
+            app.PlayButton.Enable = 'off';
+            app.PlayButton.Tooltip = {'play / pause the time frames'; 'shortcut: space bar'; 'if the viewers cannot keep up, frames are skipped'};
+            app.PlayButton.Position = [1076 612 80 28];
+            app.PlayButton.Text = 'Play';
+
+            % Create PlayFPSSpinner
+            app.PlayFPSSpinner = uispinner(app.Maps);
+            app.PlayFPSSpinner.Limits = [1 10];
+            app.PlayFPSSpinner.RoundFractionalValues = 'on';
+            app.PlayFPSSpinner.ValueDisplayFormat = '%d fps';
+            app.PlayFPSSpinner.FontName = 'SansSerif';
+            app.PlayFPSSpinner.FontSize = 12;
+            app.PlayFPSSpinner.Enable = 'off';
+            app.PlayFPSSpinner.Tooltip = {'playback speed in time frames per second'; 'MATLAB cannot redraw 3D scenes much faster;'; 'frames are skipped if it cannot keep up'};
+            app.PlayFPSSpinner.Position = [1160 615 66 22];
+            app.PlayFPSSpinner.Value = 5;
 
             % Create MapROIanalysis
             app.MapROIanalysis = uibutton(app.Maps, 'push');

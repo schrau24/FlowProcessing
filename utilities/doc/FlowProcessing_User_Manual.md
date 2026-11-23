@@ -181,7 +181,7 @@ Both panels follow the same time frame, which is controlled with the time frame 
 | mean velocity | cm/s | projected through the current slice orientation | ROI, volume |
 | kinetic energy | µJ | projected through the current slice orientation | ROI, volume |
 | energy loss | mW | projected through the current slice orientation | ROI, volume |
-| vorticity | as labeled in the output plots | projected through the current slice orientation | ROI, volume |
+| vorticity | rad | projected through the current slice orientation | ROI, volume |
 
 For every map the time behavior can be chosen with the `MapTime` dropdown: 'time-resolved' (follows the current time frame), 'time-averaged' or 'peak'. Quantitative results over the cardiac cycle are obtained with [Map ROI analysis](#map-roi-analysis) and [Map volume analysis](#map-volume-analysis), and are written to spreadsheets in a `map_results` folder.
 

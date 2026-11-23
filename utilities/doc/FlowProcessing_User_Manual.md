@@ -1,7 +1,7 @@
 # FlowProcessing User Manual
 
 ## Information  <a name="information"></a>
-Date: May 22, 2025\
+Date: November 23, 2026\
 Author: Eric M. Schrauben, PhD\
 e.m.schrauben@amsterdamumc.nl
 
@@ -33,13 +33,20 @@ This software builds from previous work, and the use of this tool should be asso
       2. [Pulse Wave Velocity](#pulse-wave-velocity)
 4. [Velocity Unwrapping tab](#velocity-unwrapping-tab)
 5. [Maps tab](#maps-tab)
-      1. [Save animation](#save-animation)
-      2. [Map ROI analysis](#map-roi-analysis)
-      3. [Map volume analysis](#map-volume-analysis)
+      1. [What can be visualized and quantified](#overview)
+      2. [Navigating the 3D viewers](#viewer-navigation)
+      3. [Vector, streamline and pathline display](#vis-panel)
+      4. [Visualization options dialog](#vis-options)
+      5. [Maps](#map-panel)
+      6. [Time frames and playback](#playback)
+      7. [Save animation](#save-animation)
+      8. [Map ROI analysis](#map-roi-analysis)
+      9. [Map volume analysis](#map-volume-analysis)
 6. [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab)
       1. [Flow results](#flow-results)
-      2. [PWV calculation](#pwv-calculation)
-      3. [Save results](#save)
+      2. [Inspecting a centerline point](#flow-click)
+      3. [PWV calculation](#pwv-calculation)
+      4. [Save results](#save)
 7. [Manage Workspace tab](#manage-workspace-tab)
       1. [Save data/settings](#save-tool)
       2. [Restore data/settings](#restore-tool)
@@ -56,7 +63,7 @@ Additionally, the use of this software requires the following Matlab toolboxes:
 - Computer Vision Toolbox
 
 ### Data needed  <a name="data-needed"></a>
-The tool optionally works on 4D flow in different formats, listed and explained below. For other formats, please contact e.m.schrauben@amsterdamumc.nl to update functionality.
+The tool optionally works on 4D flow in different formats, listed and explained below (Philips .rec, Philips dicom, Siemens dicom, GE dicom, United Imaging dicom, mrStruct). For other formats, please contact e.m.schrauben@amsterdamumc.nl to update functionality.
 #### Philips .par / .rec <a name="philips-parrec"></a> 
 Reconstructed .par / .rec files from a Philips 4D flow acquisition can be directly loaded in. All files shouled be located within a single folder. The typical fileordering would be as follows as follows:\
 SUBJECTID or other identifier_1.par, SUBJECTID or other identifier_1.rec\
@@ -75,6 +82,12 @@ Reconstructed Siemens .dcm files can be recursively loaded in (note, this option
 one folder with the magnitude dicoms, and 3 folders with the separate velocity directions\
 note the naming of these folders does not matter as velocity information is gathered directly from the dicom headers
 
+#### GE dicom <a name="ge-dicom"></a> 
+Reconstructed GE .dcm files are loaded in the same way as Siemens dicom: one parent folder containing 4 subfolders (magnitude plus the 3 velocity directions).
+
+#### United Imaging dicom <a name="ui-dicom"></a> 
+Reconstructed United Imaging .dcm files are loaded in the same way as Siemens dicom: one parent folder containing 4 subfolders (magnitude plus the 3 velocity directions).
+
 #### Pre-processed mrStruct files <a name="mrstruct"></a> 
 Pre-processed mrStruct files, which are exported from the Northwestern Matlab based tool, consist of a mag_struct.mat and vel_struct.mat, which load directly into this tool.\
 Note this data does not contain orientation information.
@@ -90,7 +103,7 @@ Within Matlab, navigate to the folder containing FlowProcessing.m. Type this int
 Click `Load 4D Flow Data` \
 You will be prompted: first to select the file type to load, and second to select either the file (Philips - one of the reconstructed .rec files, mrStruct files) or folder (Philips dicom, Siemens dicom).
 
-After loading completion, the tool 4D flow acquisition image information is displayed, as well as axial, coronal, and sagittal maximum intensity projections using a calculated angiographic image. An automated thresh-holding of the angiogram is used to display a 3D isosurface within the field of view:
+After loading completion, the tool 4D flow acquisition image information is displayed, as well as axial, coronal, and sagittal maximum intensity projections using a calculated angiographic image. An automated thresh-holding of the angiogram is used to display a 3D isosurface within the field of view. The 3D view can be rotated by dragging with the mouse, zoomed with the scroll wheel, and reset with the `Reset view` button (or the `r` key); see [Navigating the 3D viewers](#viewer-navigation):
 
 <img src="img3.png?raw=true" width="450px">
 
@@ -131,7 +144,7 @@ cd ..\..\..
 
 ### Processing  <a name="processing"></a>
 #### Maps <a name="maps"></a>
-Clicking the `Maps` button opens the [Maps tab](#maps-tab), and generates an initial view of 3D velocity vectors within the segmentation as well as an options dialog for viewing:
+Clicking the `Maps` button opens the [Maps tab](#maps-tab), and generates an initial view of 3D velocity vectors within the segmentation as well as an options dialog for viewing (see the [Maps tab](#maps-tab) for everything that can be visualized and quantified here):
 
 <img src="img6.png?raw=true" width="600px">
 
@@ -147,39 +160,126 @@ Velocity unwrapping can be performed in three ways:
 - Manual unwrap: if `Unwrap manually` checkbox is on, clicking in the corresponding velocity direction will manually unwrap the selected pixel
 
 ## Maps Tab  <a name="maps-tab"></a>
-This tab is used for visualization purposes, offering both vectors/streamlines and calculated maps.
+This tab is used for visualization and quantification of the 4D flow data. It has two 3D/2D viewers side by side:
+- the **left panel** (the *visualization* viewer) shows velocity vectors, streamlines or pathlines together with the vessel surface
+- the **right panel** (the *map* viewer) shows a calculated map (e.g. wall shear stress or peak velocity)
 
-The left panel allows display of either velocity vectors or streamlines in one of 3 options:
-- 'segmentation': vectors/streamlines are displayed over the whole 3D isosurface. note for streamlines the segmentation is automatically subsampled at 5x to reduce computational burden
-- 'slice-wise': vectors within a single slice are overlaid on the magnitude image (not available for streamlines)
-- 'centerline contours': vectors/streamlines from the chosen centerline contours are displayed. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option
+Both panels follow the same time frame, which is controlled with the time frame spinner. A separate [Visualization options dialog](#vis-options) controls colors, scales and other display settings.
+
+### What can be visualized and quantified  <a name="overview"></a>
+| Visualization (left panel) | Display types | Notes |
+|---|---|---|
+| 'None' | - | the left viewer is switched off entirely (useful when only a map is of interest, and faster) |
+| 'segmentation' | vectors, streamlines | whole segmented vessel |
+| 'slice-wise' | vectors | a single slice, overlaid on the magnitude image |
+| 'centerline contours' | vectors, streamlines, pathlines | seeded from selected centerline cross sections (flow must be calculated first) |
+
+| Map (right panel) | Units | Display | Quantification |
+|---|---|---|---|
+| wall shear stress | Pa | on the 3D vessel surface | ROI (projected onto the surface), volume |
+| peak velocity | cm/s | projected through the current slice orientation | ROI, volume |
+| mean velocity | cm/s | projected through the current slice orientation | ROI, volume |
+| kinetic energy | µJ | projected through the current slice orientation | ROI, volume |
+| energy loss | mW | projected through the current slice orientation | ROI, volume |
+| vorticity | as labeled in the output plots | projected through the current slice orientation | ROI, volume |
+
+For every map the time behavior can be chosen with the `MapTime` dropdown: 'time-resolved' (follows the current time frame), 'time-averaged' or 'peak'. Quantitative results over the cardiac cycle are obtained with [Map ROI analysis](#map-roi-analysis) and [Map volume analysis](#map-volume-analysis), and are written to spreadsheets in a `map_results` folder.
+
+### Navigating the 3D viewers  <a name="viewer-navigation"></a>
+All 3D viewers in the tool (Loading tab, Maps tab and Flow and Pulse Wave Velocity tab) are used in the same way:
+
+| Action | Result |
+|---|---|
+| click and drag in the viewer | rotate the 3D view |
+| scroll wheel | zoom in/out |
+| `Reset view` button, or `r` key | return to the default view (rotation and zoom) |
+| `Axial`, `Sagittal`, `Coronal` buttons (Maps tab) | show the map in the chosen standard orientation |
+| left/right arrow keys (Maps tab) | previous/next time frame |
+| up/down arrow keys (Maps tab, slice-wise vectors) | previous/next slice |
+| space bar (Maps tab) | start/stop [playback](#playback) |
+
+Zoom on the Maps tab is shared by the two panels, so both stay at the same scale.
+
+<img src="viewer_interaction.png?raw=true" width="600px">
+
+### Vector, streamline and pathline display  <a name="vis-panel"></a>
+The left panel is set by two dropdown menus. The first menu selects where in the vessel the flow is displayed:
+- 'None': no 3D display is shown in the left panel
+- 'segmentation': vectors/streamlines are displayed over the whole 3D vessel surface. Note for streamlines the segmentation is automatically subsampled at 5x to reduce computational burden
+- 'slice-wise': vectors within a single slice are overlaid on the magnitude image (vectors only; use the slice spinner or up/down arrow keys to change slice)
+- 'centerline contours': vectors/streamlines/pathlines are seeded from the chosen centerline contours. Note flow must have been previously calculated in the [Flow and Pulse Wave Velocity tab](#flow-and-pulse-wave-velocity-tab) for this option. The contours to use are set in the [Visualization options dialog](#vis-options)
+
+The second menu selects the display type:
+- **Vectors**: arrows showing the velocity direction and magnitude at the current time frame
+- **Streamlines**: lines tangent to the instantaneous velocity field at the current time frame (a "snapshot" of the flow, as if time were frozen)
+- **Pathlines** (only with 'centerline contours'): the trajectory that a virtual particle follows over time as it is carried along by the time-varying flow. Particles are released from the selected centerline contours and tracked through all time frames until they leave the vessel segmentation. Pathlines are calculated once (a progress bar is shown) and then displayed per time frame. The length of time particles are tracked, and the time frame at which they are released, are set in the visualization options
+
+Streamlines and pathlines are colored by velocity magnitude. Streamlines are drawn more transparent where velocity is low.
 
 <img src="vecs.png?raw=true" width="600px">
 
-<img src="img11.png?raw=true" width="400px">
+<img src="streamlines.png?raw=true" width="400px">
 
-The right panel allows for visualization of several maps derived for the 4D flow data:
-- [wall shear stress](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4329118/): needs to be calculated using the `(Re)Calculate Map' button, result is WSS over whole 3D isosurface
+<img src="pathlines.png?raw=true" width="200px">
+
+### Visualization options dialog  <a name="vis-options"></a>
+The `Visualization options` button opens a dialog with the display settings of both viewers. Changes are applied directly. The most important settings:
+
+**Visualization panel (left)**
+- *velocity scale (cm/s)*: minimum/maximum velocity of the color scale; velocities below the minimum are not shown
+- *vector scale* and *subsample*: arrow size and how many vectors/streamlines/seed points are displayed
+- *surface*: choose one of 'none', '3D surface' (isosurface of the angiogram) or 'segmentation surface'. Only one is shown at a time
+- *surface color* and *opacity*: color of the surface (light gray, gray, white, black, light blue, yellow, red, blue) and its transparency (0 to 1), useful to see vectors or pathlines inside of the vessel
+- *contour points* and *show planes*: for 'centerline contours', the centerline point numbers (e.g. `10:5:60`) whose contours are used as seeds, and whether to draw these planes
+- *path length (s)*: for pathlines, the duration each particle is tracked in seconds. Leave blank to track for the full cardiac cycle
+- *release frame*: for pathlines, the cardiac time frame at which particles are released (1 = start of the cycle)
+- *orientation marker*: shows/hides the anatomical orientation marker
+- *colorbar Location*, *Colormap* (jet, parula, hot, spring, summer, autumn, winter, gray), *Text color* and *background color*: general appearance. The time frame label and spinner are automatically switched between white and black to stay readable on the chosen background
+
+**Map panel (right)**
+- *map scale*: minimum/maximum of the color scale of the selected map (defaults are chosen per map type)
+- *erode mask 1 voxel*: erodes the segmentation by one voxel for the selected map, to exclude voxels at the vessel wall
+- *map slice projection*: how the 3D map is projected to the 2D display: 'mean' or 'max' through the slice direction
+- *smooth map*: 2x bicubic interpolation for a smoother-looking map. Smoothing is switched off automatically during ROI analysis
+- *colorbar Location*, *Colormap* (also 'inverse jet'), *Text color* and *background color*
+
+
+### Maps  <a name="map-panel"></a>
+The map dropdown (right panel) selects the quantity to display: 'None' (hides the map viewer), wall shear stress, peak velocity, mean velocity, kinetic energy, energy loss or vorticity.
+- [wall shear stress](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4329118/): needs to be calculated using the `(Re)Calculate Map` button, result is WSS over the whole 3D vessel surface. You will be asked for:
+  - the frames to calculate: peak systole only (0) or all frames (1). Calculating all frames takes longer but enables time-resolved WSS and WSS analyses over the cardiac cycle
+  - whether to use wall effects (0 or 1)
+  - the blood viscosity in Pa·s (default 0.0032)
 - peak velocity: projected through the current slice orientation
 - mean velocity: projected through the current slice orientation
 - kinetic energy: projected through the current slice orientation
 - [energy loss](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4051863/): projected through the current slice orientation
 - [vorticity](https://www.sciencedirect.com/science/article/pii/S1936878X23001493#bib21): projected through the current slice orientation
 
-<img src="maps.png?raw=true" width="900px">
+The projected maps can be viewed in the axial, sagittal or coronal orientation with the corresponding buttons. WSS is displayed on the 3D surface and can be freely rotated and zoomed.
+
+<img src="maps.png?raw=true" width="600px">
+
+### Time frames and playback  <a name="playback"></a>
+The time frame spinner (or left/right arrow keys) steps through the cardiac cycle. The `Play` button (or the space bar) plays the time frames continuously in both panels; press again to pause. The playback speed is set with the frames-per-second box next to the button (1 to 10 fps, default 5).
+
+Note that updating 3D graphics in Matlab is relatively slow. If the viewers cannot keep up with the requested rate (typically when whole-vessel streamlines or maps are shown), frames are skipped so the animation keeps its real speed. When playback stops, the achieved frame rate and the time spent per frame are printed in the Matlab command window. To speed up playback, switch the left or right panel off ('None'), reduce the subsampling, or avoid the 'smooth map' option.
+
 
 ### Save animation  <a name="save-animation"></a>
-Clicking the `Save animation` button saves a corresponding .gif of the velocity vectors and selected map (if applicable).
+Clicking the `Save animation` button saves a .gif of all time frames of the velocity vectors/streamlines/pathlines and the selected map (if applicable). You are prompted for a file name and for the output frame rate (frames per second). The animation uses the current view (rotation and zoom) of the viewers, so rotate and zoom to the view of interest first.
+
+The `Save rotated animation` button saves a .gif in which the 3D visualization makes one full 360° turn while the time frames cycle (180 frames at 10 fps). The zoom is set automatically so the vessel stays in view for the whole rotation. This option requires the visualization viewer to be showing the whole segmentation or centerline contours (it is not available for 'slice-wise' or 'None').
 
 ### Map ROI analysis <a name="map-roi-analysis"></a>
-Clicking the `Map ROI analysis` button allows the user to draw an ROI in the current selected map (displayed on the current time frame). Within the ROI all time frames are analyzed and an output image is shown. The user has the option to save this figure and corresponding summary statistics to an xlsx spreadsheet.
+Clicking the `Map ROI analysis` button allows the user to draw an ROI (polygon) in the current selected map (displayed on the current time frame). Within the ROI all time frames are analyzed and an output image is shown with the ROI average and maximum over the cardiac cycle. The user has the option to save this figure and the corresponding summary statistics: they are written to `map_results/mapROI_results.xlsx` (one sheet per map, with columns for cardiac time, ROI average and ROI maximum) and to a .tiff image.
+
+After saving, the same ROI can be re-used for the other maps (peak velocity, mean velocity, kinetic energy, energy loss and vorticity) with a single click, so these are all analysed on the identical region. If wall shear stress has been calculated, the ROI is also applied to the WSS map: the ROI is projected through the 3D volume onto the vessel surface, and the WSS values of the surface where the ROI projects are analyzed (WSS is skipped if the ROI does not overlap the WSS surface). Selected surface points are marked in the 3D view.
 
 <img src="ROI.png?raw=true" width="600px">
 
 ### Map volume analysis <a name="map-volume-analysis"></a>
-Similar to the Map ROI analysis, clicking the `Map volume analysis` button displays volumetric time-resolved results for the current selected map. Note this uses all voxels within the current segmentation. An output image and summary statistics are automatically saved to the corresponding xlsx spreadsheet.
-
-<img src="map_volume.png?raw=true" width="600px">
+Similar to the Map ROI analysis, clicking the `Map volume analysis` button displays volumetric time-resolved results for the current selected map. Note this uses all voxels within the current segmentation. An output image and summary statistics are automatically saved to `map_results/mapVol_results.xlsx` (volume average, maximum and area under the curve per time frame; plus the integral and peak of the volume-average curve over the cardiac cycle) and a .tiff image. For wall shear stress calculated at peak systole only, the volume average and maximum are given but no time curve is shown.
 
 #### note on map summary statistics:
 Due to the nature of interpolation upon rotation, map summary statistics (quantitative volumetric parameters) are recommended only for orthogonal views (Axial, Sagittal, Coronal). Non-orthogonal views/quantitative volumetric parameters should be used with caution.
@@ -193,6 +293,11 @@ Then click `Check centerline, calculate flow`. At each centerline point, an orth
 
 ### Flow results  <a name="flow-results"></a>
 Resulting flow waveforms and values are shown for each centerline point. Subsets of points can be selected and shown using the PWV Points input and `Examine flow waveforms` button.
+
+### Inspecting a centerline point  <a name="flow-click"></a>
+The 3D view of the vessel on this tab uses the same mouse controls as the other viewers (drag to rotate, scroll to zoom, `Reset view` button or `r` key). To inspect a single location, click (without dragging) on the vessel centerline: the nearest centerline point is marked in the 3D view and its waveform is drawn as a thick black line over the other waveforms. The point number is also printed in the Matlab command window, which makes it easy to find the point number of a location of interest when choosing the PWV Points.
+
+<img src="flow_click.png?raw=true" width="600px">
 
 ### PWV calculation  <a name="pwv-calculation"></a>
 For the subset of PWV points selected, PWV can be calculated using the `Calculate PWV` button. This calculation will use the dropdown menu selected calculation method. The following is an overview of available methods:
